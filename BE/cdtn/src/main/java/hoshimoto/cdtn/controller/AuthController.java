@@ -43,8 +43,14 @@ public class AuthController {
         if (valid) {
             return ResponseEntity.ok(new ApiResponse<>(true, "Xác nhận thành công, chuyển sang cập nhật mật khẩu mới", null));
         } else {
-            return ResponseEntity.status(404).body(new ApiResponse<>(false, "Tài khoản hoặc email không đúng", null));
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, "Tài khoản hoặc email không đúng", null));
         }
+    }
+    @PostMapping("/verify-otp")
+    public ResponseEntity<ApiResponse<Void>> verifyOtp(@RequestBody hoshimoto.cdtn.dto.VerifyOtpRequest request) {
+        boolean ok = authService.verifyOtp(request.getUsername(), request.getOtp());
+        if (ok) return ResponseEntity.ok(new ApiResponse<>(true, "OTP hợp lệ", null));
+        return ResponseEntity.badRequest().body(new ApiResponse<>(false, "OTP không hợp lệ hoặc đã hết hạn", null));
     }
     @PostMapping("/update-password")
     public ResponseEntity<ApiResponse<Void>> updatePassword(@RequestBody UpdatePasswordRequest request) {
