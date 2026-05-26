@@ -1,0 +1,257 @@
+/* ── Audits module – kiểm kê hàng tồn kho ────────────── */
+
+/* ── Audit-specific status badges ────────────────────── */
+.au-badge-draft {
+    background: #eceff1;
+    color: #546e7a;
+    border: 1px solid #b0bec5;
+}
+
+.au-badge-requested {
+    background: #fff9c4;
+    color: #f57f17;
+    border: 1px solid #ffd54f;
+}
+
+.au-badge-submitted {
+    background: #fff3e0;
+    color: #e65100;
+    border: 1px solid #ffb74d;
+}
+
+.au-badge-confirmed {
+    background: #e8f5e9;
+    color: #1b5e20;
+    border: 1px solid #a5d6a7;
+}
+
+.au-badge-cancelled {
+    background: #fce4ec;
+    color: #b71c1c;
+    border: 1px solid #f48fb1;
+}
+
+.au-badge-in-progress {
+    background: #e3f2fd;
+    color: #1565c0;
+    border: 1px solid #90caf9;
+}
+
+.au-badge-pending-process {
+    background: #ffe0b2;
+    color: #bf360c;
+    border: 1px solid #ff8a65;
+}
+
+.au-badge-processed {
+    background: #e0f2f1;
+    color: #00695c;
+    border: 1px solid #80cbc4;
+}
+
+.au-badge-rejected {
+    background: #fbe9e7;
+    color: #bf360c;
+    border: 1px solid #ff8a65;
+}
+
+/* ── Audit status pills (detail page) ────────────────── */
+.au-status-pill-draft {
+    background: #eceff1;
+    color: #546e7a;
+    border: 1.5px solid #b0bec5;
+}
+
+.au-status-pill-requested {
+    background: #fff9c4;
+    color: #f57f17;
+    border: 1.5px solid #ffd54f;
+}
+
+.au-status-pill-submitted {
+    background: #fff3e0;
+    color: #e65100;
+    border: 1.5px solid #ffb74d;
+}
+
+.au-status-pill-confirmed {
+    background: #e8f5e9;
+    color: #1b5e20;
+    border: 1.5px solid #a5d6a7;
+}
+
+.au-status-pill-cancelled {
+    background: #fce4ec;
+    color: #b71c1c;
+    border: 1.5px solid #f48fb1;
+}
+
+.au-status-pill-in-progress {
+    background: #e3f2fd;
+    color: #1565c0;
+    border: 1.5px solid #90caf9;
+}
+
+.au-status-pill-pending-process {
+    background: #ffe0b2;
+    color: #bf360c;
+    border: 1.5px solid #ff8a65;
+}
+
+.au-status-pill-processed {
+    background: #e0f2f1;
+    color: #00695c;
+    border: 1.5px solid #80cbc4;
+}
+
+.au-status-pill-rejected {
+    background: #fbe9e7;
+    color: #bf360c;
+    border: 1.5px solid #ff8a65;
+}
+
+/* ── Diff quantity badges ─────────────────────────────── */
+.au-diff-plus {
+    color: #1b5e20;
+    font-weight: 700;
+}
+
+.au-diff-minus {
+    color: #b71c1c;
+    font-weight: 700;
+}
+
+.au-diff-zero {
+    color: #78909c;
+}
+
+/* ── Diff cell background ─────────────────────────────── */
+.au-td-plus {
+    background: #f1f8e9;
+}
+
+.au-td-minus {
+    background: #fce4ec;
+}
+
+/* ── Book quantity (sổ sách) ─────────────────────────── */
+.au-book-qty {
+    color: #4c6152;
+    font-size: 0.88rem;
+}
+
+/* ── Location badge in header ─────────────────────────── */
+.au-location-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    background: #e8f5e9;
+    color: #1E3A2F;
+    border: 1.5px solid #a5d6a7;
+    border-radius: 20px;
+    font-size: 0.87rem;
+    font-weight: 600;
+}
+
+/* ── Summary bar ──────────────────────────────────────── */
+.au-summary-bar {
+    display: flex;
+    gap: 24px;
+    padding: 12px 16px;
+    background: #f3faf6;
+    border: 1px solid #c6dfd0;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 0.87rem;
+    flex-wrap: wrap;
+}
+
+.au-summary-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.au-summary-label {
+    color: #6b8f72;
+    font-size: 0.8rem;
+}
+
+.au-summary-value {
+    font-weight: 700;
+    color: #1E3A2F;
+    font-size: 0.96rem;
+}
+
+.au-summary-value.au-val-plus {
+    color: #1b5e20;
+}
+
+.au-summary-value.au-val-minus {
+    color: #b71c1c;
+}
+
+/* ── th minwidth for audit table ─────────────────────── */
+.au-th-book {
+    text-align: right;
+}
+
+.au-th-actual {
+    text-align: right;
+}
+
+.au-th-diff {
+    text-align: right;
+}
+
+/* ── Status filter bar (staff list) ───────────────────── */
+.au-status-bar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.au-status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid #d6e6db;
+    background: #f7fbf9;
+    color: #4c6152;
+    padding: 6px 12px;
+    border-radius: 18px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.au-status-chip:hover {
+    background: #eef7f2;
+    border-color: #c6dfd0;
+}
+
+.au-status-chip-active {
+    background: #1E854A;
+    border-color: #1E854A;
+    color: #ffffff;
+}
+
+.au-status-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    padding: 2px 6px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.75);
+    color: #1E3A2F;
+    font-weight: 700;
+    font-size: 0.78rem;
+}
+
+.au-status-chip-active .au-status-count {
+    background: rgba(255, 255, 255, 0.22);
+    color: #ffffff;
+}

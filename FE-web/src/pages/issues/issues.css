@@ -1,0 +1,21 @@
+/* ── Issues page – reuses receipts styles ─────────────── */
+/* All rc-* classes from receipts.css are reused here. */
+/* Issue-specific overrides: */
+
+.is-badge-draft {
+    background: #fff3e0;
+    color: #e65100;
+    border: 1px solid #ffcc80;
+}
+
+.is-badge-confirmed {
+    background: #e8f5e9;
+    color: #1b5e20;
+    border: 1px solid #a5d6a7;
+}
+
+.is-badge-cancelled {
+    background: #fce4ec;
+    color: #b71c1c;
+    border: 1px solid #f48fb1;
+}
