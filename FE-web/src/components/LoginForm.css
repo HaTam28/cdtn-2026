@@ -26,6 +26,7 @@ body,
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    position: relative;
 }
 
 .login-logo {
@@ -81,6 +82,73 @@ body,
     width: 20px;
     height: 20px;
     fill: currentColor;
+}
+
+/* Ensure stroke-based SVG icons also inherit the current color */
+.input-icon svg,
+.input-icon svg path,
+.input-icon svg circle,
+.input-icon svg line,
+.input-icon svg rect {
+    stroke: currentColor;
+}
+
+/* Slightly smaller mail icon */
+.input-icon.mail-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Footer link under submit button for auth pages */
+.auth-footer {
+    margin-top: 12px;
+    width: 100%;
+    text-align: center;
+}
+
+.auth-footer .back-to-login {
+    color: #277d4b;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.auth-footer .back-to-login:hover {
+    text-decoration: underline;
+}
+
+/* Resend-button styling for UpdatePasswordForm */
+.resend-button {
+    width: 100%;
+    text-align: center;
+}
+
+.input-messages {
+    width: 100%;
+    margin-top: 2px;
+    margin-bottom: 2px;
+}
+
+.input-message {
+    font-size: 0.94rem;
+    padding: 0 6px;
+    margin-top: 2px;
+    margin-bottom: 0;
+    line-height: 1.1;
+}
+
+/* ensure messages appear immediately under inputs */
+.input-field+.input-message,
+.input-field+.input-messages,
+.input-field+.input-messages .input-message {
+    margin-top: 2px;
+}
+
+.input-message.success {
+    color: #1f7a3a;
+}
+
+.input-message.error {
+    color: #c23b3b;
 }
 
 .input-field input {
@@ -153,4 +221,17 @@ body,
 .login-button:focus-visible {
     outline: 3px solid rgba(59, 181, 110, 0.25);
     outline-offset: 3px;
+}
+
+/* Back arrow used on auth pages */
+.back-arrow {
+    position: absolute;
+    left: 24px;
+    top: 24px;
+    text-decoration: none;
+    color: inherit;
+}
+
+.back-arrow svg {
+    display: block;
 }
