@@ -48,7 +48,9 @@ export const forgotPassword = async (data) => {
         console.log('forgotPassword response:', res.data);
         return res.data;
     } catch (err) {
-        console.error('forgotPassword error:', err);
+        console.error('forgotPassword error:', err.response || err);
+        // If server returned a JSON error payload, return it so UI can show message
+        if (err.response && err.response.data) return err.response.data;
         throw err;
     }
 };
@@ -59,7 +61,22 @@ export const updatePassword = async (data) => {
         console.log('updatePassword response:', res.data);
         return res.data;
     } catch (err) {
-        console.error('updatePassword error:', err);
+        console.error('updatePassword error:', err.response || err);
+        if (err.response && err.response.data) return err.response.data;
         throw err;
     }
 };
+
+export const verifyOtp = async (data) => {
+    try {
+        const res = await axios.post(`${API_URL}/verify-otp`, data);
+        console.log('verifyOtp response:', res.data);
+        return res.data;
+    } catch (err) {
+        console.error('verifyOtp error:', err.response || err);
+        if (err.response && err.response.data) return err.response.data;
+        throw err;
+    }
+};
+
+// Note: new API flow (2.3): FE must call `verify-otp` before calling `update-password`.

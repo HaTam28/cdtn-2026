@@ -1,6 +1,6 @@
 ﻿# API FE DOC CHUẨN
 
-> Base URL: `http://localhost:8080`
+> URL cơ sở: `http://localhost:8080`
 
 ## Tổng quan
 
@@ -22,17 +22,17 @@
 ## Mục lục
 
 1. [Ràng buộc chung](#1-ràng-buộc-chung)
-2. [Authentication](#2-authentication)
-3. [User](#3-user)
-4. [Customer](#4-customer)
-5. [Item](#5-item)
-6. [Location](#6-location)
+2. [Xác thực](#2-authentication)
+3. [Người dùng](#3-user)
+4. [Khách hàng](#4-customer)
+5. [Mặt hàng](#5-item)
+6. [Vị trí](#6-location)
 7. [Goods Receipt – Nhập kho](#7-goods-receipt--nhập-kho)
 8. [Goods Issue – Xuất kho](#8-goods-issue--xuất-kho)
 9. [Inventory Audit – Kiểm kê](#9-inventory-audit--kiểm-kê)
 10. [Batch – Lô hàng](#10-batch--lô-hàng)
 11. [Lưu ý chung cho FE](#11-lưu-ý-chung-cho-fe)
-12. [Notifications – Thông báo](#12-notifications--thông-báo)
+12. [Thông báo](#12-notifications--thông-báo)
 
 ---
 
@@ -76,7 +76,7 @@
 
 ---
 
-## 2. Authentication
+## 2. Xác thực
 
 ### 2.1 Đăng nhập
 
@@ -143,6 +143,44 @@
 }
 ```
 
+Sau khi gọi endpoint này, BE sẽ tạo mã OTP (6 chữ số), lưu vào DB với TTL 5 phút và gửi mã OTP vào email đã cung cấp.
+FE hiển thị màn hình nhập mã OTP và mật khẩu mới.
+
+Thay đổi luồng (xác minh trước rồi mới cập nhật):
+- FE gọi `POST /api/auth/forgot-password` để yêu cầu gửi mã OTP.
+- FE hiển thị form nhập `OTP` và gọi `POST /api/auth/verify-otp` với payload `{ username, otp }`.
+- Nếu xác minh thành công, FE cho phép người dùng nhập mật khẩu mới và gọi `POST /api/auth/update-password` với payload `{ username, newPassword }` (không cần gửi `otp` trong bước này).
+
+Detailed behavior:
+- If `username` and `email` match an existing user, server: 1) deletes any previous tokens for that user, 2) generates a 6-digit numeric OTP, 3) saves it in `password_reset_tokens` with `expiresAt = now + 5 minutes`, 4) sends an email containing the OTP to the provided `email`, 5) returns `200 OK` with a success message.
+- If user not found or email mismatch, server returns `400 Bad Request` with message `"Tài khoản hoặc email không đúng"`.
+- If email sending fails (SMTP misconfiguration or provider error), server returns `500 Internal Server Error` (or `400` depending on implementation) — FE should surface a friendly error and offer retry.
+
+Success response (200):
+```json
+{
+  "success": true,
+  "message": "Mã OTP đã được gửi tới email, có hiệu lực 5 phút",
+  "data": null
+}
+```
+
+Error examples:
+- `404 Not Found` — user/email không khớp:
+```json
+{ "success": false, "message": "Tài khoản hoặc email không đúng", "data": null }
+```
+- `500 Internal Server Error` — lỗi gửi email:
+```json
+{ "success": false, "message": "Không thể gửi email. Vui lòng thử lại sau.", "data": null }
+```
+
+Hướng dẫn FE cho `forgot-password`:
+- Kiểm tra bắt buộc và định dạng của `username` và `email` trước khi gọi API.
+- Sau khi gọi thành công, hiển thị form gồm: `OTP (6 chữ số)`, `Mật khẩu mới`, `Xác nhận mật khẩu`.
+- Thêm nút "Gửi lại mã" gọi lại `forgot-password` và vô hiệu hóa trong 60s để tránh lạm dụng.
+
+
 ---
 
 ### 2.4 Cập nhật mật khẩu mới
@@ -157,9 +195,144 @@
 }
 ```
 
+FE must first verify OTP via `POST /api/auth/verify-otp` before calling this endpoint. `update-password` will only succeed if a previously-verified, un-used OTP exists for the user and has not expired.
+
+Detailed behavior:
+- Server verifies there exists a previously-verified, unused token for the given `username` and that `expiresAt` &gt; now.
+ - Before consuming the OTP, the server validates the `newPassword` meets complexity rules. The token is only marked `used` after the password has been successfully validated, encoded and saved.
+ - If password validation fails (e.g., too short, missing character classes), the token remains un-consumed so the user can retry with a stronger password within the token TTL.
+ - If valid and password saved successfully: server marks the token used and returns `200 OK`.
+ - If token missing/expired/unused or username invalid: server returns `400 Bad Request` with a clear error message.
+
+Success response (200):
+```json
+{
+  "success": true,
+  "message": "Cập nhật mật khẩu thành công",
+  "data": null
+}
+```
+
+Error examples:
+- `400 Bad Request` — OTP không hợp lệ hoặc đã hết hạn:
+```json
+{ "success": false, "message": "OTP không hợp lệ hoặc đã hết hạn", "data": null }
+```
+- `400 Bad Request` — user không tồn tại / lỗi cập nhật:
+```json
+{ "success": false, "message": "Tài khoản không hợp lệ hoặc lỗi cập nhật", "data": null }
+```
+ - `400 Bad Request` — mật khẩu không đạt yêu cầu (ví dụ: độ dài < 8 hoặc thiếu chữ hoa/chữ thường/số):
+```json
+{ "success": false, "message": "Mật khẩu không đạt yêu cầu", "data": null }
+```
+
+FE guidance for `update-password`:
+- Validate `newPassword` meets complexity rules (same rules as registration if any) and `confirm password` matches.
+- Ensure the user has already verified the OTP via `POST /api/auth/verify-otp` before calling this endpoint.
+- Send `username` and `newPassword` to this endpoint (no `otp` field required).
+- On `OTP không hợp lệ hoặc đã hết hạn` errors, prompt the user to request a new OTP by calling `forgot-password` again.
+- After success, redirect user to login page and show a success toast.
+
+Lưu ý bảo mật:
+- OTP is numeric and expires after 5 minutes; treat it as one-time use and delete after successful use.
+- Implement server-side rate-limiting for `forgot-password` to mitigate abuse (e.g., max 3 requests per hour per account/IP).
+- Ensure SMTP credentials are stored securely and that `spring.mail.*` properties are set in `application.properties` or environment variables.
+
+Ví dụ & mẫu cho FE
+----------------------
+
+1) Ví dụ nhanh `curl`
+
+- Request OTP (forgot-password):
+
+```bash
+curl -X POST http://localhost:8080/api/auth/forgot-password \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","email":"admin@example.com"}'
+```
+
+- Verify OTP and submit new password:
+
+```bash
+curl -X POST http://localhost:8080/api/auth/verify-otp \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","otp":"123456"}'
+
+curl -X POST http://localhost:8080/api/auth/update-password \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","newPassword":"NewP@ssw0rd"}'
+```
+
+2) Ví dụ JavaScript `fetch` (frontend)
+
+- Request OTP:
+
+```javascript
+await fetch('/api/auth/forgot-password', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ username, email })
+});
+```
+
+- Verify OTP:
+
+```javascript
+await fetch('/api/auth/verify-otp', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ username, otp })
+});
+```
+
+- Submit new password:
+
+```javascript
+const res = await fetch('/api/auth/update-password', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ username, newPassword })
+});
+const body = await res.json();
+if (!res.ok) throw new Error(body.message || 'Update failed');
+```
+
+3) Ví dụ Axios:
+
+```javascript
+import axios from 'axios';
+
+await axios.post('/api/auth/forgot-password', { username, email });
+
+// verify OTP first
+await axios.post('/api/auth/verify-otp', { username, otp });
+
+await axios.post('/api/auth/update-password', { username, newPassword });
+```
+
+4) Gợi ý luồng UI cho FE
+
+- Screen A: "Quên mật khẩu" — collect `username` and `email`.
+- On success: show Screen B with inputs: `OTP (6 chữ số)`, `Mật khẩu mới`, `Xác nhận mật khẩu`.
+- Provide a "Gửi lại mã" button that calls `forgot-password` again and is disabled for 60 seconds.
+- Show clear inline errors for `OTP không hợp lệ hoặc đã hết hạn` and an action to request a new OTP.
+- After successful `update-password`, redirect to login page and show success notification.
+
+5) Bảng ánh xạ lỗi cho FE
+
+- `200 OK` — success flows (OTP sent, password updated).
+- `400 Bad Request` — invalid input, OTP invalid/expired, or user not found when updating password.
+- `404 Not Found` — username/email mismatch when requesting OTP.
+- `429 Too Many Requests` — (recommended) triggered when rate limit exceeded for `forgot-password` (implement server-side).
+- `500 Internal Server Error` — email sending failure or unexpected server error.
+
+When presenting errors to users, show user-friendly messages and avoid leaking internal details.
+
+
 ---
 
-## 3. User
+## 3. Người dùng
 
 | Method | Endpoint | Mô tả | Quyền |
 |--------|----------|-------|-------|
