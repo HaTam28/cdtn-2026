@@ -5,6 +5,8 @@ import "../receipts/receipts.css";
 import "./audits.css";
 import { getAllAudits, getAssignedAuditsPending, getAssignedAuditsDone } from "../../api/auditApi";
 import TopbarRight from "../../components/TopbarRight";
+import { COPY_SELECT_ONE } from "../../utils/messages";
+import notify from "../../utils/notify";
 
 const STATUS_LABELS = {
     DRAFT: "Nháp",
@@ -146,6 +148,17 @@ export default function AuditsPage() {
         setSelected(next);
     };
 
+    const handleClone = () => {
+        if (selected.size !== 1) {
+            notify(COPY_SELECT_ONE, { type: 'warning' });
+            return;
+        }
+        const id = Array.from(selected)[0];
+        const item = audits.find((r) => r.id === id);
+        if (!item) return;
+        navigate("/audits/create", { state: { clone: item } });
+    };
+
     const pages = useMemo(() => {
         if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
         if (safeP <= 4) return [1, 2, 3, 4, 5, "...", totalPages];
@@ -188,7 +201,7 @@ export default function AuditsPage() {
                             <IconPlus /> Thêm mới
                         </button>
                     )}
-                    <button className="rc-btn-template"><IconDoc /> Thêm bản sao mới</button>
+                    <button className="rc-btn-template" onClick={handleClone}><IconDoc /> Thêm bản sao mới</button>
                 </div>
 
                 {/* Tabs */}

@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import "../../styles/shared.css";
 import { getAllLocations, getItemsAtLocation } from "../../api/locationApi";
 import TopbarRight from "../../components/TopbarRight";
+import { COPY_SELECT_ONE } from "../../utils/messages";
+import notify from "../../utils/notify";
 
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
@@ -117,7 +119,7 @@ export default function LocationsPage() {
 
     const handleClone = () => {
         if (selected.size !== 1) {
-            window.alert("Vui lòng chọn 1 dòng để tạo bản sao.");
+            notify(COPY_SELECT_ONE, { type: 'warning' });
             return;
         }
         const id = Array.from(selected)[0];

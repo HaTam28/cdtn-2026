@@ -10,6 +10,7 @@ import { getAllEmployees } from "../../api/employeeApi";
 import { getAllLocations } from "../../api/locationApi";
 import { getAvailableLocations } from "../../api/issueApi";
 import TopbarRight from "../../components/TopbarRight";
+import notify from "../../utils/notify";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 let _rowKey = 0;
@@ -72,7 +73,7 @@ export default function AuditCreatePage() {
     const [locationsByRow, setLocationsByRow] = useState({});
     const [loadingData, setLoadingData] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [toast, setToast] = useState(null);
+
     const selectedAssignee = useMemo(
         () => employees.find((e) => String(e.id) === String(form.assigneeId)),
         [employees, form.assigneeId]
@@ -117,7 +118,7 @@ export default function AuditCreatePage() {
         if (isStaff) navigate("/audits/requests");
     }, [isStaff, navigate]);
 
-    const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3500); };
+    const showToast = (type, msg) => { notify(msg, { type: type === 'error' ? 'error' : type === 'success' ? 'success' : 'info' }); };
 
     const handleFormChange = (field, value) => {
         setForm((prev) => ({ ...prev, [field]: value }));
@@ -218,9 +219,7 @@ export default function AuditCreatePage() {
 
     return (
         <>
-            {toast && (
-                <div className={`sp-toast ${toast.type === "success" ? "sp-toast-success" : "sp-toast-error"}`}>{toast.msg}</div>
-            )}
+
             <div className="sp-main">
                 <div className="sp-topbar">
                     <div>

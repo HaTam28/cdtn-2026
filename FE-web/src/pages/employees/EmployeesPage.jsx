@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import "../../styles/shared.css";
 import { getAllEmployees } from "../../api/employeeApi";
 import TopbarRight from "../../components/TopbarRight";
+import { COPY_SELECT_ONE } from "../../utils/messages";
 
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
@@ -88,7 +89,7 @@ export default function EmployeesPage() {
 
     const handleClone = () => {
         if (selected.size !== 1) {
-            window.alert("Vui lòng chọn 1 dòng để tạo bản sao.");
+            notify(COPY_SELECT_ONE, { type: 'warning' });
             return;
         }
         const id = Array.from(selected)[0];

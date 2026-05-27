@@ -1,4 +1,220 @@
 ﻿# API FE DOC CHUẨN
+**Import danh mục vật tư hàng hóa (CSV / XLSX) — Hợp đồng API cho FE**
+
+- Mục đích: FE gửi file CSV hoặc XLSX để BE parse (preview) và/hoặc persist (upsert) danh sách vật tư.
+
+- Endpoints
+  - `POST /api/import/items/csv`
+    - Content-Type: `multipart/form-data`
+    - Form field: `file` — file CSV (UTF-8 encoded), header ở dòng đầu
+    - Query param: `preview` (optional, boolean, default `true`)
+    - Query param: `sampleSize` (optional, integer) — số lượng sample trả về cho FE. Default `50`. Max `1000`.
+  - `POST /api/import/items/xlsx`
+    - Content-Type: `multipart/form-data`
+    - Form field: `file` — file XLSX (first sheet will be read)
+    - Query param: `preview` (optional, boolean, default `true`)
+    - Query param: `sampleSize` (optional, integer) — số lượng sample trả về cho FE. Default `50`. Max `1000`.
+
+- Authentication: mọi request đều cần header `Authorization: Bearer <token>` (trừ endpoint auth).
+
+- Preview vs Persist
+  - `preview=true` (mặc định): BE chỉ parse file, validate, và trả về kết quả mẫu (không ghi DB).
+  - `preview=false`: BE sẽ upsert vào DB (tạo mới nếu không tồn tại, cập nhật nếu đã có `Mã vật tư`).
+
+- Yêu cầu file
+  - CSV: UTF-8 encoding bắt buộc.
+  - XLSX: đọc sheet đầu tiên; header phải nằm ở dòng đầu của sheet (hoặc dòng đầu không rỗng).
+
+- Danh sách header phải có (CHÍNH XÁC, có dấu):
+  1. `Mã vật tư`
+  2. `Tên vật tư hàng hóa`
+  3. `Loại vật tư`
+  4. `Mô tả/ Thông số kỹ thuật`
+  5. `Tên trên hóa đơn`
+  6. `Đơn vị tính`
+  7. `Tồn tối thiểu`
+  8. `Tồn tối đa`
+
+  - Chỉ những cột khớp đúng (sau normalize nội bộ) với danh sách trên mới được parse; các cột khác sẽ bị bỏ qua và không trả về cho FE.
+  - Hệ thống thực hiện một bước normalize nội bộ (bỏ ký tự đặc biệt, chuẩn hoá khoảng trắng và chữ thường) nhưng FE vẫn phải đảm bảo dùng đúng cụm từ có dấu giống danh sách trên để tránh nhầm lẫn.
+
+- Validation chính
+  - Bắt buộc: `Mã vật tư` (nếu thiếu -> row error).
+  - `Tồn tối thiểu` / `Tồn tối đa` nếu có phải là số (integer).
+  - Các dòng rỗng sẽ bị bỏ qua.
+
+- Lưu ý về persist fields
+  - Trường `Tồn tối thiểu` được map vào `minStockLevel` và sẽ được lưu vào DB.
+  - `Tồn tối đa` hiện đang được parse nhưng **chưa được lưu lên DB** (chỉ hiển thị trong preview). Nếu FE cần lưu `Tồn tối đa`, báo cho BE để tôi mở mapping và schema.
+
+- Mappings (keys trả về trong `sample` và DTO):
+  - `Mã vật tư` -> `itemCode`
+  - `Tên vật tư hàng hóa` -> `itemName`
+  - `Loại vật tư` -> `itemType`
+  - `Mô tả/ Thông số kỹ thuật` -> `description`
+  - `Tên trên hóa đơn` -> `invoiceName`
+  - `Đơn vị tính` -> `unitOf`
+  - `Tồn tối thiểu` -> `minStockLevel`
+  - `Tồn tối đa` -> `maxStockLevel` (parse only)
+
+- Response (200) — shape
+
+```json
+{
+  "total": 12,
+  "created": 8,
+  "updated": 4,
+  "errors": [ { "rowIndex": 3, "messages": ["Missing required field: Mã vật tư"] } ],
+  "sample": [
+    { "itemCode": "A001", "itemName": "Bút bi" , "unitOf": "Cái" },
+    { "itemCode": "A002", "itemName": "Tập vở", "minStockLevel": 10 }
+  ]
+}
+```
+
+ - `sample` là `List<Map<String,Object>>` và mỗi object chỉ chứa các key tương ứng những header thực sự xuất hiện trong file (`presentFields`). Không có các key có giá trị null.
+
+- HTTP error codes
+  - `400 Bad Request` — file thiếu, sai format, hoặc validation lỗi (ví dụ: header không đúng hoặc thiếu `Mã vật tư`).
+  - `401 Unauthorized` — thiếu/không hợp lệ JWT.
+  - `403 Forbidden` — user không có quyền import.
+  - `500 Internal Server Error` — lỗi server (IO, DB...)
+
+- Ví dụ curl
+
+Preview CSV:
+```bash
+curl -X POST "http://localhost:8080/api/import/items/csv?preview=true&sampleSize=50" \
+  -H "Authorization: Bearer <token>" \
+  -F "file=@/path/to/items.csv;type=text/csv"
+```
+
+Persist CSV (upsert):
+```bash
+curl -X POST "http://localhost:8080/api/import/items/csv?preview=false&sampleSize=50" \
+  -H "Authorization: Bearer <token>" \
+  -F "file=@/path/to/items.csv;type=text/csv"
+```
+
+Preview XLSX:
+```bash
+curl -X POST "http://localhost:8080/api/import/items/xlsx?preview=true" \
+  -H "Authorization: Bearer <token>" \
+  -F "file=@/path/to/items.xlsx;type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+```
+
+Persist XLSX:
+```bash
+curl -X POST "http://localhost:8080/api/import/items/xlsx?preview=false" \
+  -H "Authorization: Bearer <token>" \
+  -F "file=@/path/to/items.xlsx;type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+```
+
+---
+
+
+**LƯU Ý VỀ DỮ LIỆU TIẾNG VIỆT (BẮT BUỘC CÓ DẤU)**
+- Vì dữ liệu là tiếng Việt, các *header* và các giá trị quan trọng (như `Mã vật tư`) phải giữ dấu (ví dụ: **"Mã vật tư"**, **"Tên hàng"**) — không dùng phiên bản không dấu (ví dụ **"Ma vat tu"**).
+- FE phải gửi file ở encoding **UTF-8** để đảm bảo dấu được truyền đúng.
+- Ví dụ: đúng = `Mã vật tư`; sai = `Ma vat tu` — nếu header không có dấu, hệ thống có thể không map được vào trường `itemCode` và sẽ báo lỗi dòng thiếu `itemCode`.
+
+**Validation rules (recommended)**
+- Bắt buộc: `itemcode` (không rỗng). Nếu thiếu -> row error.
+- `minstocklevel` phải là integer nếu có giá trị.
+- `itemcode` phải là duy nhất: kiểm tra tồn tại trong DB trước khi insert. Quy tắc: nếu `itemcode` tồn tại => cập nhật record (upsert) hoặc báo lỗi tuỳ cấu hình.
+- Loại/ĐVT/Danh mục: hiện hệ thống lưu free-text (`unitof`, `itemcatg` là chuỗi). Nếu muốn mapping sang reference table, cần bổ sung kiểm tra tồn tại.
+- Bỏ qua dòng rỗng.
+
+**Behavior & Responses**
+- Preview mode (khuyến nghị): endpoint hỗ trợ `?preview=true` để chỉ parse và trả về danh sách rows + lỗi, không lưu.
+- Kết quả trả về nên bao gồm: tổng dòng, số dòng ghi thành công, số dòng cập nhật, danh sách lỗi theo row (index + message), sample of parsed DTOs.
+
+**Readiness check (hiện trạng code)**
+- Parser:
+  - `CsvImportService` implemented: [src/main/java/hoshimoto/cdtn/service/CsvImportService.java](src/main/java/hoshimoto/cdtn/service/CsvImportService.java) — parses CSV to `ImportItemDto`.
+  - `XlsxImportService` implemented: [src/main/java/hoshimoto/cdtn/service/XlsxImportService.java](src/main/java/hoshimoto/cdtn/service/XlsxImportService.java) — streaming XLSX read.
+- DTOs: `ImportItemDto`, `ImportResult`, `RowError` exist: [src/main/java/hoshimoto/cdtn/dto/](src/main/java/hoshimoto/cdtn/dto/).
+- Controller: `ImportController` implemented with endpoints `/api/import/items/csv` and `/api/import/items/xlsx` (supports `preview` param). See [src/main/java/hoshimoto/cdtn/controller/ImportController.java](src/main/java/hoshimoto/cdtn/controller/ImportController.java).
+- Import pipeline: `ImportService` implemented — validates required `itemCode`, supports `preview=true`, performs upsert (create/update) within a transaction. See [src/main/java/hoshimoto/cdtn/service/ImportService.java](src/main/java/hoshimoto/cdtn/service/ImportService.java).
+- Repository: `ItemRepository` now exposes `Optional<Item> findByItemcode(String)` for upsert lookups.
+
+Status: basic import flow (parse -> validate minimal -> upsert) is implemented and the application builds and runs locally. The endpoint is usable for manual imports. See "How to use" below.
+
+**Gaps / next hardening steps**
+1. Improve validation: currently only `itemCode` required and `minStockLevel` numeric checked — add stricter header validation, length checks, allowed values for `itemtype` if any.
+2. Integration tests: add MockMvc/embedded DB tests that upload sample CSV/XLSX and assert DB changes.
+3. Large-file handling: configure max file size, chunking or background job for very large imports.
+4. Error reporting UX: include CSV/XLSX cell coordinate in errors, and provide downloadable error report.
+5. Security & auditing: record operator user who performed import, and restrict endpoint to users with import permission.
+
+Completed: controller and import service are implemented in the codebase.
+
+Recommended next steps to harden for production:
+- Add integration tests (MockMvc + H2) to verify end-to-end import, preview, and upsert behavior.
+- Add OpenAPI/Swagger annotations on `ImportController` for FE documentation.
+- Add file size limits in `application.properties` (`spring.servlet.multipart.max-file-size`, `max-request-size`) and reject too-large files.
+- Implement background job/queue for heavy imports (e.g., >50k rows), expose import-job status endpoints.
+- Add audit log: who imported, when, filename, and error report storage.
+
+If you want, I can implement OpenAPI annotations and an example integration test next.
+
+---
+
+## How to use (examples)
+
+1) Preview CSV without saving:
+
+```bash
+curl -v -F "file=@items.csv" "http://localhost:8080/api/import/items/csv?preview=true" \
+  -H "Authorization: Bearer <token>"
+```
+
+2) Import CSV and persist:
+
+```bash
+curl -v -F "file=@items.csv" "http://localhost:8080/api/import/items/csv" \
+  -H "Authorization: Bearer <token>"
+```
+
+3) Preview XLSX:
+
+```bash
+curl -v -F "file=@items.xlsx" "http://localhost:8080/api/import/items/xlsx?preview=true" \
+  -H "Authorization: Bearer <token>"
+```
+
+Response (200) example:
+
+```json
+{
+  "total": 12,
+  "created": 8,
+  "updated": 4,
+  "errors": [ { "rowIndex": 3, "message": "Missing required itemCode" } ],
+  "sample": [ { "itemCode":"A001","itemName":"Item A","barcode":"123" } ]
+}
+```
+
+Error codes:
+- `400 Bad Request` — invalid file / missing multipart field / preview parse errors.
+- `401 Unauthorized` — missing/invalid JWT.
+- `403 Forbidden` — user lacks import permission.
+- `500 Internal Server Error` — unexpected server error (DB, IO, or constraint violation).
+
+## Prerequisites & quick checks before running import
+- Ensure DB is reachable and migrations applied (table `item` exists). `itemcode` has unique constraint.
+- Ensure `application.properties` contains DB connection and `spring.servlet.multipart.max-file-size` configured.
+- Ensure the user calling the endpoint has appropriate role (token present). For local testing you can disable security or use generated dev password.
+- Run `mvn -DskipTests package` then `mvn spring-boot:run` to start the app.
+
+## Quick verification steps
+1. Start app locally.
+2. Call `/api/import/items/csv?preview=true` with a small sample CSV — expect parsed rows and no DB changes.
+3. Call `/api/import/items/csv` to persist — check DB table `item` for created/updated rows.
+
+---
+
+If you want, I can implement the controller + import pipeline and tests next. Reply "Tiếp tục implement" (or choose specific steps).
 
 > URL cơ sở: `http://localhost:8080`
 

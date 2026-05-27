@@ -6,6 +6,7 @@ import "./audits.css";
 import { getAssignedAudits, getAuditById, updateAssignedAudit, submitAudit } from "../../api/auditApi";
 import { getAllLocations, getItemsAtLocation } from "../../api/locationApi";
 import TopbarRight from "../../components/TopbarRight";
+import notify from "../../utils/notify";
 
 const STATUS_LABELS = {
     REQUESTED: "Chờ kiểm kê",
@@ -177,10 +178,10 @@ export default function AuditTasksPage() {
     const [activeLoading, setActiveLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [submitting, setSubmitting] = useState(false);
-    const [toast, setToast] = useState(null);
+
     const [locModal, setLocModal] = useState({ open: false, rowIdx: null, locations: [], loading: false });
 
-    const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3500); };
+    const showToast = (type, msg) => { notify(msg, { type: type === 'error' ? 'error' : type === 'success' ? 'success' : 'info' }); };
 
     useEffect(() => {
         if (!isStaff) navigate("/audits");
@@ -388,9 +389,7 @@ export default function AuditTasksPage() {
 
     return (
         <>
-            {toast && (
-                <div className={`sp-toast ${toast.type === "success" ? "sp-toast-success" : "sp-toast-error"}`}>{toast.msg}</div>
-            )}
+
 
             <LocationModal
                 open={locModal.open}

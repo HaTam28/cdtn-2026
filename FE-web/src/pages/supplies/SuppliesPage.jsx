@@ -1,13 +1,16 @@
 
 
 
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../styles/shared.css";
 import "./supplies.css";
-import { getAllItems } from "../../api/itemApi";
+import { getAllItems, importItems } from "../../api/itemApi";
+import * as XLSX from 'xlsx';
 import { getAllBatches } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
+import { COPY_SELECT_ONE } from "../../utils/messages";
+import notify from "../../utils/notify";
 
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
@@ -38,6 +41,11 @@ export default function SuppliesPage() {
     const [rowsPerPage, setRowsPerPage] = useState(15);
     const [selected, setSelected] = useState(new Set());
     const [stockByItem, setStockByItem] = useState({});
+    const [importing, setImporting] = useState(false);
+    const fileInputRef = useRef(null);
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [previewResult, setPreviewResult] = useState(null);
+    const [confirming, setConfirming] = useState(false);
     const navigate = useNavigate();
 
     const fetchItems = useCallback(async () => {
@@ -60,6 +68,32 @@ export default function SuppliesPage() {
             setLoading(false);
         }
     }, []);
+
+    const downloadTemplate = () => {
+        const headers = [
+            'itemcode',
+            'barcode',
+            'itemname',
+            'invoicename',
+            'description',
+            'itemtype',
+            'unitof',
+            'itemcatg',
+            'minstocklevel'
+        ];
+        const example = ['10110300', '', 'Bàn lè 10110300', 'Bàn lè 10110300', 'Vật tư hàng hóa', 'Vật tư hàng hóa', 'Cái', '', '50'];
+        const rows = [headers, example];
+        const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'items-template.csv';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    };
 
     useEffect(() => { fetchItems(); }, [fetchItems]);
 
@@ -100,7 +134,7 @@ export default function SuppliesPage() {
 
     const handleClone = () => {
         if (selected.size !== 1) {
-            window.alert("Vui lòng chọn 1 dòng để tạo bản sao.");
+            notify(COPY_SELECT_ONE, { type: 'warning' });
             return;
         }
         const id = Array.from(selected)[0];
@@ -237,10 +271,125 @@ export default function SuppliesPage() {
                         title={selected.size === 0 ? "Chọn ít nhất 1 vật tư để export" : `Export ${selected.size} vật tư`}
                     >
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="17 8 12 3 7 8" />
+                            <line x1="12" y1="3" x2="12" y2="15" />
                         </svg>
                         Export {selected.size > 0 ? `(${selected.size})` : ""}
                     </button>
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".xlsx,.xls,.csv"
+                        style={{ display: 'none' }}
+                        onChange={async (e) => {
+                            const f = e.target.files && e.target.files[0];
+                            if (!f) return;
+                            setSelectedFile(f);
+                            setPreviewResult(null);
+                            setImporting(true);
+                            try {
+                                // read file client-side using xlsx
+                                const data = await f.arrayBuffer();
+                                const wb = XLSX.read(data, { type: 'array' });
+                                const sheet = wb.Sheets[wb.SheetNames[0]];
+                                // convert to array of arrays first row = headers
+                                const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+                                if (!rows || rows.length <= 1) {
+                                    notify('Không tìm thấy dữ liệu trong file', { type: 'error' });
+                                    setSelectedFile(null);
+                                    return;
+                                }
+                                const rawHeaders = rows[0].map(h => String(h || '').trim());
+                                const dataRows = rows.slice(1);
+
+                                const normalizeHeader = (s) => String(s || '')
+                                    .normalize('NFD')
+                                    .replace(/[\u0300-\u036f]/g, '')
+                                    .replace(/[^a-zA-Z0-9]/g, '')
+                                    .toLowerCase();
+
+                                // map headers to canonical keys
+                                const headerToKey = (h) => {
+                                    const nk = normalizeHeader(h);
+                                    if (nk.includes('itemcode') || nk === 'ma' || nk.includes('mavat') || nk.includes('mah')) return 'itemcode';
+                                    if (nk.includes('barcode') || nk.includes('mavach')) return 'barcode';
+                                    if (nk.includes('itemname') || nk.includes('ten') || nk.includes('tenvat') || nk.includes('tenvat')) return 'itemname';
+                                    if (nk.includes('invoicename') || nk.includes('tenhoa') || nk.includes('tentrenhoa')) return 'invoicename';
+                                    if (nk.includes('description') || nk.includes('mota') || nk.includes('thongs')) return 'description';
+                                    if (nk.includes('itemtype') || nk.includes('loai')) return 'itemtype';
+                                    if (nk.includes('unitof') || nk.includes('donvi') || nk.includes('dvt')) return 'unitof';
+                                    if (nk.includes('itemcatg') || nk.includes('danhmuc') || nk.includes('category')) return 'itemcatg';
+                                    if (nk.includes('minstock') || nk.includes('tontoithieu') || nk.includes('tontoi')) return 'minstocklevel';
+                                    return nk || h;
+                                };
+
+                                const parsed = dataRows.map((r) => {
+                                    const obj = {};
+                                    for (let i = 0; i < rawHeaders.length; i++) {
+                                        const raw = rawHeaders[i] || `col${i}`;
+                                        const key = headerToKey(raw);
+                                        obj[key] = r[i] ?? '';
+                                    }
+                                    return obj;
+                                });
+
+                                const errors = [];
+                                parsed.forEach((r, idx) => {
+                                    if (!String(r.itemcode || r.ma || r.code || '').trim()) errors.push({ rowIndex: idx + 1, message: 'Missing required itemCode' });
+                                });
+
+                                const preview = { total: parsed.length, parsed, errors };
+                                setPreviewResult(preview);
+                                // open preview page
+                                navigate('/supplies/import/preview', { state: { file: f, previewResult: preview } });
+
+                            } catch (err) {
+                                console.error('Client parse error', err);
+                                notify('Lỗi đọc file. Vui lòng kiểm tra định dạng (XLSX/CSV).', { type: 'error' });
+                                setSelectedFile(null);
+                            } finally {
+                                setImporting(false);
+                            }
+                        }}
+                    />
+                    <button
+                        className="sp-btn-outline"
+                        onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                        disabled={importing}
+                        title="Import danh mục từ file"
+                    >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7 10 12 15 17 10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                        Import
+                    </button>
+                    {/* Download template button hidden per request */}
+                    {previewResult && (
+                        <div style={{ marginLeft: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <div style={{ color: '#444' }}>
+                                Preview: {previewResult.total ?? previewResult.totalRows ?? ''} rows — Imported: {previewResult.imported ?? previewResult.importedCount ?? 0}, Updated: {previewResult.updated ?? 0}, Errors: {(previewResult.errors || []).length}
+                            </div>
+                            <button
+                                className="sp-btn-primary"
+                                onClick={() => navigate('/supplies/import/preview', { state: { file: selectedFile, previewResult } })}
+                            >
+                                Open Preview Page
+                            </button>
+                            <button
+                                className="sp-btn-outline"
+                                onClick={() => {
+                                    setPreviewResult(null);
+                                    setSelectedFile(null);
+                                    if (fileInputRef.current) fileInputRef.current.value = '';
+                                }}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Table */}
