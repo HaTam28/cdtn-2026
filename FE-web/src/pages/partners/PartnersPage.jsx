@@ -4,6 +4,8 @@ import "../../styles/shared.css";
 import "./partners.css";
 import { getAllCustomers } from "../../api/customerApi";
 import TopbarRight from "../../components/TopbarRight";
+import { COPY_SELECT_ONE } from "../../utils/messages";
+import notify from "../../utils/notify";
 
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
@@ -87,7 +89,7 @@ export default function PartnersPage() {
 
     const handleClone = () => {
         if (selected.size !== 1) {
-            window.alert("Vui lòng chọn 1 dòng để tạo bản sao.");
+            notify(COPY_SELECT_ONE, { type: 'warning' });
             return;
         }
         const id = Array.from(selected)[0];
@@ -226,7 +228,7 @@ export default function PartnersPage() {
                         title={selected.size === 0 ? "Chọn ít nhất 1 đối tác để export" : `Export ${selected.size} đối tác`}
                     >
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
                         </svg>
                         Export {selected.size > 0 ? `(${selected.size})` : ""}
                     </button>

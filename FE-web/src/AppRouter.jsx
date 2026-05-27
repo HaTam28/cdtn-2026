@@ -5,6 +5,7 @@ import RegisterForm from "./components/RegisterForm";
 import ForgotPasswordForm from "./components/ForgotPasswordForm";
 import UpdatePasswordForm from "./components/UpdatePasswordForm";
 import SuppliesPage from "./pages/supplies/SuppliesPage";
+import ImportPreviewPage from "./pages/supplies/ImportPreviewPage";
 import SuppliesDetailPage from "./pages/supplies/SuppliesDetailPage";
 import SuppliesCreatePage from "./pages/supplies/SuppliesCreatePage";
 import PartnersPage from "./pages/partners/PartnersPage";
@@ -50,6 +51,7 @@ export default function AppRouter() {
                 <Route element={<SidebarLayout />}>
                     <Route path="/overview" element={<OverviewPage />} />
                     <Route path="/supplies" element={<SuppliesPage />} />
+                    <Route path="/supplies/import/preview" element={<ImportPreviewPage />} />
                     <Route path="/supplies/create" element={<SuppliesCreatePage />} />
                     <Route path="/supplies/:id" element={<SuppliesDetailPage />} />
                     <Route path="/partners" element={<PartnersPage />} />

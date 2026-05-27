@@ -4,6 +4,8 @@ import "../../styles/shared.css";
 import "./receipts.css";
 import { getAllReceipts } from "../../api/receiptApi";
 import TopbarRight from "../../components/TopbarRight";
+import { COPY_SELECT_ONE } from "../../utils/messages";
+import notify from "../../utils/notify";
 
 const STATUS_LABELS = {
     DRAFT: "Chờ duyệt",
@@ -169,7 +171,7 @@ export default function ReceiptsPage() {
 
     const handleClone = () => {
         if (selected.size !== 1) {
-            window.alert("Vui lòng chọn 1 dòng để tạo bản sao.");
+            notify(COPY_SELECT_ONE, { type: 'warning' });
             return;
         }
         const id = Array.from(selected)[0];
