@@ -88,8 +88,62 @@ export default function EmployeesCreatePage() {
     }, [location.state, prefilledFromClone]);
 
     const set = (field, value) => {
+        // update form value
         setForm((prev) => ({ ...prev, [field]: value }));
-        if (fieldErrors[field]) setFieldErrors((prev) => { const n = { ...prev }; delete n[field]; return n; });
+
+        // validate this single field immediately
+        const validateField = (name, val) => {
+            if (name === "fullname") {
+                if (!val?.trim()) return "Bắt buộc nhập";
+                return "";
+            }
+            if (name === "email") {
+                if (!val?.trim()) return "Bắt buộc nhập";
+                const emailRe = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+                if (!emailRe.test(val.trim())) return "Email không đúng định dạng";
+                return "";
+            }
+            if (name === "department") {
+                if (!val?.trim()) return "Bắt buộc nhập";
+                return "";
+            }
+            if (name === "gender") {
+                if (!val?.trim()) return "Bắt buộc nhập";
+                return "";
+            }
+            if (name === "firstworkingdate") {
+                if (!val) return "Bắt buộc nhập";
+                return "";
+            }
+            if (name === "username") {
+                if (!val?.trim()) return "Bắt buộc";
+                return "";
+            }
+            if (name === "birthdate") {
+                if (val && !isBirthdateValid(val)) return "Nhân viên phải đủ 18 tuổi.";
+                return "";
+            }
+            if (name === "password") {
+                return validatePassword(val) || "";
+            }
+            if (name === "confirmPassword") {
+                if (val !== (form.password || "")) return "Mật khẩu không khớp";
+                return "";
+            }
+            return "";
+        };
+
+        const err = validateField(field, value);
+        setFieldErrors((prev) => {
+            const n = { ...prev };
+            if (err) n[field] = err; else delete n[field];
+            // special: if password changed, revalidate confirmPassword
+            if (field === "password") {
+                const confErr = validateField("confirmPassword", form.confirmPassword);
+                if (confErr) n.confirmPassword = confErr; else delete n.confirmPassword;
+            }
+            return n;
+        });
     };
 
     const isBirthdateValid = (dateStr) => {
@@ -112,8 +166,20 @@ export default function EmployeesCreatePage() {
 
     const validate = () => {
         const errs = {};
-        if (!form.usercode?.trim()) errs.usercode = "Bắt buộc";
-        if (!form.fullname?.trim()) errs.fullname = "Bắt buộc";
+        // Required fields per product requirement
+        if (!form.fullname?.trim()) errs.fullname = "Bắt buộc nhập";
+        if (!form.email?.trim()) errs.email = "Bắt buộc nhập";
+        if (!form.department?.trim()) errs.department = "Bắt buộc nhập";
+        if (!form.gender?.trim()) errs.gender = "Bắt buộc nhập";
+        if (!form.firstworkingdate) errs.firstworkingdate = "Bắt buộc nhập";
+
+        // Email format check
+        if (form.email && form.email.trim()) {
+            const emailRe = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+            if (!emailRe.test(form.email.trim())) errs.email = "Email không đúng định dạng";
+        }
+
+        // Keep existing account-related validations (username/password) as before
         if (!form.username?.trim()) errs.username = "Bắt buộc";
         if (form.birthdate && !isBirthdateValid(form.birthdate)) errs.birthdate = "Nhân viên phải đủ 18 tuổi.";
         const pwdErr = validatePassword(form.password);
@@ -237,7 +303,7 @@ export default function EmployeesCreatePage() {
                                 {/* Row 2: Email | Số điện thoại */}
                                 <div className="sd-field sd-field-row">
                                     <div className="sd-field-half">
-                                        <label className="sd-label">Email</label>
+                                        <label className="sd-label">Email <span className="sd-required">*</span></label>
                                         <div className="sd-input-wrap">
                                             <input
                                                 className={`sd-input${fieldErrors.email ? " sd-input-error" : ""}`}
@@ -262,7 +328,7 @@ export default function EmployeesCreatePage() {
                                 {/* Row 3: Bộ phận | Địa chỉ */}
                                 <div className="sd-field sd-field-row">
                                     <div className="sd-field-half">
-                                        <label className="sd-label">Bộ phận</label>
+                                        <label className="sd-label">Bộ phận <span className="sd-required">*</span></label>
                                         <select
                                             className="sd-input"
                                             value={form.department}
@@ -272,6 +338,7 @@ export default function EmployeesCreatePage() {
                                             <option value="Kho">Kho</option>
                                             <option value="Kế Toán">Kế Toán</option>
                                         </select>
+                                        {fieldErrors.department && <span className="sd-error-msg">{fieldErrors.department}</span>}
                                     </div>
                                     <div className="sd-field-half">
                                         <label className="sd-label">Địa chỉ</label>
@@ -295,7 +362,7 @@ export default function EmployeesCreatePage() {
                                         {fieldErrors.birthdate && <span className="sd-error-msg">{fieldErrors.birthdate}</span>}
                                     </div>
                                     <div className="sd-field-half">
-                                        <label className="sd-label">Giới tính</label>
+                                        <label className="sd-label">Giới tính <span className="sd-required">*</span></label>
                                         <select
                                             className="sd-input sd-select"
                                             value={form.gender}
@@ -306,17 +373,19 @@ export default function EmployeesCreatePage() {
                                             <option value="Nữ">Nữ</option>
                                             <option value="Khác">Khác</option>
                                         </select>
+                                        {fieldErrors.gender && <span className="sd-error-msg">{fieldErrors.gender}</span>}
                                     </div>
                                 </div>
 
                                 {/* Row 6: Ngày vào làm | Tài khoản NH */}
                                 <div className="sd-field sd-field-row">
                                     <div className="sd-field-half">
-                                        <label className="sd-label">Ngày vào làm</label>
+                                        <label className="sd-label">Ngày vào làm <span className="sd-required">*</span></label>
                                         <DatePicker
                                             value={form.firstworkingdate}
                                             onChange={(v) => set("firstworkingdate", v)}
                                         />
+                                        {fieldErrors.firstworkingdate && <span className="sd-error-msg">{fieldErrors.firstworkingdate}</span>}
                                     </div>
                                     <div className="sd-field-half">
                                         <label className="sd-label">Tài khoản NH</label>
