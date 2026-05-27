@@ -66,6 +66,14 @@ public class CsvImportService {
         ALLOWED_NORMALIZED_HEADERS.add(normalize("đơn vị tính"));
         ALLOWED_NORMALIZED_HEADERS.add(normalize("tồn tối thiểu"));
         ALLOWED_NORMALIZED_HEADERS.add(normalize("tồn tối đa"));
+        // also accept common variants
+        ALLOWED_NORMALIZED_HEADERS.add(normalize("mức tồn tối thiểu"));
+        ALLOWED_NORMALIZED_HEADERS.add(normalize("mức tồn tối đa"));
+        // industry / ngành hàng variants
+        ALLOWED_NORMALIZED_HEADERS.add(normalize("ngành hàng"));
+        ALLOWED_NORMALIZED_HEADERS.add(normalize("ngành"));
+        ALLOWED_NORMALIZED_HEADERS.add(normalize("nganh hang"));
+        ALLOWED_NORMALIZED_HEADERS.add(normalize("ngành hàng (tên)"));
     }
 
     public List<ImportItemDto> importFromMultipartFile(MultipartFile file) throws IOException {
@@ -109,11 +117,14 @@ public class CsvImportService {
                         case "itemType": dto.setItemType(value); break;
                         case "unitOf": dto.setUnitOf(value); break;
                         case "itemCategory": dto.setItemCategory(value); break;
+                        // handled by itemCategory case
                         case "minStockLevel":
-                            try {
-                                if (!value.isBlank()) dto.setMinStockLevel(Integer.parseInt(value.trim()));
-                            } catch (NumberFormatException ignored) {
-                            }
+                            Integer minVal = parseIntegerRobust(value);
+                            if (minVal != null) dto.setMinStockLevel(minVal);
+                            break;
+                        case "maxStockLevel":
+                            Integer maxVal = parseIntegerRobust(value);
+                            if (maxVal != null) dto.setMaxStockLevel(maxVal);
                             break;
                         default:
                             break;
@@ -124,6 +135,22 @@ public class CsvImportService {
             }
 
             return result;
+        }
+    }
+
+    private static Integer parseIntegerRobust(String value) {
+        if (value == null) return null;
+        String v = value.trim().replaceAll(",", "");
+        if (v.isBlank()) return null;
+        try {
+            return Integer.parseInt(v);
+        } catch (NumberFormatException e) {
+            try {
+                double d = Double.parseDouble(v);
+                return (int) d;
+            } catch (NumberFormatException ex) {
+                return null;
+            }
         }
     }
 

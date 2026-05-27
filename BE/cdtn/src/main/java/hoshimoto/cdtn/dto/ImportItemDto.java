@@ -16,5 +16,6 @@ public class ImportItemDto {
     private String unitOf;
     private String itemCategory;
     private Integer minStockLevel;
+    private Integer maxStockLevel;
     private Set<String> presentFields = new HashSet<>();
 }

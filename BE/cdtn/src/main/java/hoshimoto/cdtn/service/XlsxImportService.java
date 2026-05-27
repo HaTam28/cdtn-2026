@@ -57,6 +57,14 @@ public class XlsxImportService {
         ALLOWED_NORMALIZED_HEADERS.add(normalize("đơn vị tính"));
         ALLOWED_NORMALIZED_HEADERS.add(normalize("tồn tối thiểu"));
         ALLOWED_NORMALIZED_HEADERS.add(normalize("tồn tối đa"));
+        // accept additional common variants for min/max stock
+        ALLOWED_NORMALIZED_HEADERS.add(normalize("mức tồn tối thiểu"));
+        ALLOWED_NORMALIZED_HEADERS.add(normalize("mức tồn tối đa"));
+        // industry / ngành hàng variants
+        ALLOWED_NORMALIZED_HEADERS.add(normalize("ngành hàng"));
+        ALLOWED_NORMALIZED_HEADERS.add(normalize("ngành"));
+        ALLOWED_NORMALIZED_HEADERS.add(normalize("nganh hang"));
+        ALLOWED_NORMALIZED_HEADERS.add(normalize("ngành hàng (tên)"));
     }
 
     public List<ImportItemDto> importFromXlsx(MultipartFile file) throws IOException {
@@ -101,9 +109,16 @@ public class XlsxImportService {
                         case "itemType": dto.setItemType(value); break;
                         case "unitOf": dto.setUnitOf(value); break;
                         case "itemCategory": dto.setItemCategory(value); break;
+                        // handled by itemCategory case
                         case "minStockLevel":
-                            try { dto.setMinStockLevel(Integer.parseInt(value.trim())); } catch (Exception ignored) {}
+                            Integer minVal = parseIntegerRobust(value);
+                            if (minVal != null) dto.setMinStockLevel(minVal);
                             break;
+                        case "maxStockLevel":
+                            Integer maxVal = parseIntegerRobust(value);
+                            if (maxVal != null) dto.setMaxStockLevel(maxVal);
+                            break;
+                        
                     }
                     // mark present field
                     dto.getPresentFields().add(e.getValue());
@@ -145,5 +160,21 @@ public class XlsxImportService {
                 .replaceAll("[^\\p{L}\\p{Nd}]+", " ")
                 .replaceAll("[\\s()\\-]+", " ")
                 .strip();
+    }
+
+    private static Integer parseIntegerRobust(String value) {
+        if (value == null) return null;
+        String v = value.trim().replaceAll(",", "");
+        if (v.isBlank()) return null;
+        try {
+            return Integer.parseInt(v);
+        } catch (NumberFormatException e) {
+            try {
+                double d = Double.parseDouble(v);
+                return (int) d;
+            } catch (NumberFormatException ex) {
+                return null;
+            }
+        }
     }
 }
