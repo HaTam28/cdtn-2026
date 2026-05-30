@@ -887,6 +887,8 @@ Response: `GET /api/items` and `GET /api/items/{id}` will include `currentStock`
 
 **Base path:** `/api/goods-receipts`
 
+**Note:** Responses for goods receipts include the `doctype` field (e.g. `NORMAL` or `ADJUSTMENT`).
+
 **Luồng:** `DRAFT` → *(chỉnh sửa tùy ý)* → `confirm` → tồn kho được cộng  
 *(hoặc)* → `cancel` → phiếu bị hủy (tồn kho không đổi)
 
@@ -955,9 +957,11 @@ Response: `GET /api/items` and `GET /api/items/{id}` will include `currentStock`
     "id": 1,
     "docno": "PN-2026-001",
     "invoiceNumber": "INV-20260505-01",
+    "doctype": "NORMAL",
     "docDate": "2026-05-05",
     "description": "Nhập hàng tháng 5",
     "docstatus": "DRAFT",
+    "doctype": "NORMAL",
     "customerId": 2,
     "customerName": "Công ty ABC",
     "customerTaxcode": "123456789",
@@ -1001,6 +1005,8 @@ BE thực hiện:
   - Nếu batch cho dòng đó **chưa tồn tại**: tạo mới với `batchCode = ITEMCODE-YYYYMMDD` (ngày = `docDate`), thêm hậu tố `-01`, `-02`, ... khi cần; `quantity = số lượng của dòng`, `quantityRemaining = số lượng của dòng`.
   - Nếu batch đã tồn tại (tạo thủ công trước đó): ghi đè `quantity` và `quantityRemaining` bằng số lượng của dòng chi tiết tương ứng.
 6. Set `docstatus = CONFIRMED`, lưu `actionByUsername`.
+
+**Note on `doctype`:** If a `GoodsReceipt` is created/linked from an `InventoryAudit` (the request contains `inventoryAuditId`), the backend will automatically set `doctype = "ADJUSTMENT"` to indicate this is an adjustment receipt. FE **does not** need to set `doctype` when creating adjustment receipts via the audit flow; BE will enforce the correct type.
 
 **Lỗi có thể trả về:**
 - `"Phiếu nhập không có dòng chi tiết nào"`
@@ -1067,6 +1073,8 @@ Trả về danh sách sắp xếp: `EXISTING` → `EMPTY` → `PARTIAL`.
 
 **Base path:** `/api/goods-issues`
 
+**Note:** Responses for goods issues include the `doctype` field (e.g. `NORMAL` or `ADJUSTMENT`).
+
 **Luồng:** `DRAFT` → *(chỉnh sửa tùy ý)* → `confirm` → tồn kho được trừ  
 *(hoặc)* → `cancel` → phiếu bị hủy (tồn kho không đổi)
 
@@ -1087,6 +1095,7 @@ Trả về danh sách sắp xếp: `EXISTING` → `EMPTY` → `PARTIAL`.
 ```json
 {
   "docno": "PX-2026-001",
+  "doctype": "NORMAL",
   "docDate": "2026-05-05",
   "description": "Xuất hàng đơn đặt hàng #123",
   "customerId": 3,
@@ -1108,6 +1117,8 @@ Trả về danh sách sắp xếp: `EXISTING` → `EMPTY` → `PARTIAL`.
 > `batchId` tùy chọn; nếu FE gửi, BE sẽ tự động trừ `quantityRemaining` của lô khi xác nhận.
 
 **Response:** cấu trúc tương tự GoodsReceipt, với `docstatus: "DRAFT"`.
+
+**Note on `doctype`:** When an export is generated automatically from an `InventoryAudit` (adjustment flow), the backend will set `doctype = "ADJUSTMENT"`. FE creating manual drafts can optionally set `doctype`, but when the export is produced by the audit workflow, BE enforces `ADJUSTMENT`.
 
 ### 8.2 Xác nhận phiếu xuất
 

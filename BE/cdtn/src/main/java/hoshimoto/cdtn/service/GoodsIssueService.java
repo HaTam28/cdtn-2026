@@ -253,10 +253,15 @@ public class GoodsIssueService {
                             .map(Batch::getBatchCode).collect(Collectors.toList())))
                     .collect(Collectors.toList());
 
-            result.add(new LocationDetailResponse(
+                List<String> itemCodes = itemsAtLoc.stream()
+                    .map(sil -> sil.getItem().getItemcode())
+                    .distinct()
+                    .collect(Collectors.toList());
+
+                result.add(new LocationDetailResponse(
                     loc.getId(), loc.getLocationcode(), loc.getLocationname(),
                     loc.getRackno(), loc.getFloorno(), loc.getColumnno(),
-                    loc.getCapacity(), used, remaining, "HAS_STOCK", stockList));
+                    loc.getCapacity(), used, remaining, "HAS_STOCK", stockList, itemCodes));
         }
 
         // Sắp xếp: tồn kho của item này tại vị trí giảm dần
@@ -510,6 +515,8 @@ public class GoodsIssueService {
             return dr;
         }).collect(Collectors.toList()));
         res.setInventoryAuditId(issue.getInventoryAuditId());
+        // Set document type: ADJUSTMENT when linked to inventory audit, otherwise NORMAL
+        res.setDoctype(issue.getInventoryAuditId() != null ? "ADJUSTMENT" : "NORMAL");
         return res;
     }
 }

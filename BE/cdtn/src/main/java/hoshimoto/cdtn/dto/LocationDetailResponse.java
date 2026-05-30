@@ -32,6 +32,8 @@ public class LocationDetailResponse {
 
     /** Danh sách hàng hóa đang chứa tại vị trí này */
     private List<LocationItemStock> items;
+    /** Danh sách mã vật tư (unique) có mặt tại vị trí — dùng cho UI nhanh */
+    private List<String> itemCodes;
 
     @Data
     @NoArgsConstructor

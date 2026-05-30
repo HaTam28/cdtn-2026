@@ -63,12 +63,18 @@ public class LocationService {
                     List.of(batch.getBatchCode()))))
             .collect(Collectors.toList());
 
+        // Danh sách mã vật tư (unique) có mặt tại vị trí để FE hiển thị nhanh bên ngoài
+        List<String> itemCodes = itemsAtLoc.stream()
+            .map(il -> il.getItem().getItemcode())
+            .distinct()
+            .collect(Collectors.toList());
+
         String type = itemsAtLoc.isEmpty() ? "EMPTY" : "HAS_STOCK";
 
         return new LocationDetailResponse(
-                loc.getId(), loc.getLocationcode(), loc.getLocationname(),
-                loc.getRackno(), loc.getFloorno(), loc.getColumnno(),
-                loc.getCapacity(), used, remaining, type, stockList);
+            loc.getId(), loc.getLocationcode(), loc.getLocationname(),
+            loc.getRackno(), loc.getFloorno(), loc.getColumnno(),
+            loc.getCapacity(), used, remaining, type, stockList, itemCodes);
     }
 
     public LocationResponse toResponse(Location l) {

@@ -280,15 +280,20 @@ public class GoodsReceiptService {
                             .map(Batch::getBatchCode).collect(Collectors.toList())))
                     .collect(Collectors.toList());
 
+                List<String> itemCodes = itemsAtLoc.stream()
+                    .map(il -> il.getItem().getItemcode())
+                    .distinct()
+                    .collect(Collectors.toList());
+
             // Phân loại vị trí
             boolean hasThisItem = itemsAtLoc.stream().anyMatch(il -> il.getItem().getId().equals(itemId));
             boolean isEmpty = itemsAtLoc.isEmpty();
             String type = hasThisItem ? "EXISTING" : (isEmpty ? "EMPTY" : "PARTIAL");
 
-            result.add(new LocationDetailResponse(
+                result.add(new LocationDetailResponse(
                     loc.getId(), loc.getLocationcode(), loc.getLocationname(),
                     loc.getRackno(), loc.getFloorno(), loc.getColumnno(),
-                    loc.getCapacity(), used, remaining, type, stockList));
+                    loc.getCapacity(), used, remaining, type, stockList, itemCodes));
         }
 
         // Sắp xếp: EXISTING trước → EMPTY → PARTIAL
@@ -557,6 +562,8 @@ public class GoodsReceiptService {
         List<GoodsReceiptDetail> details = detailRepository.findByGoodsReceiptId(receipt.getId());
         res.setInvoiceNumber(receipt.getInvoiceNumber());
         res.setInventoryAuditId(receipt.getInventoryAuditId());
+        // Set document type: ADJUSTMENT when linked to inventory audit, otherwise NORMAL
+        res.setDoctype(receipt.getInventoryAuditId() != null ? "ADJUSTMENT" : "NORMAL");
         res.setDetails(details.stream().map(d -> {
             GoodsReceiptDetailResponse dr = new GoodsReceiptDetailResponse();
             dr.setId(d.getId());

@@ -15,6 +15,7 @@ public class GoodsReceiptResponse {
     private LocalDate docDate;
     private String description;
     private DocStatus docstatus;
+    private String doctype;
     private Long inventoryAuditId;
     private Long customerId;
     private String customerName;
