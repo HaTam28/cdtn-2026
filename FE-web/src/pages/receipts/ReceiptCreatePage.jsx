@@ -541,7 +541,7 @@ export default function ReceiptCreatePage() {
             const r = rows[i];
             if (!r.itemId) { showToast("error", `Dòng ${i + 1}: Vui lòng chọn mặt hàng.`); return; }
             if (!r.quantity || Number(r.quantity) <= 0) { showToast("error", `Dòng ${i + 1}: Số lượng không hợp lệ.`); return; }
-            if (!r.price || Number(r.price) <= 0) { showToast("error", `Dòng ${i + 1}: Đơn giá phải lớn hơn 0.`); return; }
+            // if (!r.price || Number(r.price) <= 0) { showToast("error", `Dòng ${i + 1}: Đơn giá phải lớn hơn 0.`); return; }
             // Note: location may be assigned later (DRAFT allowed). Do not require selectedLocations for draft creation.
         }
         const details = rows.flatMap((r) => {
