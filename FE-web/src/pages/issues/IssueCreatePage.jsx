@@ -502,17 +502,26 @@ export default function IssueCreatePage() {
             const r = rows[i];
             if (!r.itemId) { showToast("error", `Dòng ${i + 1}: Vui lòng chọn mặt hàng.`); return; }
             if (!r.quantity || Number(r.quantity) <= 0) { showToast("error", `Dòng ${i + 1}: Số lượng không hợp lệ.`); return; }
-            if (r.selectedLocations.length === 0) { showToast("error", `Dòng ${i + 1}: Vui lòng chọn vị trí xuất hàng.`); return; }
+            // Note: location may be assigned later (DRAFT allowed). Do not require selectedLocations for draft creation.
         }
-        const details = rows.flatMap((r) =>
-            r.selectedLocations.map((loc) => ({
+        const details = rows.flatMap((r) => {
+            if (r.selectedLocations && r.selectedLocations.length > 0) {
+                return r.selectedLocations.map((loc) => ({
+                    itemId: Number(r.itemId),
+                    batchId: r.batchId ? Number(r.batchId) : undefined,
+                    locationId: Number(loc.locationId),
+                    quantity: Number(loc.allocQty),
+                    unitprice: Number(r.price) || 0,
+                }));
+            }
+            return [{
                 itemId: Number(r.itemId),
                 batchId: r.batchId ? Number(r.batchId) : undefined,
-                locationId: Number(loc.locationId),
-                quantity: Number(loc.allocQty),
+                locationId: null,
+                quantity: Number(r.quantity),
                 unitprice: Number(r.price) || 0,
-            }))
-        );
+            }];
+        });
         setSaving(true);
         const adjAuditId = searchParams.get("auditId");
         try {
@@ -521,7 +530,8 @@ export default function IssueCreatePage() {
                 docDate: form.date,
                 description: form.description.trim(),
                 customerId: Number(form.customerId),
-                docType: form.docType,
+                // backend expects `doctype` (lowercase). Create as DRAFT; use confirm endpoint to change status.
+                doctype: form.docType,
                 ...(adjAuditId ? { inventoryAuditId: Number(adjAuditId) } : {}),
                 details,
             });

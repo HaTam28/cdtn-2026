@@ -542,16 +542,24 @@ export default function ReceiptCreatePage() {
             if (!r.itemId) { showToast("error", `Dòng ${i + 1}: Vui lòng chọn mặt hàng.`); return; }
             if (!r.quantity || Number(r.quantity) <= 0) { showToast("error", `Dòng ${i + 1}: Số lượng không hợp lệ.`); return; }
             if (!r.price || Number(r.price) <= 0) { showToast("error", `Dòng ${i + 1}: Đơn giá phải lớn hơn 0.`); return; }
-            if (r.selectedLocations.length === 0) { showToast("error", `Dòng ${i + 1}: Vui lòng chọn vị trí lưu trữ.`); return; }
+            // Note: location may be assigned later (DRAFT allowed). Do not require selectedLocations for draft creation.
         }
-        const details = rows.flatMap((r) =>
-            r.selectedLocations.map((loc) => ({
+        const details = rows.flatMap((r) => {
+            if (r.selectedLocations && r.selectedLocations.length > 0) {
+                return r.selectedLocations.map((loc) => ({
+                    itemId: Number(r.itemId),
+                    locationId: Number(loc.locationId),
+                    quantity: Number(loc.allocQty),
+                    unitprice: Number(r.price),
+                }));
+            }
+            return [{
                 itemId: Number(r.itemId),
-                locationId: Number(loc.locationId),
-                quantity: Number(loc.allocQty),
+                locationId: null,
+                quantity: Number(r.quantity),
                 unitprice: Number(r.price),
-            }))
-        );
+            }];
+        });
         setSaving(true);
         const adjAuditId = searchParams.get("auditId");
         try {
@@ -560,8 +568,8 @@ export default function ReceiptCreatePage() {
                 docDate: form.date,
                 description: form.description.trim(),
                 customerId: Number(form.customerId),
-                docType: form.docType,
-                docstatus: isManager ? "CONFIRMED" : "DRAFT",
+                // Backend expects `doctype` (lowercase). Create always as DRAFT; use confirm endpoint to change status.
+                doctype: form.docType,
                 invoiceDate: invoice.date || undefined,
                 taxcode: invoice.taxcode || undefined,
                 invoiceNumber: invoice.number || undefined,
