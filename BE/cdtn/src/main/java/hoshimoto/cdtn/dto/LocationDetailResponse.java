@@ -3,6 +3,8 @@ package hoshimoto.cdtn.dto;
 import java.math.BigDecimal;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -41,5 +43,20 @@ public class LocationDetailResponse {
         private String unitof;
         private BigDecimal quantity;
         private List<String> batchCodes;
+
+        @JsonProperty("itemCode")
+        public String getItemCode() {
+            return this.itemcode;
+        }
+
+        @JsonProperty("unitOf")
+        public String getUnitOf() {
+            return this.unitof;
+        }
+
+        @JsonProperty("unit")
+        public String getUnit() {
+            return this.unitof;
+        }
     }
 }

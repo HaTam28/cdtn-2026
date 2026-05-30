@@ -15,6 +15,8 @@ public class BatchResponse {
     private String itemname;
     private String nameBatch;
     private Long receiptDetailId;
+    private Long locationId;
+    private String locationcode;
     private LocalDate manufactureDate;
     private LocalDate expiryDate;
     private BigDecimal unitCost;

@@ -15,6 +15,7 @@ public interface BatchRepository extends JpaRepository<Batch, Long> {
     List<Batch> findAllByBatchCodeStartingWithOrderByBatchCodeDesc(String prefix);
     Optional<Batch> findByReceiptDetailId(Long receiptDetailId);
     List<Batch> findAllByReceiptDetailLocationIdAndItemId(Long locationId, Long itemId);
+    List<Batch> findAllByReceiptDetailLocationId(Long locationId);
 
     @Query("SELECT b FROM Batch b WHERE b.item.id = :itemId AND b.receiptDetail.goodsReceipt.docstatus = hoshimoto.cdtn.entity.Enum.DocStatus.CONFIRMED")
     List<Batch> findConfirmedByItemId(@Param("itemId") Long itemId);

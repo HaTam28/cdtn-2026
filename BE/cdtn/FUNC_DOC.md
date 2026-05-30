@@ -63,7 +63,9 @@
 | itemtype | VARCHAR(50) | Lo?i h�ng |
 | unitof | VARCHAR(30) | �on v? t�nh |
 | itemcatg | VARCHAR(100) | Danh m?c |
+| currentStock | NUMERIC | T?n hi?n t?i (l?y t? InventoryBalance, kh�ng l�u tr?c ti?p trong Item) |
 | minstocklevel | INT | M?c t?n t?i thi?u |
+| maxstocklevel | INT | M?c t?n t?i da |
 | isActive | BOOLEAN | �ang ho?t d?ng |
 | createdAt | TIMESTAMP | Th?i di?m t?o |
 
@@ -208,8 +210,8 @@
 | manufactureDate | DATE | Ng�y s?n xu?t |
 | expiryDate | DATE | H?n s? d?ng |
 | unitCost | NUMERIC(18,5) | Gi� nh?p c?a l� |
-| quantity | NUMERIC(16,5) | S? lu?ng ban d?u |
-| quantityRemaining | NUMERIC(16,5) | S? lu?ng c�n l?i |
+| quantity | NUMERIC(16,5) | S? lu?ng ban d?u của batch |
+| quantityRemaining | NUMERIC(16,5) | S? lu?ng c�n l?i của batch |
 | createdAt | TIMESTAMP | Th?i di?m t?o l� |
 
 **API:**
@@ -234,9 +236,14 @@
 
 **Y�u c?u khi t?o l�:**
 - `itemId` t?n t?i.
-- `receiptDetailId` t?n t?i v� thu?c d�ng nh?p kho h?p l?.
+- `receiptDetailId` t?n t?i v� thu?c d�ng nh?p kho h?p l�.
 - `quantity` > 0.
 - `unitCost` > 0.
+
+**L?u � khi confirm phi?u nh?p:**
+- BE kh�ng g?p batch theo m� h�ng n?a.
+- M?i d�ng chi ti?t g?n v? tr� s? sinh / c?p nh?t 1 batch ri�ng.
+- M�n chi ti?t v? tr� t?ng `batchCode` theo t?ng l�, kh�ng c?ng d?n s? lu?ng gi?a c�c batch kh�c nhau c?a c�ng m?t m� h�ng.
 
 **M?u request t?o l�:**
 ```json

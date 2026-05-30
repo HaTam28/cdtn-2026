@@ -33,6 +33,8 @@ public class ItemRequest {
 
     private Integer minstocklevel;
 
+    private Integer maxstocklevel;
+
     private Boolean isActive;
 
     private String modifiedBy;

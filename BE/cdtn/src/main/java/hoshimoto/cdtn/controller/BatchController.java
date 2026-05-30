@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import hoshimoto.cdtn.dto.ApiResponse;
@@ -34,6 +35,15 @@ public class BatchController {
                 .map(this::toResponse)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(new ApiResponse<>(true, "Lấy danh sách lô hàng thành công", batches));
+    }
+
+    @GetMapping("/by-location")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'STAFF')")
+    public ResponseEntity<ApiResponse<List<BatchResponse>>> getByLocation(@RequestParam Long locationId) {
+        List<BatchResponse> batches = batchService.getByLocation(locationId).stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(new ApiResponse<>(true, "Lấy danh sách lô theo vị trí thành công", batches));
     }
 
     @GetMapping("/{id}")
@@ -62,6 +72,10 @@ public class BatchController {
         response.setNameBatch(batch.getNameBatch());
         if (batch.getReceiptDetail() != null) {
             response.setReceiptDetailId(batch.getReceiptDetail().getId());
+            if (batch.getReceiptDetail().getLocation() != null) {
+                response.setLocationId(batch.getReceiptDetail().getLocation().getId());
+                response.setLocationcode(batch.getReceiptDetail().getLocation().getLocationcode());
+            }
         }
         response.setManufactureDate(batch.getManufactureDate());
         response.setExpiryDate(batch.getExpiryDate());

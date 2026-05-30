@@ -45,17 +45,28 @@ import hoshimoto.cdtn.repository.UserRepository;
 @Service
 public class GoodsIssueService {
 
-    @Autowired private GoodsIssueRepository issueRepository;
-    @Autowired private GoodsIssueDetailRepository detailRepository;
-    @Autowired private ItemRepository itemRepository;
-    @Autowired private LocationRepository locationRepository;
-    @Autowired private ItemLocationRepository itemLocationRepository;
-    @Autowired private InventoryBalanceRepository inventoryBalanceRepository;
-    @Autowired private CustomerRepository customerRepository;
-    @Autowired private BatchRepository batchRepository;
-    @Autowired private UserRepository userRepository;
-    @Autowired private InventoryAuditRepository inventoryAuditRepository;
-    @Autowired private NotificationService notificationService;
+    @Autowired
+    private GoodsIssueRepository issueRepository;
+    @Autowired
+    private GoodsIssueDetailRepository detailRepository;
+    @Autowired
+    private ItemRepository itemRepository;
+    @Autowired
+    private LocationRepository locationRepository;
+    @Autowired
+    private ItemLocationRepository itemLocationRepository;
+    @Autowired
+    private InventoryBalanceRepository inventoryBalanceRepository;
+    @Autowired
+    private CustomerRepository customerRepository;
+    @Autowired
+    private BatchRepository batchRepository;
+    @Autowired
+    private UserRepository userRepository;
+    @Autowired
+    private InventoryAuditRepository inventoryAuditRepository;
+    @Autowired
+    private NotificationService notificationService;
 
     // ───────────────────────── CRUD ─────────────────────────
 
@@ -136,12 +147,12 @@ public class GoodsIssueService {
                     .findByItemIdAndLocationId(item.getId(), location.getId())
                     .orElseThrow(() -> new RuntimeException(
                             "Không tìm thấy tồn kho của '" + item.getItemcode()
-                            + "' tại vị trí '" + location.getLocationcode() + "'"));
+                                    + "' tại vị trí '" + location.getLocationcode() + "'"));
 
             if (il.getQuantity().compareTo(qty) < 0) {
                 throw new RuntimeException(
                         "Tồn kho tại vị trí '" + location.getLocationcode()
-                        + "' không đủ số lượng để xuất (cần " + qty + ", hiện có " + il.getQuantity() + ")");
+                                + "' không đủ số lượng để xuất (cần " + qty + ", hiện có " + il.getQuantity() + ")");
             }
 
             BigDecimal newQty = il.getQuantity().subtract(qty);
@@ -161,7 +172,7 @@ public class GoodsIssueService {
             if (newBalance.compareTo(BigDecimal.ZERO) < 0) {
                 throw new RuntimeException(
                         "Tồn kho tổng của '" + item.getItemcode() + "' không đủ số lượng để xuất "
-                        + "(cần " + qty + ", hiện có " + balance.getQuantity() + ")");
+                                + "(cần " + qty + ", hiện có " + balance.getQuantity() + ")");
             }
             balance.setQuantity(newBalance);
             balance.setLastUpdated(LocalDateTime.now());
@@ -174,7 +185,7 @@ public class GoodsIssueService {
                 if (newRemaining.compareTo(BigDecimal.ZERO) < 0) {
                     throw new RuntimeException(
                             "Số lượng của lô '" + batch.getBatchCode() + "' không đủ để xuất "
-                            + "(cần " + qty + ", còn lại " + batch.getQuantityRemaining() + ")");
+                                    + "(cần " + qty + ", còn lại " + batch.getQuantityRemaining() + ")");
                 }
                 batch.setQuantityRemaining(newRemaining);
                 batchRepository.save(batch);
@@ -209,12 +220,15 @@ public class GoodsIssueService {
         return toResponse(issue);
     }
 
-    // ───────────────────────── AVAILABLE LOCATIONS (XUẤT KHO) ─────────────────────────
+    // ───────────────────────── AVAILABLE LOCATIONS (XUẤT KHO)
+    // ─────────────────────────
 
     /**
-     * Liệt kê TẤT CẢ vị trí đang chứa itemId với quantity > 0 (không so sánh với quantity cần xuất).
+     * Liệt kê TẤT CẢ vị trí đang chứa itemId với quantity > 0 (không so sánh với
+     * quantity cần xuất).
      * Mỗi vị trí kèm danh sách TẤT CẢ sản phẩm đang chứa tại đó (để FE thống kê).
-     * Sắp xếp: tồn kho nhiều nhất trước → FE hiển thị checkbox, tích nhiều vị trí khi cần.
+     * Sắp xếp: tồn kho nhiều nhất trước → FE hiển thị checkbox, tích nhiều vị trí
+     * khi cần.
      */
     public List<LocationDetailResponse> listAvailableForIssue(Long itemId) {
         List<ItemLocation> stockLocations = itemLocationRepository.findAllWithStockByItemId(itemId);
@@ -234,10 +248,10 @@ public class GoodsIssueService {
                     sil.getItem().getItemname(),
                     sil.getItem().getUnitof(),
                     sil.getQuantity(),
-                    batchRepository.findConfirmedByItemId(sil.getItem().getId())
-                        .stream()
-                        .map(b -> b.getBatchCode()).collect(Collectors.toList())
-            )).collect(Collectors.toList());
+                    batchRepository.findAllByReceiptDetailLocationIdAndItemId(loc.getId(), sil.getItem().getId())
+                            .stream()
+                            .map(Batch::getBatchCode).collect(Collectors.toList())))
+                    .collect(Collectors.toList());
 
             result.add(new LocationDetailResponse(
                     loc.getId(), loc.getLocationcode(), loc.getLocationname(),
@@ -278,8 +292,10 @@ public class GoodsIssueService {
     }
 
     /**
-     * Gợi ý phân bổ số lượng cần xuất qua nhiều vị trí (khi quantity > tồn tại một vị trí).
-     * Ưu tiên vị trí có tồn kho lớn nhất trước. Tự động tính suggestedQuantity cho mỗi vị trí.
+     * Gợi ý phân bổ số lượng cần xuất qua nhiều vị trí (khi quantity > tồn tại một
+     * vị trí).
+     * Ưu tiên vị trí có tồn kho lớn nhất trước. Tự động tính suggestedQuantity cho
+     * mỗi vị trí.
      */
     public List<LocationSuggestionResponse> suggestSplit(Long itemId, BigDecimal quantity) {
         // Lấy tất cả vị trí có hàng (dù chưa đủ quantity), sắp xếp theo tồn giảm dần
@@ -290,9 +306,11 @@ public class GoodsIssueService {
         BigDecimal remaining = quantity;
 
         for (ItemLocation il : all) {
-            if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
+            if (remaining.compareTo(BigDecimal.ZERO) <= 0)
+                break;
             BigDecimal stock = il.getQuantity();
-            if (stock.compareTo(BigDecimal.ZERO) <= 0) continue;
+            if (stock.compareTo(BigDecimal.ZERO) <= 0)
+                continue;
             BigDecimal take = remaining.min(stock);
             Location loc = il.getLocation();
             LocationSuggestionResponse r = new LocationSuggestionResponse(
@@ -304,7 +322,7 @@ public class GoodsIssueService {
 
         if (remaining.compareTo(BigDecimal.ZERO) > 0) {
             throw new RuntimeException(
-                "Tồn kho tổng không đủ số lượng cần xuất " + quantity + " (còn thiếu " + remaining + ")");
+                    "Tồn kho tổng không đủ số lượng cần xuất " + quantity + " (còn thiếu " + remaining + ")");
         }
         return result;
     }
@@ -320,7 +338,8 @@ public class GoodsIssueService {
         issue.setDescription(request.getDescription());
         if (request.getCustomerId() != null) {
             Customer customer = customerRepository.findById(request.getCustomerId())
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy khách hàng id: " + request.getCustomerId()));
+                    .orElseThrow(
+                            () -> new RuntimeException("Không tìm thấy khách hàng id: " + request.getCustomerId()));
             issue.setCustomer(customer);
             issue.setTaxcode(customer.getTaxcode());
         }
@@ -344,7 +363,8 @@ public class GoodsIssueService {
 
     private void notifyManagersIfStaffCreated(GoodsIssue issue) {
         User creator = issue.getUser();
-        if (creator == null || creator.getRole() != Role.STAFF) return;
+        if (creator == null || creator.getRole() != Role.STAFF)
+            return;
         String docno = issue.getDocno();
         notificationService.notifyManagers(
                 NotificationType.APPROVAL_REQUIRED,
@@ -352,13 +372,13 @@ public class GoodsIssueService {
                 issue.getId(),
                 docno,
                 "Phieu xuat can duyet",
-                "Phieu xuat " + docno + " can duyet"
-        );
+                "Phieu xuat " + docno + " can duyet");
     }
 
     private void notifyCreatorApproved(GoodsIssue issue) {
         User creator = issue.getUser();
-        if (creator == null || creator.getRole() != Role.STAFF) return;
+        if (creator == null || creator.getRole() != Role.STAFF)
+            return;
         String docno = issue.getDocno();
         notificationService.notifyUser(
                 creator,
@@ -367,19 +387,20 @@ public class GoodsIssueService {
                 issue.getId(),
                 docno,
                 "Phieu xuat da duyet",
-                "Phieu xuat " + docno + " da duyet"
-        );
+                "Phieu xuat " + docno + " da duyet");
     }
 
     private java.util.Optional<User> getCurrentUser() {
         var auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated()) return java.util.Optional.empty();
+        if (auth == null || !auth.isAuthenticated())
+            return java.util.Optional.empty();
         String username = auth.getName();
         return userRepository.findByUsername(username);
     }
 
     private void saveDetails(GoodsIssue issue, List<GoodsIssueDetailRequest> detailRequests) {
-        if (detailRequests == null) return;
+        if (detailRequests == null)
+            return;
         for (GoodsIssueDetailRequest req : detailRequests) {
             Item item = itemRepository.findById(req.getItemId())
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy hàng hóa id: " + req.getItemId()));
@@ -431,9 +452,11 @@ public class GoodsIssueService {
     }
 
     private int extractSequence(String docno, String prefix) {
-        if (docno == null || !docno.startsWith(prefix)) return -1;
+        if (docno == null || !docno.startsWith(prefix))
+            return -1;
         String numeric = docno.substring(prefix.length());
-        if (!numeric.matches("\\d+")) return -1;
+        if (!numeric.matches("\\d+"))
+            return -1;
         return Integer.parseInt(numeric);
     }
 

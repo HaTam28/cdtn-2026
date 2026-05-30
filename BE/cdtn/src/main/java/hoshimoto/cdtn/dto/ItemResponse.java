@@ -1,5 +1,7 @@
 package hoshimoto.cdtn.dto;
 
+import java.math.BigDecimal;
+
 import lombok.Data;
 
 @Data
@@ -13,7 +15,9 @@ public class ItemResponse {
     private String itemtype;
     private String unitof;
     private String itemcatg;
+    private BigDecimal currentStock;
     private Integer minstocklevel;
+    private Integer maxstocklevel;
     private String createdAt;
     private String modifiedAt;
     private String modifiedBy;

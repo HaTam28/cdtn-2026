@@ -2,6 +2,7 @@ package hoshimoto.cdtn.service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -13,6 +14,7 @@ import hoshimoto.cdtn.dto.LocationDetailResponse;
 import hoshimoto.cdtn.dto.LocationDetailResponse.LocationItemStock;
 import hoshimoto.cdtn.dto.LocationResponse;
 import hoshimoto.cdtn.dto.request.LocationRequest;
+import hoshimoto.cdtn.entity.Batch;
 import hoshimoto.cdtn.entity.ItemLocation;
 import hoshimoto.cdtn.entity.Location;
 import hoshimoto.cdtn.repository.BatchRepository;
@@ -49,16 +51,17 @@ public class LocationService {
 
         List<ItemLocation> itemsAtLoc = itemLocationRepository.findByLocationIdAndIsActiveTrue(loc.getId());
         List<LocationItemStock> stockList = itemsAtLoc.stream()
-                .map(il -> new LocationItemStock(
-                        il.getItem().getId(),
-                        il.getItem().getItemcode(),
-                        il.getItem().getItemname(),
-                        il.getItem().getUnitof(),
-                il.getQuantity(),
-                batchRepository.findConfirmedByItemId(il.getItem().getId())
-                    .stream()
-                    .map(b -> b.getBatchCode()).collect(Collectors.toList())))
-                .collect(Collectors.toList());
+            .flatMap(il -> batchRepository.findAllByReceiptDetailLocationIdAndItemId(loc.getId(), il.getItem().getId())
+                .stream()
+                .sorted(Comparator.comparing(Batch::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(batch -> new LocationItemStock(
+                    il.getItem().getId(),
+                    il.getItem().getItemcode(),
+                    il.getItem().getItemname(),
+                    il.getItem().getUnitof(),
+                    batch.getQuantity(),
+                    List.of(batch.getBatchCode()))))
+            .collect(Collectors.toList());
 
         String type = itemsAtLoc.isEmpty() ? "EMPTY" : "HAS_STOCK";
 
@@ -96,14 +99,23 @@ public class LocationService {
     }
 
     private void applyRequest(Location l, LocationRequest request) {
-        if (request.getLocationcode() != null) l.setLocationcode(request.getLocationcode());
-        if (request.getLocationname() != null) l.setLocationname(request.getLocationname());
-        if (request.getRackno() != null) l.setRackno(request.getRackno());
-        if (request.getFloorno() != null) l.setFloorno(request.getFloorno());
-        if (request.getColumnno() != null) l.setColumnno(request.getColumnno());
-        if (request.getCapacity() != null) l.setCapacity(request.getCapacity());
-        if (request.getDescription() != null) l.setDescription(request.getDescription());
-        if (request.getIsActive() != null) l.setIsActive(request.getIsActive());
-        if (request.getModifiedBy() != null) l.setModifiedBy(request.getModifiedBy());
+        if (request.getLocationcode() != null)
+            l.setLocationcode(request.getLocationcode());
+        if (request.getLocationname() != null)
+            l.setLocationname(request.getLocationname());
+        if (request.getRackno() != null)
+            l.setRackno(request.getRackno());
+        if (request.getFloorno() != null)
+            l.setFloorno(request.getFloorno());
+        if (request.getColumnno() != null)
+            l.setColumnno(request.getColumnno());
+        if (request.getCapacity() != null)
+            l.setCapacity(request.getCapacity());
+        if (request.getDescription() != null)
+            l.setDescription(request.getDescription());
+        if (request.getIsActive() != null)
+            l.setIsActive(request.getIsActive());
+        if (request.getModifiedBy() != null)
+            l.setModifiedBy(request.getModifiedBy());
     }
 }

@@ -40,6 +40,10 @@ public class BatchService {
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy lô hàng id: " + id));
     }
 
+    public List<Batch> getByLocation(Long locationId) {
+        return batchRepository.findAllByReceiptDetailLocationId(locationId);
+    }
+
     @Transactional
     public Batch createBatch(BatchRequest request) {
         Item item = itemRepository.findById(request.getItemId())

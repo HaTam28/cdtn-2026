@@ -1,5 +1,15 @@
 ﻿# API FE DOC CHUẨN
-**Import danh mục vật tư hàng hóa (CSV / XLSX) — Hợp đồng API cho FE**
+**Tài liệu API cho FE (tóm tắt & hướng dẫn)**
+
+- Mục lục: xem phần 'Mục lục' bên dưới.
+- Ghi chú quan trọng: phần chi tiết về `Item` và import CSV/XLSX được gom vào **5. Mặt hàng (Item)** — bao gồm endpoints import, mapping trường, validation và ví dụ curl.
+- Default behavior: khi tạo một `Item` (qua API hoặc import), nếu không gửi `minStockLevel` / `maxStockLevel` thì BE sẽ gán mặc định `minStockLevel = 50` và `maxStockLevel = 500`. `PUT` vẫn cho phép cập nhật hai trường này sau khi tạo.
+
+---
+
+## 5. Mặt hàng (Item)
+
+### 5.1 Import danh mục vật tư hàng hóa (CSV / XLSX) — Hợp đồng API cho FE
 
 - Mục đích: FE gửi file CSV hoặc XLSX để BE parse (preview) và/hoặc persist (upsert) danh sách vật tư.
 
@@ -25,7 +35,7 @@
   - CSV: UTF-8 encoding bắt buộc.
   - XLSX: đọc sheet đầu tiên; header phải nằm ở dòng đầu của sheet (hoặc dòng đầu không rỗng).
 
-- Danh sách header phải có (CHÍNH XÁC, có dấu):
+- Danh sách header bắt buộc (có dấu, khuyến nghị chính xác):
   1. `Mã vật tư`
   2. `Tên vật tư hàng hóa`
   3. `Loại vật tư`
@@ -35,17 +45,16 @@
   7. `Tồn tối thiểu`
   8. `Tồn tối đa`
 
-  - Chỉ những cột khớp đúng (sau normalize nội bộ) với danh sách trên mới được parse; các cột khác sẽ bị bỏ qua và không trả về cho FE.
-  - Hệ thống thực hiện một bước normalize nội bộ (bỏ ký tự đặc biệt, chuẩn hoá khoảng trắng và chữ thường) nhưng FE vẫn phải đảm bảo dùng đúng cụm từ có dấu giống danh sách trên để tránh nhầm lẫn.
+  - FE có thể gửi thêm cột nhưng chỉ những cột khớp (sau normalize nội bộ) mới được parse và trả về trong `sample`.
 
 - Validation chính
   - Bắt buộc: `Mã vật tư` (nếu thiếu -> row error).
-  - `Tồn tối thiểu` / `Tồn tối đa` nếu có phải là số (integer).
+  - `Tồn tối thiểu` / `Tồn tối đa` nếu có phải là số nguyên (integer).
   - Các dòng rỗng sẽ bị bỏ qua.
 
-- Lưu ý về persist fields
-  - Trường `Tồn tối thiểu` được map vào `minStockLevel` và sẽ được lưu vào DB.
-  - `Tồn tối đa` hiện đang được parse nhưng **chưa được lưu lên DB** (chỉ hiển thị trong preview). Nếu FE cần lưu `Tồn tối đa`, báo cho BE để tôi mở mapping và schema.
+- Lưu ý về default fields
+  - Khi tạo item (qua import hoặc API), nếu không có giá trị cho `Tồn tối thiểu` / `Tồn tối đa`, BE sẽ gán mặc định: `minStockLevel = 50`, `maxStockLevel = 500`.
+  - FE vẫn có thể cập nhật (`PUT /api/items/{id}`) để thay đổi hai trường này.
 
 - Mappings (keys trả về trong `sample` và DTO):
   - `Mã vật tư` -> `itemCode`
@@ -55,7 +64,7 @@
   - `Tên trên hóa đơn` -> `invoiceName`
   - `Đơn vị tính` -> `unitOf`
   - `Tồn tối thiểu` -> `minStockLevel`
-  - `Tồn tối đa` -> `maxStockLevel` (parse only)
+  - `Tồn tối đa` -> `maxStockLevel`
 
 - Response (200) — shape
 
@@ -69,8 +78,6 @@
     { "itemCode": "A001", "itemName": "Bút bi" , "unitOf": "Cái" },
     { "itemCode": "A002", "itemName": "Tập vở", "minStockLevel": 10 }
   ]
-}
-```
 
  - `sample` là `List<Map<String,Object>>` và mỗi object chỉ chứa các key tương ứng những header thực sự xuất hiện trong file (`presentFields`). Không có các key có giá trị null.
 
@@ -81,14 +88,10 @@
   - `500 Internal Server Error` — lỗi server (IO, DB...)
 
 - Ví dụ curl
-
-Preview CSV:
 ```bash
 curl -X POST "http://localhost:8080/api/import/items/csv?preview=true&sampleSize=50" \
-  -H "Authorization: Bearer <token>" \
   -F "file=@/path/to/items.csv;type=text/csv"
 ```
-
 Persist CSV (upsert):
 ```bash
 curl -X POST "http://localhost:8080/api/import/items/csv?preview=false&sampleSize=50" \
@@ -98,26 +101,19 @@ curl -X POST "http://localhost:8080/api/import/items/csv?preview=false&sampleSiz
 
 Preview XLSX:
 ```bash
-curl -X POST "http://localhost:8080/api/import/items/xlsx?preview=true" \
   -H "Authorization: Bearer <token>" \
   -F "file=@/path/to/items.xlsx;type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 ```
-
 Persist XLSX:
 ```bash
-curl -X POST "http://localhost:8080/api/import/items/xlsx?preview=false" \
   -H "Authorization: Bearer <token>" \
   -F "file=@/path/to/items.xlsx;type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 ```
 
 ---
-
-
-**LƯU Ý VỀ DỮ LIỆU TIẾNG VIỆT (BẮT BUỘC CÓ DẤU)**
 - Vì dữ liệu là tiếng Việt, các *header* và các giá trị quan trọng (như `Mã vật tư`) phải giữ dấu (ví dụ: **"Mã vật tư"**, **"Tên hàng"**) — không dùng phiên bản không dấu (ví dụ **"Ma vat tu"**).
 - FE phải gửi file ở encoding **UTF-8** để đảm bảo dấu được truyền đúng.
 - Ví dụ: đúng = `Mã vật tư`; sai = `Ma vat tu` — nếu header không có dấu, hệ thống có thể không map được vào trường `itemCode` và sẽ báo lỗi dòng thiếu `itemCode`.
-
 **Validation rules (recommended)**
 - Bắt buộc: `itemcode` (không rỗng). Nếu thiếu -> row error.
 - `minstocklevel` phải là integer nếu có giá trị.
@@ -130,13 +126,10 @@ curl -X POST "http://localhost:8080/api/import/items/xlsx?preview=false" \
 - Kết quả trả về nên bao gồm: tổng dòng, số dòng ghi thành công, số dòng cập nhật, danh sách lỗi theo row (index + message), sample of parsed DTOs.
 
 **Readiness check (hiện trạng code)**
-- Parser:
-  - `CsvImportService` implemented: [src/main/java/hoshimoto/cdtn/service/CsvImportService.java](src/main/java/hoshimoto/cdtn/service/CsvImportService.java) — parses CSV to `ImportItemDto`.
   - `XlsxImportService` implemented: [src/main/java/hoshimoto/cdtn/service/XlsxImportService.java](src/main/java/hoshimoto/cdtn/service/XlsxImportService.java) — streaming XLSX read.
 - DTOs: `ImportItemDto`, `ImportResult`, `RowError` exist: [src/main/java/hoshimoto/cdtn/dto/](src/main/java/hoshimoto/cdtn/dto/).
 - Controller: `ImportController` implemented with endpoints `/api/import/items/csv` and `/api/import/items/xlsx` (supports `preview` param). See [src/main/java/hoshimoto/cdtn/controller/ImportController.java](src/main/java/hoshimoto/cdtn/controller/ImportController.java).
 - Import pipeline: `ImportService` implemented — validates required `itemCode`, supports `preview=true`, performs upsert (create/update) within a transaction. See [src/main/java/hoshimoto/cdtn/service/ImportService.java](src/main/java/hoshimoto/cdtn/service/ImportService.java).
-- Repository: `ItemRepository` now exposes `Optional<Item> findByItemcode(String)` for upsert lookups.
 
 Status: basic import flow (parse -> validate minimal -> upsert) is implemented and the application builds and runs locally. The endpoint is usable for manual imports. See "How to use" below.
 
@@ -161,27 +154,11 @@ If you want, I can implement OpenAPI annotations and an example integration test
 ---
 
 ## How to use (examples)
-
-1) Preview CSV without saving:
-
-```bash
 curl -v -F "file=@items.csv" "http://localhost:8080/api/import/items/csv?preview=true" \
-  -H "Authorization: Bearer <token>"
-```
-
-2) Import CSV and persist:
-
 ```bash
-curl -v -F "file=@items.csv" "http://localhost:8080/api/import/items/csv" \
-  -H "Authorization: Bearer <token>"
 ```
-
 3) Preview XLSX:
 
-```bash
-curl -v -F "file=@items.xlsx" "http://localhost:8080/api/import/items/xlsx?preview=true" \
-  -H "Authorization: Bearer <token>"
-```
 
 Response (200) example:
 
@@ -191,13 +168,7 @@ Response (200) example:
   "created": 8,
   "updated": 4,
   "errors": [ { "rowIndex": 3, "message": "Missing required itemCode" } ],
-  "sample": [ { "itemCode":"A001","itemName":"Item A","barcode":"123" } ]
-}
-```
-
-Error codes:
 - `400 Bad Request` — invalid file / missing multipart field / preview parse errors.
-- `401 Unauthorized` — missing/invalid JWT.
 - `403 Forbidden` — user lacks import permission.
 - `500 Internal Server Error` — unexpected server error (DB, IO, or constraint violation).
 
@@ -227,20 +198,11 @@ If you want, I can implement the controller + import pipeline and tests next. Re
 - Cấu trúc response chung:
 ```json
 {
-  "success": true,
-  "message": "Thông báo",
-  "data": {}
-}
 ```
-
----
-
-## Mục lục
 
 1. [Ràng buộc chung](#1-ràng-buộc-chung)
 2. [Xác thực](#2-authentication)
 3. [Người dùng](#3-user)
-4. [Khách hàng](#4-customer)
 5. [Mặt hàng](#5-item)
 6. [Vị trí](#6-location)
 7. [Goods Receipt – Nhập kho](#7-goods-receipt--nhập-kho)
@@ -736,6 +698,32 @@ When presenting errors to users, show user-friendly messages and avoid leaking i
   "unitof": "Cái",
   "itemcatg": "Thiết bị",
   "minstocklevel": 5,
+  "maxstocklevel": 20,
+  "isActive": true
+}
+```
+
+**Validation for stock levels**
+- `minstocklevel` and `maxstocklevel` must be integers if provided and should be >= 0.
+- If both are present, FE should ensure `maxstocklevel >= minstocklevel` to avoid logical inconsistency; BE will validate and return `400` on violation.
+
+**Response fields**
+- `currentStock`: tồn hiện tại của vật tư, lấy từ `InventoryBalance`.
+- `minstocklevel`: tồn tối thiểu.
+- `maxstocklevel`: tồn tối đa.
+
+Response: `GET /api/items` and `GET /api/items/{id}` will include `currentStock`, `minstocklevel`, and `maxstocklevel` in the returned `ItemResponse`.
+
+**Ví dụ (một phần tử trong `GET /api/items`):**
+```json
+{
+  "id": 5,
+  "itemcode": "SP001",
+  "itemname": "Sản phẩm A",
+  "unitof": "Cái",
+  "currentStock": 120.00,
+  "minstocklevel": 10,
+  "maxstocklevel": 500,
   "isActive": true
 }
 ```
@@ -769,6 +757,74 @@ When presenting errors to users, show user-friendly messages and avoid leaking i
 
 > `capacity = null`: vị trí không giới hạn sức chứa.
 
+**Response fields (LocationResponse)**
+- `id`: ID vị trí.
+- `locationcode`: Mã vị trí hiển thị (unique).
+- `locationname`: Tên vị trí.
+- `rackno`, `floorno`, `columnno`: Thông tin vị trí vật lý.
+- `capacity`: Sức chứa (Integer). `null` = không giới hạn.
+- `usedCapacity`: (BigDecimal) Tổng số lượng đang chiếm tại vị trí (tính từ `ItemLocation`).
+- `remainingCapacity`: (BigDecimal) `capacity - usedCapacity`, `null` nếu `capacity = null`.
+- `description`: Mô tả tự do.
+- `isActive`: `true` nếu vị trí đang kích hoạt.
+- `createdAt`, `modifiedAt`: chuỗi ISO datetime (ví dụ `2026-05-05T10:00:00`).
+- `modifiedBy`: username người sửa cuối.
+
+**Example: `GET /api/locations` (list)**
+```json
+{
+  "success": true,
+  "message": "Lấy danh sách vị trí thành công",
+  "data": [
+    {
+      "id": 3,
+      "locationcode": "A1-01",
+      "locationname": "Kệ A1, tầng 1, cột 1",
+      "rackno": "A1",
+      "floorno": "1",
+      "columnno": "1",
+      "capacity": 100,
+      "usedCapacity": 40,
+      "remainingCapacity": 60,
+      "description": "Kệ tầng 1, sức chứa 100",
+      "isActive": true,
+      "createdAt": "2026-05-05T08:30:00",
+      "modifiedAt": "2026-05-05T09:00:00",
+      "modifiedBy": "admin"
+    }
+  ]
+}
+```
+
+**Example: `POST /api/locations` / `PUT /api/locations/{id}` (response)**
+```json
+{
+  "success": true,
+  "message": "Tạo mới vị trí thành công",
+  "data": {
+    "id": 10,
+    "locationcode": "B2-01",
+    "locationname": "Kệ B2, tầng 1",
+    "capacity": null,
+    "usedCapacity": 0,
+    "remainingCapacity": null,
+    "isActive": true,
+    "createdAt": "2026-05-06T11:00:00",
+    "modifiedAt": null,
+    "modifiedBy": null
+  }
+}
+```
+
+**Notes:**
+- Deleting a location via `DELETE /api/locations/{id}` only sets `isActive = false` (soft delete).
+- `usedCapacity` is calculated on demand by the service; FE can rely on it for UI capacity checks but should still respect server-side capacity validation when confirming receipts.
+
+
+## 6. Location
+
+**Ghi chú FE:** khi cần dữ liệu *theo lô* cho một vị trí (mã lô, quantityRemaining, ...) ưu tiên gọi `GET /api/batches/by-location?locationId={id}`; dùng `GET /api/locations/{id}/items` cho trường hợp UI cần hiển thị nhanh danh sách hiện có (note: `locations/{id}/items` trả ra các dòng theo batch khi có nhiều lô cho cùng mã hàng).
+
 ### 6.1 Chi tiết vị trí kèm danh sách hàng hóa
 
 **Endpoint:** `GET /api/locations/{id}/items`
@@ -795,8 +851,16 @@ When presenting errors to users, show user-friendly messages and avoid leaking i
         "itemcode": "SP001",
         "itemname": "Sản phẩm A",
         "unitof": "Cái",
-        "quantity": 40,
+        "quantity": 20,
         "batchCodes": ["SP001-20260415"]
+      },
+      {
+        "itemId": 6,
+        "itemcode": "SP002",
+        "itemname": "Sản phẩm B",
+        "unitof": "Thùng",
+        "quantity": 10,
+        "batchCodes": ["SP002-20260420-01"]
       }
     ]
   }
@@ -804,9 +868,15 @@ When presenting errors to users, show user-friendly messages and avoid leaking i
 ```
 
 > `type`: `"HAS_STOCK"` nếu vị trí đang chứa hàng, `"EMPTY"` nếu trống hoàn toàn.  
-> `items`: danh sách hàng hóa đang chứa tại vị trí (chỉ các bản ghi `isActive = true`).  
+> `items`: danh sách hàng hóa đang chứa tại vị trí (chỉ các bản ghi `isActive = true`). Ở màn chi tiết vị trí, nếu cùng một mã hàng có nhiều batch tại cùng vị trí, BE trả ra **nhiều dòng riêng theo từng batch** để FE hiển thị đúng số lượng từng lô.  
+> `quantity` trong mỗi dòng = `batch.quantity` (số lượng **ban đầu** của lô), **không phải** `quantityRemaining` (tồn còn lại).  
 > `remainingCapacity`: `null` nếu vị trí không giới hạn sức chứa (`capacity = null`).
-> `batchCodes`: tất cả mã lô đã **CONFIRMED** của mã hàng đó trong hệ thống — **không** lọc theo vị trí cụ thể (vì 1 batch có thể trải nhiều vị trí).
+> `batchCodes`: mỗi dòng chứa đúng 1 `batchCode` (tương ứng với lô của dòng đó).
+
+> **Lưu ý cho FE về tên trường:**
+> - `itemcode` (lower-case) là trường mã vật tư. FE hãy sử dụng chính xác `itemcode` để hiển thị cột "Mã vật tư".
+> - `unitof` là trường đơn vị tính (ví dụ: `Cái`, `Thùng`). Nếu FE không thấy đơn vị, kiểm tra thuộc tính `unitof` trên response chứ không phải `unit` hay `uom`.
+> - `batchCodes` là mảng mã lô (ở màn chi tiết vị trí mỗi dòng thường chỉ có 1 mã lô trong mảng).
 
 ---
 
@@ -868,9 +938,9 @@ When presenting errors to users, show user-friendly messages and avoid leaking i
 > `batchId` / `batchCode` trong response chỉ xuất hiện sau khi phiếu được **CONFIRMED** — BE tự động tạo lô khi xác nhận, FE **không cần** gọi `POST /api/batches` trong luồng nhập kho thông thường.
 >
 > **LƯU Ý VỀ LÔ HÀNG (BATCH):**
-> - **Tự động tạo khi confirm:** Khi phiếu nhập được xác nhận, BE tự sinh 1 batch cho mỗi mã hàng trong phiếu. `quantity` của batch = tổng số lượng tất cả dòng cùng mã hàng (kể cả nhiều vị trí). `quantityRemaining` = `quantity` tại thời điểm tạo.
-> - **Mỗi mã hàng → 1 batch duy nhất / phiếu:** Dù cùng 1 mã hàng được nhập vào 5 vị trí, chỉ 1 batch được tạo với tổng số lượng của cả 5 dòng.
-> - **Hiển thị trên tất cả vị trí:** `batchCodes` trả về theo mã hàng (không phụ thuộc vị trí cụ thể), nên tất cả vị trí chứa cùng mã hàng đều hiển thị cùng mã lô.
+> - **Tự động tạo khi confirm:** Khi phiếu nhập được xác nhận, BE tự sinh batch theo từng dòng chi tiết gắn vị trí. Nếu cùng 1 mã hàng được nhập ở nhiều vị trí khác nhau, mỗi vị trí sẽ có `batchCode` riêng.
+> - **Mã lô mới khi trùng:** `batchCode` vẫn được sinh theo mẫu `ITEMCODE-YYYYMMDD` và thêm hậu tố `-01`, `-02`, ... khi cần để đảm bảo duy nhất.
+> - **Hiển thị trên vị trí:** `batchCodes` trong phần chi tiết vị trí chỉ phản ánh các batch đang nằm ở chính vị trí đó, để FE hiển thị đúng mã lô theo từng vị trí của cùng một sản phẩm.
 > - **API trả về `batchCode`/`batchId`** chỉ khi `docstatus = CONFIRMED`. Lô của phiếu chưa confirm sẽ không xuất hiện trong `available-locations`/`locations`/`batches/by-location`.
 
 **Response:**
@@ -924,10 +994,9 @@ BE thực hiện:
 2. Kiểm tra capacity từng vị trí còn đủ chỗ.
 3. Cộng `quantity` vào `ItemLocation` (tạo mới nếu chưa có).
 4. Cộng `quantity` vào `InventoryBalance`.
-5. **Tự động tạo / cập nhật lô (batch):** Với mỗi mã hàng trong phiếu, BE tính tổng số lượng tất cả dòng cùng mã hàng rồi:
-   - Nếu lô cho mã hàng + phiếu **chưa tồn tại**: tạo mới với `batchCode = ITEMCODE-YYYYMMDD` (ngày = `docDate`), `quantity = tổng`, `quantityRemaining = tổng`.
-   - Nếu lô đã tồn tại (tạo thủ công trước đó): ghi đè `quantity` và `quantityRemaining` bằng tổng số lượng phiếu.
-   - **1 batch duy nhất / mã hàng / phiếu** — mọi vị trí của cùng mã hàng dùng chung batch này.
+5. **Tự động tạo / cập nhật lô (batch):** Với mỗi dòng chi tiết gắn vị trí, BE tạo hoặc cập nhật batch riêng cho đúng dòng đó.
+  - Nếu batch cho dòng đó **chưa tồn tại**: tạo mới với `batchCode = ITEMCODE-YYYYMMDD` (ngày = `docDate`), thêm hậu tố `-01`, `-02`, ... khi cần; `quantity = số lượng của dòng`, `quantityRemaining = số lượng của dòng`.
+  - Nếu batch đã tồn tại (tạo thủ công trước đó): ghi đè `quantity` và `quantityRemaining` bằng số lượng của dòng chi tiết tương ứng.
 6. Set `docstatus = CONFIRMED`, lưu `actionByUsername`.
 
 **Lỗi có thể trả về:**
@@ -966,10 +1035,10 @@ Trả về danh sách sắp xếp: `EXISTING` → `EMPTY` → `PARTIAL`.
 ]
 ```
 
+> **Cấu trúc `items` trong `available-locations`:** Mỗi phần tử là 1 dòng theo mã hàng (không phân tách theo lô). `quantity` = tổng tồn của mã hàng đó tại vị trí (từ `ItemLocation`); `batchCodes` = danh sách **tất cả** mã lô của mã hàng đó tại vị trí. Khác với `GET /api/locations/{id}/items` — endpoint đó tách mỗi lô thành 1 dòng riêng.
 
 ---
 
-## 7. Goods Receipt – Nhập kho
 **`GET /suggest-locations?itemId={id}&quantity={qty}`** — Gợi ý vị trí đủ sức chứa `quantity`.
 
 **`GET /suggest-split?itemId={id}&quantity={qty}`** — Phân bổ tự động khi `quantity` > sức chứa 1 vị trí; trả thêm `suggestedQuantity`.
@@ -1072,7 +1141,7 @@ BE thực hiện:
     "remainingCapacity": 60,
     "type": "HAS_STOCK",
     "items": [
-      { "itemId": 5, "itemcode": "SP001", "itemname": "Sản phẩm A", "unitof": "Cái", "quantity": 40 }
+      { "itemId": 5, "itemcode": "SP001", "itemname": "Sản phẩm A", "unitof": "Cái", "quantity": 40, "batchCodes": ["SP001-20260415"] }
     ]
   }
 ]
@@ -1418,7 +1487,7 @@ Ghi chú:
 
 **Mục đích:** Quản lý lô hàng, phục vụ xuất kho theo FIFO. `batchCode` và `nameBatch` do BE tự sinh — FE không gửi các trường này.
 
-> ⚠️ **Luồng thông thường:** FE **không cần** gọi `POST /api/batches` trong luồng nhập kho. Batch được BE tự động tạo khi `confirm` phiếu nhập — **1 batch duy nhất cho mỗi mã hàng trong phiếu**, với `quantity` = tổng số lượng tất cả dòng cùng mã hàng. `POST /api/batches` chỉ dùng khi cần tạo lô đặc biệt ngoài luồng phiếu nhập.
+> ⚠️ **Luồng thông thường:** FE **không cần** gọi `POST /api/batches` trong luồng nhập kho. Batch được BE tự động tạo khi `confirm` phiếu nhập — theo từng dòng chi tiết gắn vị trí, với `quantity` = số lượng của dòng đó. `POST /api/batches` chỉ dùng khi cần tạo lô đặc biệt ngoài luồng phiếu nhập.
 
 **Quy tắc sinh `batchCode`:**
 - Định dạng: `ITEMCODE-YYYYMMDD` (ngày lấy từ `docDate` của phiếu nhập)
@@ -1430,8 +1499,11 @@ Ghi chú:
 - Định dạng: `Lo {tenVatTu} dot {YYYYMMDD}`
 
 **Quy tắc `quantity` và `quantityRemaining`:**
-- `quantity` (số lượng ban đầu) = tổng số lượng tất cả dòng chi tiết cùng mã hàng trong phiếu nhập.
-- `quantityRemaining` = `quantity` khi vừa tạo; giảm dần mỗi khi có phiếu xuất trừ lô này.
+- `quantity` (số lượng ban đầu) = số lượng của **chính dòng chi tiết** phiếu nhập tạo ra lô này (1 dòng chi tiết → 1 batch).
+- `quantityRemaining` (tồn lô còn lại):
+  - Batch **tự động tạo qua confirm phiếu nhập**: `quantityRemaining = quantity`.
+  - Batch **tạo thủ công qua `POST /api/batches`**: `quantityRemaining = 0`.
+  - Giảm dần mỗi khi phiếu xuất trừ lô này.
 
 | Method | Endpoint | Mô tả | Quyền |
 |--------|----------|-------|-------|
@@ -1488,20 +1560,20 @@ Ghi chú:
 }
 ```
 
-> `quantityRemaining` được cập nhật khi xác nhận phiếu nhập; FE không gửi trường này.
+> `quantityRemaining = 0` khi tạo thủ công qua API này. Nếu `receiptDetailId` trỏ đến dòng phiếu nhập chưa confirm, khi phiếu được confirm sau đó BE sẽ **ghi đè** `quantity` và `quantityRemaining` bằng số lượng của dòng chi tiết đó. FE không gửi trường này.
 
 ### 10.4 Lifecycle & FE guidance
 
 **Luồng chuẩn (khuyến nghị):**
 1. FE tạo phiếu nhập DRAFT với các dòng chi tiết (có thể nhiều vị trí cho cùng 1 mã hàng).
-2. FE confirm phiếu → BE **tự động** sinh 1 batch cho mỗi mã hàng: `quantity = tổng dòng`, `batchCode = ITEMCODE-YYYYMMDD`.
-3. Response của `GET /api/goods-receipts/{id}` sau confirm trả về `batchId` + `batchCode` trong mỗi dòng chi tiết (mọi dòng cùng mã hàng dùng chung 1 batch).
+2. FE confirm phiếu → BE **tự động** sinh batch theo từng dòng chi tiết gắn vị trí: `quantity = số lượng của dòng`, `batchCode = ITEMCODE-YYYYMMDD` và thêm hậu tố khi trùng.
+3. Response của `GET /api/goods-receipts/{id}` sau confirm trả về `batchId` + `batchCode` theo đúng dòng chi tiết tương ứng.
 4. Trong phiếu xuất: FE chọn `batchId` từ danh sách lô của item.
 
 **Lưu ý:**
 - Nếu phiếu bị `CANCELLED` hoặc detail bị xóa (PUT cập nhật DRAFT), batch liên kết sẽ bị xóa theo.
-- Tất cả endpoint trả `batchCodes` tại vị trí (`/api/locations/{id}/items`, `available-locations`) hiển thị batch theo **mã hàng** — không lọc theo vị trí cụ thể.
-- `POST /api/batches` vẫn hỗ trợ cho trường hợp tạo lô thủ công ngoài luồng phiếu nhập; khi phiếu được confirm sau đó, BE sẽ ghi đè `quantity` và `quantityRemaining` theo tổng thực tế của phiếu.
+- `GET /api/locations/{id}/items` hiển thị batch theo **từng lô** tại vị trí đó, còn `available-locations` và các màn gợi ý vẫn có thể gom theo mã hàng để FE chọn vị trí.
+- `POST /api/batches` vẫn hỗ trợ cho trường hợp tạo lô thủ công ngoài luồng phiếu nhập; khi phiếu được confirm sau đó, BE sẽ ghi đè `quantity` và `quantityRemaining` bằng số lượng của **dòng chi tiết** tương ứng (không phải tổng toàn phiếu).
 
 ### 10.2 Danh sách lô hàng
 

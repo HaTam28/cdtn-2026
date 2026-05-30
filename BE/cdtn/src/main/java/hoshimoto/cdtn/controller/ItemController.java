@@ -34,7 +34,7 @@ public class ItemController {
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'STAFF')")
     public ResponseEntity<ApiResponse<List<ItemResponse>>> getAllItems() {
         List<ItemResponse> items = itemService.getAllItems()
-                .stream().map(ItemController::toDto).collect(Collectors.toList());
+                .stream().map(this::toDto).collect(Collectors.toList());
         return ResponseEntity.ok(new ApiResponse<>(true, "Lấy danh sách hàng hóa thành công", items));
     }
 
@@ -77,7 +77,7 @@ public class ItemController {
         }
     }
 
-    private static ItemResponse toDto(Item item) {
+    private ItemResponse toDto(Item item) {
         ItemResponse dto = new ItemResponse();
         dto.setId(item.getId());
         dto.setItemcode(item.getItemcode());
@@ -88,7 +88,9 @@ public class ItemController {
         dto.setItemtype(item.getItemtype());
         dto.setUnitof(item.getUnitof());
         dto.setItemcatg(item.getItemcatg());
+        dto.setCurrentStock(itemService.getCurrentStock(item.getId()));
         dto.setMinstocklevel(item.getMinstocklevel());
+        dto.setMaxstocklevel(item.getMaxstocklevel());
         dto.setIsActive(item.getIsActive());
         dto.setCreatedAt(item.getCreatedAt() != null ? item.getCreatedAt().toString() : null);
         dto.setModifiedAt(item.getModifiedAt() != null ? item.getModifiedAt().toString() : null);
