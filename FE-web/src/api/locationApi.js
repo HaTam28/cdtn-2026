@@ -47,3 +47,28 @@ export const fetchLocationItemsNormalized = async (id) => {
         items: data.items || []
     };
 };
+
+/**
+ * Aggregate all item codes currently present across all locations.
+ * Note: This function fetches each location's items in parallel and extracts
+ * `itemcode` (normalizing common variants). If the backend provides a single
+ * endpoint for this aggregation, prefer that endpoint instead to avoid many requests.
+ */
+export const getAllItemCodesInLocations = async () => {
+    const locations = await getAllLocations();
+    if (!locations || !locations.length) return [];
+
+    const fetches = locations.map(loc => getItemsAtLocation(loc.locationId ?? loc.id).catch(() => null));
+    const results = await Promise.all(fetches);
+
+    const codes = new Set();
+    results.forEach(data => {
+        if (!data || !Array.isArray(data.items)) return;
+        data.items.forEach(it => {
+            const code = (it.itemcode ?? it.itemCode ?? it.code ?? it.ma ?? '').toString?.() ?? '';
+            if (code && code.trim()) codes.add(code.trim());
+        });
+    });
+
+    return Array.from(codes).sort();
+};

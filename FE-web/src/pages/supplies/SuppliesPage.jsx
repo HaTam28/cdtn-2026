@@ -55,7 +55,13 @@ export default function SuppliesPage() {
         setError(null);
         try {
             const [data, batches] = await Promise.all([getAllItems(), getAllBatches()]);
-            setItems(data);
+            // normalize min/max stock fields from possible variants
+            const normalized = (data || []).map((it) => ({
+                ...it,
+                minStockLevel: Number(it.minStockLevel ?? it.minstocklevel ?? 50),
+                maxStockLevel: Number(it.maxStockLevel ?? it.maxstocklevel ?? 500),
+            }));
+            setItems(normalized);
             const stockMap = (batches || []).reduce((acc, batch) => {
                 const key = String(batch.itemId ?? "");
                 if (!key) return acc;
@@ -81,9 +87,10 @@ export default function SuppliesPage() {
             'itemtype',
             'unitof',
             'itemcatg',
-            'minstocklevel'
+            'minstocklevel',
+            'maxstocklevel'
         ];
-        const example = ['10110300', '', 'Bàn lè 10110300', 'Bàn lè 10110300', 'Vật tư hàng hóa', 'Vật tư hàng hóa', 'Cái', '', '50'];
+        const example = ['10110300', '', 'Bàn lè 10110300', 'Bàn lè 10110300', 'Vật tư hàng hóa', 'Vật tư hàng hóa', 'Cái', '', '50', '500'];
         const rows = [headers, example];
         const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -446,8 +453,8 @@ export default function SuppliesPage() {
                                     <td>{r.itemname}</td>
                                     <td>{r.unitof}</td>
                                     <td className="sp-td-num">{stockByItem[String(r.id)] || 0}</td>
-                                    <td className="sp-td-num">50</td>
-                                    <td className="sp-td-num">500</td>
+                                    <td className="sp-td-num">{Number(r.minStockLevel ?? r.minstocklevel ?? 50)}</td>
+                                    <td className="sp-td-num">{Number(r.maxStockLevel ?? r.maxstocklevel ?? 500)}</td>
                                     <td className="sp-td-desc">{r.description}</td>
                                     <td className="sp-td-action" onClick={(e) => e.stopPropagation()}>
                                         <button className="sp-edit-btn" title="Chỉnh sửa" onClick={() => navigate(`/supplies/${r.id}`)}>

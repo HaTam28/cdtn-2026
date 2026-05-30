@@ -28,21 +28,43 @@ export default function SuppliesDetailPage() {
     const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
     const isStaff = currentUser?.role === "STAFF" || currentUser?.role === "NV";
 
-    useEffect(() => {
+    const fetchItem = async () => {
         setLoading(true);
         setError(null);
-        Promise.all([getItemById(id), getAllBatches()])
-            .then(([data, batches]) => {
-                setForm({ ...EMPTY_FORM, ...data });
-                setOriginal({ ...EMPTY_FORM, ...data });
-                const total = (batches || []).reduce((sum, batch) => {
-                    if (String(batch.itemId) !== String(id)) return sum;
-                    return sum + Number(batch.quantityRemaining ?? 0);
-                }, 0);
-                setCurrentStock(total);
-            })
-            .catch(() => setError("Không thể tải thông tin vật tư."))
-            .finally(() => setLoading(false));
+        try {
+            const [data, batches] = await Promise.all([getItemById(id), getAllBatches()]);
+            // normalize backend field variants to the form's camelCase shape
+            const normalized = {
+                ...data,
+                itemcode: data?.itemcode ?? data?.itemCode ?? data?.code ?? "",
+                itemname: data?.itemname ?? data?.itemName ?? "",
+                invoicename: data?.invoicename ?? data?.invoiceName ?? "",
+                unitof: data?.unitof ?? data?.unitOf ?? "",
+                itemcatg: data?.itemcatg ?? "",
+                itemtype: data?.itemtype ?? "",
+                // prefer explicit numeric/string values for inputs
+                minStockLevel: data?.minStockLevel ?? data?.minstocklevel ?? "",
+                maxStockLevel: data?.maxStockLevel ?? data?.maxstocklevel ?? "",
+                description: data?.description ?? "",
+            };
+
+            setForm({ ...EMPTY_FORM, ...normalized });
+            setOriginal({ ...EMPTY_FORM, ...normalized });
+
+            const total = (batches || []).reduce((sum, batch) => {
+                if (String(batch.itemId) !== String(id)) return sum;
+                return sum + Number(batch.quantityRemaining ?? 0);
+            }, 0);
+            setCurrentStock(total);
+        } catch (e) {
+            setError("Không thể tải thông tin vật tư.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchItem();
     }, [id]);
 
     const handleChange = (field, value) => {
@@ -86,12 +108,13 @@ export default function SuppliesDetailPage() {
                 itemtype: form.itemtype,
                 modifiedBy: "user",
             };
-            if (form.minStockLevel !== undefined) payload.minStockLevel = Number(form.minStockLevel) || 0;
-            if (form.maxStockLevel !== undefined) payload.maxStockLevel = Number(form.maxStockLevel) || 0;
+            // Backend expects lowercase keys like `minstocklevel`/`maxstocklevel`.
+            if (form.minStockLevel !== undefined) payload.minstocklevel = form.minStockLevel === "" ? undefined : Number(form.minStockLevel);
+            if (form.maxStockLevel !== undefined) payload.maxstocklevel = form.maxStockLevel === "" ? undefined : Number(form.maxStockLevel);
 
-            const updated = await updateItem(id, payload);
-            setOriginal({ ...EMPTY_FORM, ...updated });
-            setForm({ ...EMPTY_FORM, ...updated });
+            await updateItem(id, payload);
+            // re-fetch fresh data from server to reflect any server-side normalization
+            await fetchItem();
             setIsEditing(false);
         } catch {
             setError("Lưu thất bại. Vui lòng thử lại.");

@@ -13,6 +13,8 @@ const EMPTY_FORM = {
     description: "",
     unitof: "Cái",
     itemtype: "Vật tư hàng hóa",
+    minStockLevel: "",
+    maxStockLevel: "",
 };
 
 export default function SuppliesCreatePage() {
@@ -44,6 +46,8 @@ export default function SuppliesCreatePage() {
             description: clone.description || "",
             unitof: clone.unitof || "Cái",
             itemtype: clone.itemtype || "Vật tư hàng hóa",
+            minStockLevel: clone.minStockLevel ?? clone.minstocklevel ?? "",
+            maxStockLevel: clone.maxStockLevel ?? clone.maxstocklevel ?? "",
         });
         setPrefilledFromClone(true);
     }, [location.state, prefilledFromClone]);
@@ -67,6 +71,8 @@ export default function SuppliesCreatePage() {
         if (!form.itemname.trim()) errs.itemname = "Bắt buộc";
         if (!form.unitof.trim()) errs.unitof = "Bắt buộc";
         if (!form.itemtype.trim()) errs.itemtype = "Bắt buộc";
+        if (form.minStockLevel !== "" && Number.isNaN(Number(form.minStockLevel))) errs.minStockLevel = "Phải là số";
+        if (form.maxStockLevel !== "" && Number.isNaN(Number(form.maxStockLevel))) errs.maxStockLevel = "Phải là số";
         return errs;
     };
 
@@ -85,6 +91,9 @@ export default function SuppliesCreatePage() {
                 description: form.description,
                 unitof: form.unitof,
                 itemtype: form.itemtype,
+                // backend expects lowercase keys
+                minstocklevel: form.minStockLevel === "" ? undefined : Number(form.minStockLevel),
+                maxstocklevel: form.maxStockLevel === "" ? undefined : Number(form.maxStockLevel),
                 modifiedBy: "user",
             });
             setSuccess(true);
@@ -233,6 +242,28 @@ export default function SuppliesCreatePage() {
                                         />
                                         {fieldErrors.itemtype && <span className="sd-error-msg">{fieldErrors.itemtype}</span>}
                                     </div>
+                                </div>
+                            </div>
+                            <div className="sd-field sd-field-row">
+                                <div className="sd-field-half">
+                                    <label className="sd-label">Tồn tối thiểu</label>
+                                    <input
+                                        className={`sd-input${fieldErrors.minStockLevel ? " sd-input-error" : ""}`}
+                                        placeholder="Số nguyên, để trống dùng mặc định"
+                                        value={form.minStockLevel}
+                                        onChange={(e) => handleChange("minStockLevel", e.target.value)}
+                                    />
+                                    {fieldErrors.minStockLevel && <span className="sd-error-msg">{fieldErrors.minStockLevel}</span>}
+                                </div>
+                                <div className="sd-field-half">
+                                    <label className="sd-label">Tồn tối đa</label>
+                                    <input
+                                        className={`sd-input${fieldErrors.maxStockLevel ? " sd-input-error" : ""}`}
+                                        placeholder="Số nguyên, để trống dùng mặc định"
+                                        value={form.maxStockLevel}
+                                        onChange={(e) => handleChange("maxStockLevel", e.target.value)}
+                                    />
+                                    {fieldErrors.maxStockLevel && <span className="sd-error-msg">{fieldErrors.maxStockLevel}</span>}
                                 </div>
                             </div>
                         </div>

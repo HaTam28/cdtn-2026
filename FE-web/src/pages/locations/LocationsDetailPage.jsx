@@ -5,6 +5,13 @@ import { getLocationById, updateLocation, getItemsAtLocation } from "../../api/l
 import { getBatchesByLocation } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
 
+function formatNumber(value) {
+    if (value === null || value === undefined || value === "") return "0";
+    const num = Number(value);
+    if (Number.isNaN(num)) return "0";
+    return num.toLocaleString("vi-VN");
+}
+
 const EMPTY_FORM = {
     locationcode: "", locationname: "", rackno: "", floorno: "",
     columnno: "", capacity: "", description: "", isActive: true,
@@ -51,21 +58,29 @@ export default function LocationsDetailPage() {
         getBatchesByLocation(id)
             .then((list) => {
                 if (Array.isArray(list) && list.length > 0) {
-                    // list items: { batchId, batchCode, itemId, itemcode, itemname, quantity }
+                    // normalize batch entries to a consistent item shape
                     const items = list.map((b) => ({
-                        itemId: b.itemId,
-                        itemcode: b.itemcode,
-                        itemname: b.itemname,
-                        unitof: b.unitOf || b.unitof || "",
-                        quantity: b.quantity,
-                        batchCodes: [b.batchCode]
+                        itemId: b.itemId ?? b.itemid ?? "",
+                        itemcode: b.itemcode ?? b.itemCode ?? b.code ?? "",
+                        itemname: b.itemname ?? b.name ?? "",
+                        unitof: b.unitOf ?? b.unitof ?? b.unit ?? "",
+                        quantity: b.quantity ?? b.qty ?? 0,
+                        batchCodes: b.batchCode ? [b.batchCode] : (b.batchCodes || [])
                     }));
                     setStoredItems(items);
                     return;
                 }
                 // fallback to existing location items endpoint
                 return getItemsAtLocation(id).then((data) => {
-                    const items = Array.isArray(data) ? data : (data?.items || []);
+                    const raw = Array.isArray(data) ? data : (data?.items || []);
+                    const items = raw.map((it) => ({
+                        itemId: it.itemId ?? it.itemid ?? it.id ?? "",
+                        itemcode: it.itemcode ?? it.itemCode ?? it.code ?? "",
+                        itemname: it.itemname ?? it.name ?? "",
+                        unitof: it.unitOf ?? it.unitof ?? it.unit ?? "",
+                        quantity: it.quantity ?? it.qty ?? 0,
+                        batchCodes: it.batchCodes ?? (it.batchCode ? [it.batchCode] : [])
+                    }));
                     setStoredItems(items);
                 });
             })
@@ -298,9 +313,18 @@ export default function LocationsDetailPage() {
                                                     <td>{row.itemname}</td>
                                                     <td>{row.batchCode || "—"}</td>
                                                     <td>{row.unitof}</td>
-                                                    <td style={{ textAlign: "right" }}>{row.quantity}</td>
+                                                    <td style={{ textAlign: "right" }}>{formatNumber(row.quantity)}</td>
                                                 </tr>
                                             ))}
+                                            {/* total row */}
+                                            {(!itemsLoading && !itemsError && itemRows.length > 0) && (
+                                                <tr style={{ fontWeight: 700, borderTop: "2px solid #eee" }}>
+                                                    <td colSpan={5} style={{ textAlign: "right" }}>Tổng số lượng</td>
+                                                    <td style={{ textAlign: "right" }}>
+                                                        {formatNumber(itemRows.reduce((s, r) => s + (Number(r.quantity) || 0), 0))}
+                                                    </td>
+                                                </tr>
+                                            )}
                                         </tbody>
                                     </table>
                                 </div>
