@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import "../../styles/shared.css";
 import { getLocationById, updateLocation, getItemsAtLocation } from "../../api/locationApi";
+import { getBatchesByLocation } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
 
 const EMPTY_FORM = {
@@ -46,10 +47,27 @@ export default function LocationsDetailPage() {
             .finally(() => setLoading(false));
         setItemsLoading(true);
         setItemsError(null);
-        getItemsAtLocation(id)
-            .then((data) => {
-                const items = Array.isArray(data) ? data : (data?.items || []);
-                setStoredItems(items);
+        // Prefer batches-by-location endpoint when available (returns batch entries for this location)
+        getBatchesByLocation(id)
+            .then((list) => {
+                if (Array.isArray(list) && list.length > 0) {
+                    // list items: { batchId, batchCode, itemId, itemcode, itemname, quantity }
+                    const items = list.map((b) => ({
+                        itemId: b.itemId,
+                        itemcode: b.itemcode,
+                        itemname: b.itemname,
+                        unitof: b.unitOf || b.unitof || "",
+                        quantity: b.quantity,
+                        batchCodes: [b.batchCode]
+                    }));
+                    setStoredItems(items);
+                    return;
+                }
+                // fallback to existing location items endpoint
+                return getItemsAtLocation(id).then((data) => {
+                    const items = Array.isArray(data) ? data : (data?.items || []);
+                    setStoredItems(items);
+                });
             })
             .catch(() => {
                 setItemsError("Không thể tải danh sách vật tư.");

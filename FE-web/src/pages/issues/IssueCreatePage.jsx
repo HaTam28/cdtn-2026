@@ -459,7 +459,26 @@ export default function IssueCreatePage() {
         setLocModal({ open: true, rowIdx: idx, locations: [], loading: true });
         try {
             const data = await getAvailableLocations(row.itemId);
-            setLocModal((prev) => ({ ...prev, locations: data, loading: false }));
+            // Subtract allocations selected in other rows for the same item so available stock reflects current form state
+            const adjusted = (data || []).map((loc) => {
+                // allocations in other rows for this same item and this location
+                const alreadyAllocated = rows.reduce((sum, r, i) => {
+                    if (i === idx) return sum; // ignore current row
+                    if (String(r.itemId) !== String(row.itemId)) return sum; // only same item
+                    const alloc = (r.selectedLocations || []).reduce((s, l) => s + (String(l.locationId) === String(loc.locationId) ? Number(l.allocQty || 0) : 0), 0);
+                    return sum + alloc;
+                }, 0);
+                // adjust the per-item quantity in this location
+                const items = (loc.items || []).map((it) => {
+                    if (String(it.itemId) === String(row.itemId)) {
+                        const q = Number(it.quantity || 0) - alreadyAllocated;
+                        return { ...it, quantity: Math.max(0, q) };
+                    }
+                    return it;
+                });
+                return { ...loc, items };
+            });
+            setLocModal((prev) => ({ ...prev, locations: adjusted, loading: false }));
         } catch {
             setLocModal((prev) => ({ ...prev, locations: [], loading: false }));
             showToast("error", "Không thể tải danh sách vị trí có hàng.");

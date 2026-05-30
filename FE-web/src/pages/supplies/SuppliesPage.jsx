@@ -47,6 +47,8 @@ export default function SuppliesPage() {
     const [previewResult, setPreviewResult] = useState(null);
     const [confirming, setConfirming] = useState(false);
     const navigate = useNavigate();
+    const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const isStaff = currentUser?.role === "STAFF" || currentUser?.role === "NV";
 
     const fetchItems = useCallback(async () => {
         setLoading(true);
@@ -133,6 +135,7 @@ export default function SuppliesPage() {
         });
 
     const handleClone = () => {
+        if (isStaff) { notify('Không có quyền thêm mới', { type: 'warning' }); return; }
         if (selected.size !== 1) {
             notify(COPY_SELECT_ONE, { type: 'warning' });
             return;
@@ -252,18 +255,22 @@ export default function SuppliesPage() {
                         />
                     </div>
                     <div className="sp-toolbar-spacer" />
-                    <button className="sp-btn-primary" onClick={() => navigate("/supplies/create")}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                        </svg>
-                        Thêm mới
-                    </button>
-                    <button className="sp-btn-outline" onClick={handleClone}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                        </svg>
-                        Thêm bản sao mới
-                    </button>
+                    {!isStaff && (
+                        <button className="sp-btn-primary" onClick={() => navigate('/supplies/create')}>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                            </svg>
+                            Thêm mới
+                        </button>
+                    )}
+                    {!isStaff && (
+                        <button className="sp-btn-outline" onClick={handleClone} title="Thêm bản sao mới">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                            </svg>
+                            Thêm bản sao mới
+                        </button>
+                    )}
                     <button
                         className="sp-btn-outline"
                         onClick={handleExportPdf}
@@ -407,6 +414,7 @@ export default function SuppliesPage() {
                                 </th>
                                 <th className="sp-th-sticky">Mã VT <SortIcon /></th>
                                 <th>Tên vật tư / hàng hóa <SortIcon /></th>
+                                <th>Đơn vị tính <SortIcon /></th>
                                 <th>Tồn hiện tại <SortIcon /></th>
                                 <th>Tồn tối thiểu <SortIcon /></th>
                                 <th>Tồn tối đa <SortIcon /></th>
@@ -416,11 +424,11 @@ export default function SuppliesPage() {
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr><td colSpan={8} className="sp-status-row">Đang tải...</td></tr>
+                                <tr><td colSpan={9} className="sp-status-row">Đang tải...</td></tr>
                             ) : error ? (
-                                <tr><td colSpan={8} className="sp-status-row sp-status-error">{error}</td></tr>
+                                <tr><td colSpan={9} className="sp-status-row sp-status-error">{error}</td></tr>
                             ) : rows.length === 0 ? (
-                                <tr><td colSpan={8} className="sp-status-row">Không có dữ liệu</td></tr>
+                                <tr><td colSpan={9} className="sp-status-row">Không có dữ liệu</td></tr>
                             ) : rows.map((r) => (
                                 <tr
                                     key={r.id}
@@ -436,6 +444,7 @@ export default function SuppliesPage() {
                                     </td>
                                     <td className="sp-td-id sp-td-sticky">{r.itemcode}</td>
                                     <td>{r.itemname}</td>
+                                    <td>{r.unitof}</td>
                                     <td className="sp-td-num">{stockByItem[String(r.id)] || 0}</td>
                                     <td className="sp-td-num">50</td>
                                     <td className="sp-td-num">500</td>
@@ -482,6 +491,6 @@ export default function SuppliesPage() {
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

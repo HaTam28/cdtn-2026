@@ -5,6 +5,7 @@ import "../receipts/receipts.css";
 import "./audits.css";
 import { getAssignedAudits, getAuditById, updateAssignedAudit, submitAudit } from "../../api/auditApi";
 import { getAllLocations, getItemsAtLocation } from "../../api/locationApi";
+import { getBatchesByLocation } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
 import notify from "../../utils/notify";
 
@@ -262,9 +263,26 @@ export default function AuditTasksPage() {
         setLocModal({ open: true, rowIdx: idx, locations: [], loading: true });
         try {
             const locs = await getAllLocations();
-            const itemsByLoc = await Promise.all(locs.map((loc) => getItemsAtLocation(loc.id)));
+            // Try batches-by-location endpoint first to get batch-level quantities
+            // For each location, try batches endpoint, fall back to items endpoint
+            const batchesOrItems = await Promise.all(locs.map((loc) =>
+                getBatchesByLocation(loc.id).catch(() => getItemsAtLocation(loc.id).catch(() => null))
+            ));
             const data = locs.map((loc, i) => {
-                const items = itemsByLoc[i]?.items || [];
+                const entry = batchesOrItems[i];
+                // If entry is an array, treat as batches list
+                if (Array.isArray(entry) && entry.length > 0 && entry[0].hasOwnProperty('batchCode')) {
+                    const matched = entry.find((b) => String(b.itemId) === String(row.itemId));
+                    return {
+                        locationId: loc.id,
+                        locationcode: loc.locationcode,
+                        locationname: loc.locationname,
+                        systemQty: matched ? Number(matched.quantity || 0) : 0,
+                        batchCodes: matched ? [matched.batchCode] : [],
+                    };
+                }
+                // else if entry is object (from getItemsAtLocation) or null
+                const items = entry ? (Array.isArray(entry) ? entry : (entry.items || [])) : [];
                 const matched = items.find((it) => String(it.itemId) === String(row.itemId));
                 return {
                     locationId: loc.id,

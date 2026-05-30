@@ -68,7 +68,8 @@ export default function LocationsPage() {
     const start = (page - 1) * rowsPerPage;
     const rows = filtered.slice(start, start + rowsPerPage);
 
-    // Fetch items summary for visible rows
+    // Fetch items summary for visible rows (depend on stable rowIds string to avoid running on each render)
+    const rowIds = rows.map((r) => r.id).join(",");
     useEffect(() => {
         let cancelled = false;
         const ids = rows.map((r) => r.id);
@@ -95,7 +96,7 @@ export default function LocationsPage() {
         };
         fetchFor();
         return () => { cancelled = true; };
-    }, [rows]);
+    }, [rowIds]);
 
     const allIds = rows.map((r) => r.id);
     const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
