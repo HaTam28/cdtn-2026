@@ -49,6 +49,12 @@ export default function IssueDetailPage() {
     const user = JSON.parse(localStorage.getItem("user") || "{}");
     const canConfirmCancel = user?.role === "ADMIN" || user?.role === "MANAGER";
 
+    const DOC_TYPE_LABELS = {
+        NORMAL: "Thông thường",
+        ADJUSTMENT: "Điều chỉnh",
+        RETURN: "Hàng trả về",
+    };
+
     const [issue, setIssue] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -302,7 +308,7 @@ export default function IssueDetailPage() {
                                 <label className="rc-form-label" style={{ marginLeft: 16 }}>Số</label>
                                 <input className="rc-form-input rc-input-auto" value={issue.docno || ""} readOnly />
                                 <label className="rc-form-label" style={{ marginLeft: 16 }}>Loại</label>
-                                <input className="rc-form-input rc-input-auto" value={issue.docType || issue.doctype || "Thông thường"} readOnly />
+                                <input className="rc-form-input rc-input-auto" value={DOC_TYPE_LABELS[(String(issue.docType || issue.doctype || "NORMAL")).toUpperCase()] || (issue.docType || issue.doctype || "NORMAL")} readOnly />
                                 {/* Status pill – static badge, no dropdown */}
                                 <span className={`${STATUS_CLASS[issue.docstatus] || "rc-status-pill"} rc-status-inline`} style={{ marginLeft: "auto", cursor: "default", pointerEvents: "none" }}>
                                     {STATUS_LABELS[issue.docstatus] || issue.docstatus}

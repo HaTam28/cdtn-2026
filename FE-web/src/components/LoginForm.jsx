@@ -51,7 +51,16 @@ export default function LoginForm() {
                 setError(res.message || "Đăng nhập thất bại");
             }
         } catch (err) {
-            setError("Lỗi kết nối hoặc sai tài khoản/mật khẩu");
+            // If server responded with 401 (unauthorized / account not found),
+            // show the specific message requested by the user.
+            if (err && err.response && err.response.status === 401) {
+                setError("Tài khoản hoặc email không đúng");
+            } else if (err && err.response && err.response.data && err.response.data.message) {
+                // Prefer server-provided message when available
+                setError(err.response.data.message);
+            } else {
+                setError("Lỗi kết nối hoặc sai tài khoản/mật khẩu");
+            }
         }
         setLoading(false);
     };

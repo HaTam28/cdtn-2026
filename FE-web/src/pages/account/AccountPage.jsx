@@ -13,6 +13,16 @@ const EMPTY_FORM = {
     firstworkingdate: "",
 };
 
+const DEPARTMENTS = [
+    "Kho",
+    "Kế toán",
+    "Bán hàng",
+    "Hành chính",
+    "IT",
+    "Sản xuất",
+    "Khác",
+];
+
 function IconCheck() {
     return (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2DBE60" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -32,6 +42,8 @@ export default function AccountPage() {
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(false);
     const [fieldErrors, setFieldErrors] = useState({});
+    const [editing, setEditing] = useState(false);
+    const [originalForm, setOriginalForm] = useState(null);
 
     useEffect(() => {
         const stored = localStorage.getItem("user");
@@ -102,6 +114,9 @@ export default function AccountPage() {
             });
             const newForm = { ...EMPTY_FORM, ...updated };
             setForm(newForm);
+            // exit editing mode after successful save
+            setEditing(false);
+            setOriginalForm(null);
             const stored = localStorage.getItem("user");
             if (stored) {
                 try {
@@ -116,6 +131,18 @@ export default function AccountPage() {
         } finally {
             setSaving(false);
         }
+    };
+
+    const startEdit = () => {
+        setOriginalForm({ ...form });
+        setEditing(true);
+    };
+
+    const cancelEdit = () => {
+        if (originalForm) setForm({ ...originalForm });
+        setFieldErrors({});
+        setEditing(false);
+        setOriginalForm(null);
     };
 
     return (
@@ -152,36 +179,13 @@ export default function AccountPage() {
                             </div>
 
                             <div className="sd-form">
-                                {/* Row 1: Mã nhân viên (full width, readonly) */}
-                                <div className="sd-field">
-                                    <label className="sd-label">Mã nhân viên <span className="sd-required">*</span></label>
-                                    <input
-                                        className="sd-input"
-                                        value={form.usercode}
-                                        disabled
-                                    />
-                                </div>
-
-                                {/* Row 2: Họ và tên (full width) */}
-                                <div className="sd-field">
-                                    <label className="sd-label">Họ và tên <span className="sd-required">*</span></label>
-                                    <div className="sd-input-wrap">
-                                        <input
-                                            className={`sd-input${fieldErrors.fullname ? " sd-input-error" : ""}`}
-                                            value={form.fullname}
-                                            onChange={(e) => set("fullname", e.target.value)}
-                                        />
-                                        {fieldErrors.fullname && <span className="sd-error-msg">{fieldErrors.fullname}</span>}
-                                    </div>
-                                </div>
-
-                                {/* Row 3: Tên đăng nhập | Email */}
+                                {/* Row 1: Mã nhân viên | Email */}
                                 <div className="sd-field sd-field-row">
                                     <div className="sd-field-half">
-                                        <label className="sd-label">Tên đăng nhập <span className="sd-required">*</span></label>
+                                        <label className="sd-label">Mã nhân viên <span className="sd-required">*</span></label>
                                         <input
                                             className="sd-input"
-                                            value={form.username}
+                                            value={form.usercode}
                                             disabled
                                         />
                                     </div>
@@ -192,13 +196,39 @@ export default function AccountPage() {
                                                 className={`sd-input${fieldErrors.email ? " sd-input-error" : ""}`}
                                                 value={form.email}
                                                 onChange={(e) => set("email", e.target.value)}
+                                                disabled={!editing}
                                             />
                                             {fieldErrors.email && <span className="sd-error-msg">{fieldErrors.email}</span>}
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Row 4: Địa chỉ | Bộ phận */}
+                                {/* Row 2: Họ và tên | Bộ phận (dropdown) */}
+                                <div className="sd-field sd-field-row">
+                                    <div className="sd-field-half">
+                                        <label className="sd-label">Họ và tên <span className="sd-required">*</span></label>
+                                        <div className="sd-input-wrap">
+                                            <input
+                                                className={`sd-input${fieldErrors.fullname ? " sd-input-error" : ""}`}
+                                                value={form.fullname}
+                                                onChange={(e) => set("fullname", e.target.value)}
+                                                disabled={!editing}
+                                            />
+                                            {fieldErrors.fullname && <span className="sd-error-msg">{fieldErrors.fullname}</span>}
+                                        </div>
+                                    </div>
+                                    <div className="sd-field-half">
+                                        <label className="sd-label">Bộ phận <span className="sd-required">*</span></label>
+                                        <select className="sd-input sd-select" value={form.department} onChange={(e) => set("department", e.target.value)} disabled={!editing}>
+                                            <option value="">-- Chọn bộ phận --</option>
+                                            {DEPARTMENTS.map((d) => (
+                                                <option key={d} value={d}>{d}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Row 3: Địa chỉ | Tên đăng nhập */}
                                 <div className="sd-field sd-field-row">
                                     <div className="sd-field-half">
                                         <label className="sd-label">Địa chỉ</label>
@@ -206,14 +236,15 @@ export default function AccountPage() {
                                             className="sd-input"
                                             value={form.address}
                                             onChange={(e) => set("address", e.target.value)}
+                                            disabled={!editing}
                                         />
                                     </div>
                                     <div className="sd-field-half">
-                                        <label className="sd-label">Bộ phận <span className="sd-required">*</span></label>
+                                        <label className="sd-label">Tên đăng nhập <span className="sd-required">*</span></label>
                                         <input
                                             className="sd-input"
-                                            value={form.department}
-                                            onChange={(e) => set("department", e.target.value)}
+                                            value={form.username}
+                                            disabled
                                         />
                                     </div>
                                 </div>
@@ -228,7 +259,7 @@ export default function AccountPage() {
                             </div>
 
                             <div className="sd-form">
-                                {/* Row 1: Ngày sinh (left half) */}
+                                {/* Row 1: Ngày sinh | Giới tính */}
                                 <div className="sd-field sd-field-row">
                                     <div className="sd-field-half">
                                         <label className="sd-label">Ngày sinh</label>
@@ -236,19 +267,16 @@ export default function AccountPage() {
                                             value={form.birthdate}
                                             onChange={(v) => set("birthdate", v)}
                                             placeholder="dd/mm/yyyy"
+                                            disabled={!editing}
                                         />
                                     </div>
-                                    <div className="sd-field-half" />
-                                </div>
-
-                                {/* Row 2: Giới tính (left half) */}
-                                <div className="sd-field sd-field-row">
                                     <div className="sd-field-half">
                                         <label className="sd-label">Giới tính</label>
                                         <select
                                             className="sd-input sd-select"
                                             value={form.gender}
                                             onChange={(e) => set("gender", e.target.value)}
+                                            disabled={!editing}
                                         >
                                             <option value="">-- Chọn --</option>
                                             <option value="Nam">Nam</option>
@@ -256,27 +284,28 @@ export default function AccountPage() {
                                             <option value="Khác">Khác</option>
                                         </select>
                                     </div>
-                                    <div className="sd-field-half" />
                                 </div>
 
-                                {/* Row 3: Tài khoản NH (full width) */}
-                                <div className="sd-field">
-                                    <label className="sd-label">Tài khoản NH</label>
-                                    <input
-                                        className="sd-input"
-                                        value={form.bankaccount}
-                                        onChange={(e) => set("bankaccount", e.target.value)}
-                                    />
-                                </div>
-
-                                {/* Row 4: Tên ngân hàng (full width) */}
-                                <div className="sd-field">
-                                    <label className="sd-label">Tên ngân hàng</label>
-                                    <input
-                                        className="sd-input"
-                                        value={form.bankname}
-                                        onChange={(e) => set("bankname", e.target.value)}
-                                    />
+                                {/* Row 2: Tài khoản NH | Tên ngân hàng */}
+                                <div className="sd-field sd-field-row">
+                                    <div className="sd-field-half">
+                                        <label className="sd-label">Tài khoản NH</label>
+                                        <input
+                                            className="sd-input"
+                                            value={form.bankaccount}
+                                            onChange={(e) => set("bankaccount", e.target.value)}
+                                            disabled={!editing}
+                                        />
+                                    </div>
+                                    <div className="sd-field-half">
+                                        <label className="sd-label">Tên ngân hàng</label>
+                                        <input
+                                            className="sd-input"
+                                            value={form.bankname}
+                                            onChange={(e) => set("bankname", e.target.value)}
+                                            disabled={!editing}
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -284,9 +313,16 @@ export default function AccountPage() {
                         {/* Footer buttons */}
                         <div className="sd-footer-actions">
                             <button className="sp-btn-outline" onClick={() => navigate(-1)}>Quay lại</button>
-                            <button className="sp-btn-primary" onClick={handleSave} disabled={saving}>
-                                {saving ? "Đang lưu..." : "Cập nhật"}
-                            </button>
+                            {!editing ? (
+                                <button className="sp-btn-primary" onClick={startEdit}>Sửa</button>
+                            ) : (
+                                <>
+                                    <button className="sp-btn-outline" onClick={cancelEdit} disabled={saving}>Hủy</button>
+                                    <button className="sp-btn-primary" onClick={handleSave} disabled={saving}>
+                                        {saving ? "Đang lưu..." : "Cập nhật"}
+                                    </button>
+                                </>
+                            )}
                         </div>
                     </div>
                 )}

@@ -47,13 +47,51 @@ export default function LocationsCreatePage() {
 
     const set = (field, value) => {
         setForm((prev) => ({ ...prev, [field]: value }));
-        if (fieldErrors[field]) setFieldErrors((prev) => { const n = { ...prev }; delete n[field]; return n; });
+
+        // Live-validate specific fields as user types
+        const codeRe = /^[A-Za-z0-9\s-]+$/; // allow letters, numbers, spaces and hyphen
+        setFieldErrors((prev) => {
+            const n = { ...prev };
+            // clear previous error for this field by default
+            delete n[field];
+
+            if (field === "locationcode") {
+                const v = value || "";
+                if (!v.trim()) {
+                    n.locationcode = "Bắt buộc";
+                } else if (v.length > 20) {
+                    n.locationcode = "Tối đa 20 ký tự";
+                } else if (!codeRe.test(v)) {
+                    n.locationcode = "Dữ liệu không hợp lệ";
+                }
+            }
+
+            if (field === "capacity") {
+                // allow empty, otherwise must be >= 0
+                if (value !== null && value !== undefined && String(value).trim() !== "") {
+                    const num = Number(value);
+                    if (Number.isNaN(num) || num < 0) n.capacity = "Dữ liệu không hợp lệ";
+                }
+            }
+
+            return n;
+        });
     };
 
     const validate = () => {
         const errs = {};
+        const codeRe = /^[A-Za-z0-9\s-]+$/;
         if (!form.locationcode?.trim()) errs.locationcode = "Bắt buộc";
+        else if (form.locationcode.length > 20) errs.locationcode = "Tối đa 20 ký tự";
+        else if (!codeRe.test(form.locationcode)) errs.locationcode = "Dữ liệu không hợp lệ";
+
         if (!form.locationname?.trim()) errs.locationname = "Bắt buộc";
+
+        // capacity must be non-negative when provided
+        if (form.capacity !== '' && form.capacity !== null && form.capacity !== undefined) {
+            const num = Number(form.capacity);
+            if (Number.isNaN(num) || num < 0) errs.capacity = "Dữ liệu không hợp lệ";
+        }
         return errs;
     };
 
@@ -80,8 +118,20 @@ export default function LocationsCreatePage() {
             });
             setToast(true);
             setTimeout(() => navigate("/locations"), 1500);
-        } catch {
-            setError("Tạo mới thất bại. Vui lòng thử lại.");
+        } catch (err) {
+            const msg = err?.response?.data?.message || "";
+            const status = err?.response?.status;
+            // If server indicates duplicate code, show inline field error
+            if (status === 409 || status === 400) {
+                const lmsg = msg.toLowerCase();
+                if (/locationcode|location code|m[aã] v[ií] tr[ií]|mã vị trí|code/i.test(lmsg)) {
+                    setFieldErrors((prev) => ({ ...prev, locationcode: "Mã vị trí đã tồn tại" }));
+                } else {
+                    setError(msg || "Tạo mới thất bại. Vui lòng thử lại.");
+                }
+            } else {
+                setError(msg || "Tạo mới thất bại. Vui lòng thử lại.");
+            }
         } finally {
             setSaving(false);
         }
@@ -129,6 +179,7 @@ export default function LocationsCreatePage() {
                                             className={`sd-input${fieldErrors.locationcode ? " sd-input-error" : ""}`}
                                             value={form.locationcode}
                                             placeholder="A - 01 - 01"
+                                            maxLength={20}
                                             onChange={(e) => set("locationcode", e.target.value)}
                                         />
                                         {fieldErrors.locationcode && <span className="sd-error-msg">{fieldErrors.locationcode}</span>}
@@ -188,6 +239,7 @@ export default function LocationsCreatePage() {
                                         placeholder="50"
                                         onChange={(e) => set("capacity", e.target.value)}
                                     />
+                                    {fieldErrors.capacity && <span className="sd-error-msg">{fieldErrors.capacity}</span>}
                                 </div>
                             </div>
 

@@ -30,8 +30,9 @@ const STATUS_BADGE = {
     CANCELLED: "rc-badge au-badge-cancelled",
     REJECTED: "rc-badge au-badge-rejected",
 };
-const TABS = ["Tất cả", "Nháp", "Chờ kiểm kê", "Đang kiểm kê", "Chờ duyệt", "Chờ xử lý", "Đã xử lý", "Đã xác nhận", "Đã hủy", "Đã từ chối"];
-const STAFF_TABS = ["Tất cả", "Chờ kiểm kê", "Đang kiểm kê", "Chờ duyệt", "Chờ xử lý", "Đã xử lý", "Đã xác nhận", "Đã hủy", "Đã từ chối"];
+// Place CONFIRMED before PROCESSED; PROCESSED is the final completed status
+const TABS = ["Tất cả", "Nháp", "Chờ kiểm kê", "Đang kiểm kê", "Chờ duyệt", "Chờ xử lý", "Đã xác nhận", "Đã xử lý", "Đã hủy", "Đã từ chối"];
+const STAFF_TABS = ["Tất cả", "Chờ kiểm kê", "Đang kiểm kê", "Chờ duyệt", "Chờ xử lý", "Đã xác nhận", "Đã xử lý", "Đã hủy", "Đã từ chối"];
 const TAB_STATUS = { "Nháp": "DRAFT", "Chờ kiểm kê": "REQUESTED", "Đang kiểm kê": "IN_PROGRESS", "Chờ duyệt": "SUBMITTED", "Chờ xử lý": "PENDING_PROCESS", "Đã xử lý": "PROCESSED", "Đã xác nhận": "CONFIRMED", "Đã hủy": "CANCELLED", "Đã từ chối": "REJECTED" };
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
@@ -75,8 +76,8 @@ function IconDoc() {
 
 export default function AuditsPage() {
     const user = JSON.parse(localStorage.getItem("user") || "{}");
-    const isStaff = user?.role === "STAFF";
-    const isManager = user?.role && user.role !== "STAFF";
+    const isStaff = user?.role === "STAFF" || user?.role === "NV";
+    const isManager = user?.role && user.role !== "STAFF" && user.role !== "NV";
     const [audits, setAudits] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);

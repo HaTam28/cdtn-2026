@@ -158,7 +158,7 @@ export default function BatchCreatePage() {
             if (next.has(loc.locationId)) {
                 next.delete(loc.locationId);
             } else {
-                const cap = Number(loc.remainingCapacity) || 0;
+                const cap = loc.remainingCapacity == null ? Infinity : Number(loc.remainingCapacity || 0);
                 const autoFill = Math.max(1, Math.min(cap, remaining));
                 next.set(loc.locationId, autoFill);
             }
@@ -178,7 +178,7 @@ export default function BatchCreatePage() {
 
         const renderRow = (loc, extraCol) => {
             const isSel = selected.has(loc.locationId);
-            const cap = Number(loc.remainingCapacity) || 0;
+            const cap = loc.remainingCapacity == null ? Infinity : Number(loc.remainingCapacity || 0);
             const isDisabled = !isSel && (remaining === 0 || cap === 0);
             return (
                 <tr
@@ -191,7 +191,7 @@ export default function BatchCreatePage() {
                     {extraCol}
                     <td>{loc.locationcode}</td>
                     <td>{loc.capacity ?? "∞"}</td>
-                    <td>{cap}</td>
+                    <td>{cap === Infinity ? "∞" : cap}</td>
                 </tr>
             );
         };
@@ -213,7 +213,7 @@ export default function BatchCreatePage() {
                             <div style={{ background: "#d4edda", borderRadius: 4, height: 8, overflow: "hidden" }}>
                                 <div style={{ background: remaining === 0 ? "#2DBE60" : "#f9a825", width: `${pct}%`, height: "100%", borderRadius: 4, transition: "width 0.2s" }} />
                             </div>
-                            {remaining > 0 && qty > 0 && suggestions.length > 0 && !suggestions.some((s) => (Number(s.remainingCapacity) || 0) >= qty) && (
+                            {remaining > 0 && qty > 0 && suggestions.length > 0 && !suggestions.some((s) => (s.remainingCapacity == null ? Infinity : Number(s.remainingCapacity || 0)) >= qty) && (
                                 <div style={{ marginTop: 6, fontSize: "0.8rem", color: "#e65100", display: "flex", alignItems: "center", gap: 4 }}>
                                     <IconWarn /> Số lượng vượt sức chứa 1 vị trí — vui lòng chọn nhiều vị trí để phân bổ đủ.
                                 </div>

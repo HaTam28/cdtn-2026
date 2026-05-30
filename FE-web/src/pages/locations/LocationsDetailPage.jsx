@@ -2,7 +2,15 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import "../../styles/shared.css";
 import { getLocationById, updateLocation, getItemsAtLocation } from "../../api/locationApi";
+import { getBatchesByLocation } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
+
+function formatNumber(value) {
+    if (value === null || value === undefined || value === "") return "0";
+    const num = Number(value);
+    if (Number.isNaN(num)) return "0";
+    return num.toLocaleString("vi-VN");
+}
 
 const EMPTY_FORM = {
     locationcode: "", locationname: "", rackno: "", floorno: "",
@@ -46,10 +54,35 @@ export default function LocationsDetailPage() {
             .finally(() => setLoading(false));
         setItemsLoading(true);
         setItemsError(null);
-        getItemsAtLocation(id)
-            .then((data) => {
-                const items = Array.isArray(data) ? data : (data?.items || []);
-                setStoredItems(items);
+        // Prefer batches-by-location endpoint when available (returns batch entries for this location)
+        getBatchesByLocation(id)
+            .then((list) => {
+                if (Array.isArray(list) && list.length > 0) {
+                    // normalize batch entries to a consistent item shape
+                    const items = list.map((b) => ({
+                        itemId: b.itemId ?? b.itemid ?? "",
+                        itemcode: b.itemcode ?? b.itemCode ?? b.code ?? "",
+                        itemname: b.itemname ?? b.name ?? "",
+                        unitof: b.unitOf ?? b.unitof ?? b.unit ?? "",
+                        quantity: b.quantity ?? b.qty ?? 0,
+                        batchCodes: b.batchCode ? [b.batchCode] : (b.batchCodes || [])
+                    }));
+                    setStoredItems(items);
+                    return;
+                }
+                // fallback to existing location items endpoint
+                return getItemsAtLocation(id).then((data) => {
+                    const raw = Array.isArray(data) ? data : (data?.items || []);
+                    const items = raw.map((it) => ({
+                        itemId: it.itemId ?? it.itemid ?? it.id ?? "",
+                        itemcode: it.itemcode ?? it.itemCode ?? it.code ?? "",
+                        itemname: it.itemname ?? it.name ?? "",
+                        unitof: it.unitOf ?? it.unitof ?? it.unit ?? "",
+                        quantity: it.quantity ?? it.qty ?? 0,
+                        batchCodes: it.batchCodes ?? (it.batchCode ? [it.batchCode] : [])
+                    }));
+                    setStoredItems(items);
+                });
             })
             .catch(() => {
                 setItemsError("Không thể tải danh sách vật tư.");
@@ -280,9 +313,18 @@ export default function LocationsDetailPage() {
                                                     <td>{row.itemname}</td>
                                                     <td>{row.batchCode || "—"}</td>
                                                     <td>{row.unitof}</td>
-                                                    <td style={{ textAlign: "right" }}>{row.quantity}</td>
+                                                    <td style={{ textAlign: "right" }}>{formatNumber(row.quantity)}</td>
                                                 </tr>
                                             ))}
+                                            {/* total row */}
+                                            {(!itemsLoading && !itemsError && itemRows.length > 0) && (
+                                                <tr style={{ fontWeight: 700, borderTop: "2px solid #eee" }}>
+                                                    <td colSpan={5} style={{ textAlign: "right" }}>Tổng số lượng</td>
+                                                    <td style={{ textAlign: "right" }}>
+                                                        {formatNumber(itemRows.reduce((s, r) => s + (Number(r.quantity) || 0), 0))}
+                                                    </td>
+                                                </tr>
+                                            )}
                                         </tbody>
                                     </table>
                                 </div>

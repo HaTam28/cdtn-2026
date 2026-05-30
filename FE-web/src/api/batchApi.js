@@ -4,8 +4,9 @@ import axiosInstance from './axiosInstance';
 const API_URL = '/api/batches';
 
 // Lấy danh sách lô hàng
-export const getAllBatches = async () => {
-    const res = await axiosInstance.get(API_URL);
+export const getAllBatches = async (params = {}) => {
+    // params: optional query params (e.g., pagination, filters)
+    const res = await axiosInstance.get(API_URL, { params });
     return res.data.data || [];
 };
 
@@ -21,4 +22,10 @@ export const getBatchById = async (id) => {
 export const createBatch = async (body) => {
     const res = await axiosInstance.post(API_URL, body);
     return res.data.data;
+};
+
+// Lấy danh sách lô theo vị trí: /api/batches/by-location?locationId={id}
+export const getBatchesByLocation = async (locationId) => {
+    const res = await axiosInstance.get(`${API_URL}/by-location`, { params: { locationId } });
+    return res.data.data || [];
 };

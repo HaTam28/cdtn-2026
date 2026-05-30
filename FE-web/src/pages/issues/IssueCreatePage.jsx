@@ -459,7 +459,26 @@ export default function IssueCreatePage() {
         setLocModal({ open: true, rowIdx: idx, locations: [], loading: true });
         try {
             const data = await getAvailableLocations(row.itemId);
-            setLocModal((prev) => ({ ...prev, locations: data, loading: false }));
+            // Subtract allocations selected in other rows for the same item so available stock reflects current form state
+            const adjusted = (data || []).map((loc) => {
+                // allocations in other rows for this same item and this location
+                const alreadyAllocated = rows.reduce((sum, r, i) => {
+                    if (i === idx) return sum; // ignore current row
+                    if (String(r.itemId) !== String(row.itemId)) return sum; // only same item
+                    const alloc = (r.selectedLocations || []).reduce((s, l) => s + (String(l.locationId) === String(loc.locationId) ? Number(l.allocQty || 0) : 0), 0);
+                    return sum + alloc;
+                }, 0);
+                // adjust the per-item quantity in this location
+                const items = (loc.items || []).map((it) => {
+                    if (String(it.itemId) === String(row.itemId)) {
+                        const q = Number(it.quantity || 0) - alreadyAllocated;
+                        return { ...it, quantity: Math.max(0, q) };
+                    }
+                    return it;
+                });
+                return { ...loc, items };
+            });
+            setLocModal((prev) => ({ ...prev, locations: adjusted, loading: false }));
         } catch {
             setLocModal((prev) => ({ ...prev, locations: [], loading: false }));
             showToast("error", "Không thể tải danh sách vị trí có hàng.");
@@ -483,17 +502,26 @@ export default function IssueCreatePage() {
             const r = rows[i];
             if (!r.itemId) { showToast("error", `Dòng ${i + 1}: Vui lòng chọn mặt hàng.`); return; }
             if (!r.quantity || Number(r.quantity) <= 0) { showToast("error", `Dòng ${i + 1}: Số lượng không hợp lệ.`); return; }
-            if (r.selectedLocations.length === 0) { showToast("error", `Dòng ${i + 1}: Vui lòng chọn vị trí xuất hàng.`); return; }
+            // Note: location may be assigned later (DRAFT allowed). Do not require selectedLocations for draft creation.
         }
-        const details = rows.flatMap((r) =>
-            r.selectedLocations.map((loc) => ({
+        const details = rows.flatMap((r) => {
+            if (r.selectedLocations && r.selectedLocations.length > 0) {
+                return r.selectedLocations.map((loc) => ({
+                    itemId: Number(r.itemId),
+                    batchId: r.batchId ? Number(r.batchId) : undefined,
+                    locationId: Number(loc.locationId),
+                    quantity: Number(loc.allocQty),
+                    unitprice: Number(r.price) || 0,
+                }));
+            }
+            return [{
                 itemId: Number(r.itemId),
                 batchId: r.batchId ? Number(r.batchId) : undefined,
-                locationId: Number(loc.locationId),
-                quantity: Number(loc.allocQty),
+                locationId: null,
+                quantity: Number(r.quantity),
                 unitprice: Number(r.price) || 0,
-            }))
-        );
+            }];
+        });
         setSaving(true);
         const adjAuditId = searchParams.get("auditId");
         try {
@@ -502,7 +530,8 @@ export default function IssueCreatePage() {
                 docDate: form.date,
                 description: form.description.trim(),
                 customerId: Number(form.customerId),
-                docType: form.docType,
+                // backend expects `doctype` (lowercase). Create as DRAFT; use confirm endpoint to change status.
+                doctype: form.docType,
                 ...(adjAuditId ? { inventoryAuditId: Number(adjAuditId) } : {}),
                 details,
             });

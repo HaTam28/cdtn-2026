@@ -5,24 +5,44 @@ import "../receipts/receipts.css";
 import "./audits.css";
 import { getAssignedAudits, getAuditById, updateAssignedAudit, submitAudit } from "../../api/auditApi";
 import { getAllLocations, getItemsAtLocation } from "../../api/locationApi";
+import { getBatchesByLocation } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
 import notify from "../../utils/notify";
 
 const STATUS_LABELS = {
+    DRAFT: "Nháp",
     REQUESTED: "Chờ kiểm kê",
     IN_PROGRESS: "Đang kiểm kê",
     SUBMITTED: "Chờ duyệt",
+    PENDING_PROCESS: "Chờ xử lý",
+    PROCESSED: "Đã xử lý",
     CONFIRMED: "Đã xác nhận",
     CANCELLED: "Đã hủy",
+    REJECTED: "Đã từ chối",
 };
 const STATUS_BADGE = {
+    DRAFT: "rc-badge au-badge-draft",
     REQUESTED: "rc-badge au-badge-requested",
     IN_PROGRESS: "rc-badge au-badge-in-progress",
     SUBMITTED: "rc-badge au-badge-submitted",
+    PENDING_PROCESS: "rc-badge au-badge-pending-process",
+    PROCESSED: "rc-badge au-badge-processed",
     CONFIRMED: "rc-badge au-badge-confirmed",
     CANCELLED: "rc-badge au-badge-cancelled",
+    REJECTED: "rc-badge au-badge-rejected",
 };
-const STATUS_FILTERS = ["ALL", "REQUESTED", "IN_PROGRESS", "SUBMITTED", "CONFIRMED", "CANCELLED"];
+// Move CONFIRMED earlier and treat PROCESSED as final completed status
+const STATUS_FILTERS = [
+    "ALL",
+    "REQUESTED",
+    "IN_PROGRESS",
+    "SUBMITTED",
+    "CONFIRMED",
+    "PENDING_PROCESS",
+    "PROCESSED",
+    "CANCELLED",
+    "REJECTED",
+];
 
 function formatDate(str) {
     if (!str) return "";
@@ -167,7 +187,7 @@ export default function AuditTasksPage() {
     const navigate = useNavigate();
     const location = useLocation();
     const user = JSON.parse(localStorage.getItem("user") || "{}");
-    const isStaff = user?.role === "STAFF";
+    const isStaff = user?.role === "STAFF" || user?.role === "NV";
     const queryId = new URLSearchParams(location.search).get("id");
 
     const [audits, setAudits] = useState([]);
@@ -262,9 +282,26 @@ export default function AuditTasksPage() {
         setLocModal({ open: true, rowIdx: idx, locations: [], loading: true });
         try {
             const locs = await getAllLocations();
-            const itemsByLoc = await Promise.all(locs.map((loc) => getItemsAtLocation(loc.id)));
+            // Try batches-by-location endpoint first to get batch-level quantities
+            // For each location, try batches endpoint, fall back to items endpoint
+            const batchesOrItems = await Promise.all(locs.map((loc) =>
+                getBatchesByLocation(loc.id).catch(() => getItemsAtLocation(loc.id).catch(() => null))
+            ));
             const data = locs.map((loc, i) => {
-                const items = itemsByLoc[i]?.items || [];
+                const entry = batchesOrItems[i];
+                // If entry is an array, treat as batches list
+                if (Array.isArray(entry) && entry.length > 0 && entry[0].hasOwnProperty('batchCode')) {
+                    const matched = entry.find((b) => String(b.itemId) === String(row.itemId));
+                    return {
+                        locationId: loc.id,
+                        locationcode: loc.locationcode,
+                        locationname: loc.locationname,
+                        systemQty: matched ? Number(matched.quantity || 0) : 0,
+                        batchCodes: matched ? [matched.batchCode] : [],
+                    };
+                }
+                // else if entry is object (from getItemsAtLocation) or null
+                const items = entry ? (Array.isArray(entry) ? entry : (entry.items || [])) : [];
                 const matched = items.find((it) => String(it.itemId) === String(row.itemId));
                 return {
                     locationId: loc.id,
@@ -462,6 +499,11 @@ export default function AuditTasksPage() {
                                     {active.rejectReason && (
                                         <span> Lý do: <strong>{active.rejectReason}</strong></span>
                                     )}
+                                </div>
+                            )}
+                            {active.docstatus === "PROCESSED" && (
+                                <div style={{ background: "#e8f5e9", border: "1px solid #a5d6a7", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: "0.9rem", color: "#2e7d32" }}>
+                                    Phiếu đã được <strong>xử lý</strong> và hoàn tất (Đã xử lý).
                                 </div>
                             )}
 

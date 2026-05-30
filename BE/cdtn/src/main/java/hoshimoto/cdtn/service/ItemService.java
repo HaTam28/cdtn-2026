@@ -1,5 +1,6 @@
 package hoshimoto.cdtn.service;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -9,12 +10,16 @@ import org.springframework.stereotype.Service;
 
 import hoshimoto.cdtn.dto.request.ItemRequest;
 import hoshimoto.cdtn.entity.Item;
+import hoshimoto.cdtn.repository.InventoryBalanceRepository;
 import hoshimoto.cdtn.repository.ItemRepository;
 
 @Service
 public class ItemService {
     @Autowired
     private ItemRepository itemRepository;
+
+    @Autowired
+    private InventoryBalanceRepository inventoryBalanceRepository;
 
     public List<Item> getAllItems() {
         return itemRepository.findAll();
@@ -24,9 +29,18 @@ public class ItemService {
         return itemRepository.findById(id);
     }
 
+    public BigDecimal getCurrentStock(Long itemId) {
+        return inventoryBalanceRepository.findByItemId(itemId)
+                .map(balance -> balance.getQuantity() != null ? balance.getQuantity() : BigDecimal.ZERO)
+                .orElse(BigDecimal.ZERO);
+    }
+
     public Item createItem(ItemRequest request) {
         Item item = new Item();
         applyRequest(item, request);
+        // Set default stock levels when not provided on creation
+        if (item.getMinstocklevel() == null) item.setMinstocklevel(50);
+        if (item.getMaxstocklevel() == null) item.setMaxstocklevel(500);
         return itemRepository.save(item);
     }
 
@@ -56,6 +70,7 @@ public class ItemService {
         if (request.getUnitof() != null) item.setUnitof(request.getUnitof());
         if (request.getItemcatg() != null) item.setItemcatg(request.getItemcatg());
         if (request.getMinstocklevel() != null) item.setMinstocklevel(request.getMinstocklevel());
+        if (request.getMaxstocklevel() != null) item.setMaxstocklevel(request.getMaxstocklevel());
         if (request.getIsActive() != null) item.setIsActive(request.getIsActive());
         if (request.getModifiedBy() != null) item.setModifiedBy(request.getModifiedBy());
     }

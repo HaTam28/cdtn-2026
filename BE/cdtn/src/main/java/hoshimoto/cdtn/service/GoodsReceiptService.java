@@ -46,18 +46,30 @@ import hoshimoto.cdtn.repository.UserRepository;
 @Service
 public class GoodsReceiptService {
 
-    @Autowired private GoodsReceiptRepository receiptRepository;
-    @Autowired private GoodsReceiptDetailRepository detailRepository;
-    @Autowired private ItemRepository itemRepository;
-    @Autowired private LocationRepository locationRepository;
-    @Autowired private ItemLocationRepository itemLocationRepository;
-    @Autowired private InventoryBalanceRepository inventoryBalanceRepository;
-    @Autowired private CustomerRepository customerRepository;
-    @Autowired private BatchRepository batchRepository;
-    @Autowired private UserRepository userRepository;
-    @Autowired private InventoryAuditRepository inventoryAuditRepository;
-    @Autowired private NotificationService notificationService;
-    @Autowired private BatchService batchService;
+    @Autowired
+    private GoodsReceiptRepository receiptRepository;
+    @Autowired
+    private GoodsReceiptDetailRepository detailRepository;
+    @Autowired
+    private ItemRepository itemRepository;
+    @Autowired
+    private LocationRepository locationRepository;
+    @Autowired
+    private ItemLocationRepository itemLocationRepository;
+    @Autowired
+    private InventoryBalanceRepository inventoryBalanceRepository;
+    @Autowired
+    private CustomerRepository customerRepository;
+    @Autowired
+    private BatchRepository batchRepository;
+    @Autowired
+    private UserRepository userRepository;
+    @Autowired
+    private InventoryAuditRepository inventoryAuditRepository;
+    @Autowired
+    private NotificationService notificationService;
+    @Autowired
+    private BatchService batchService;
 
     // ───────────────────────── CRUD ─────────────────────────
 
@@ -104,7 +116,8 @@ public class GoodsReceiptService {
         receipt.setModifiedAt(LocalDateTime.now());
         receipt = receiptRepository.save(receipt);
 
-        // If any batches were created for existing details, delete them because details will be replaced.
+        // If any batches were created for existing details, delete them because details
+        // will be replaced.
         deleteBatchesForReceipt(id);
         detailRepository.deleteByGoodsReceiptId(id);
         saveDetails(receipt, request.getDetails());
@@ -126,16 +139,6 @@ public class GoodsReceiptService {
             throw new RuntimeException("Phiếu nhập không có dòng chi tiết nào");
         }
 
-        // Tính tổng số lượng theo từng mã hàng trong phiếu (để gán đúng vào batch)
-        java.util.Map<Long, BigDecimal> itemTotalQty = new java.util.HashMap<>();
-        java.util.Map<Long, GoodsReceiptDetail> itemFirstDetail = new java.util.LinkedHashMap<>();
-        for (GoodsReceiptDetail d : details) {
-            Long iid = d.getItem().getId();
-            itemTotalQty.merge(iid, d.getQuantity(), BigDecimal::add);
-            itemFirstDetail.putIfAbsent(iid, d);
-        }
-        java.util.Set<Long> batchProcessed = new java.util.HashSet<>();
-
         for (GoodsReceiptDetail detail : details) {
             if (detail.getLocation() == null) {
                 throw new RuntimeException(
@@ -153,7 +156,7 @@ public class GoodsReceiptService {
                 if (qty.compareTo(remaining) > 0) {
                     throw new RuntimeException(
                             "Vị trí '" + location.getLocationcode() + "' không đủ sức chứa. " +
-                            "Còn trống: " + remaining + ", cần nhập: " + qty);
+                                    "Còn trống: " + remaining + ", cần nhập: " + qty);
                 }
             }
 
@@ -187,32 +190,29 @@ public class GoodsReceiptService {
             balance.setLastUpdated(LocalDateTime.now());
             inventoryBalanceRepository.save(balance);
 
-            // Mỗi mã hàng trong phiếu chỉ có 1 batch; số lượng = tổng tất cả dòng cùng mã hàng
-            if (!batchProcessed.contains(item.getId())) {
-                batchProcessed.add(item.getId());
-                BigDecimal totalQty = itemTotalQty.get(item.getId());
-                java.util.Optional<Batch> existingBatch = batchRepository.findByItemIdAndReceiptId(item.getId(), receipt.getId());
-                if (existingBatch.isPresent()) {
-                    Batch batch = existingBatch.get();
-                    batch.setQuantity(totalQty);
-                    batch.setQuantityRemaining(totalQty);
-                    batchRepository.save(batch);
-                } else {
-                    LocalDate receiptDate = receipt.getDocDate() != null ? receipt.getDocDate() : LocalDate.now();
-                    String batchCode = batchService.generateBatchCode(item.getItemcode(), receiptDate);
-                    Batch newBatch = new Batch();
-                    newBatch.setItem(item);
-                    newBatch.setBatchCode(batchCode);
-                    String itemDisplayName = (item.getItemname() != null && !item.getItemname().isBlank())
-                            ? item.getItemname() : item.getItemcode();
-                    String datePart = receiptDate.format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
-                    newBatch.setNameBatch(String.format("Lo %s dot %s", itemDisplayName, datePart));
-                    newBatch.setQuantity(totalQty);
-                    newBatch.setQuantityRemaining(totalQty);
-                    newBatch.setUnitCost(detail.getUnitprice());
-                    newBatch.setReceiptDetail(itemFirstDetail.get(item.getId()));
-                    batchRepository.save(newBatch);
-                }
+            // Mỗi dòng chi tiết gắn với một vị trí sẽ tạo một batch riêng.
+            java.util.Optional<Batch> existingBatch = batchRepository.findByReceiptDetailId(detail.getId());
+            if (existingBatch.isPresent()) {
+                Batch batch = existingBatch.get();
+                batch.setQuantity(detail.getQuantity());
+                batch.setQuantityRemaining(detail.getQuantity());
+                batchRepository.save(batch);
+            } else {
+                LocalDate receiptDate = receipt.getDocDate() != null ? receipt.getDocDate() : LocalDate.now();
+                String batchCode = batchService.generateBatchCode(item.getItemcode(), receiptDate);
+                Batch newBatch = new Batch();
+                newBatch.setItem(item);
+                newBatch.setBatchCode(batchCode);
+                String itemDisplayName = (item.getItemname() != null && !item.getItemname().isBlank())
+                        ? item.getItemname()
+                        : item.getItemcode();
+                String datePart = receiptDate.format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
+                newBatch.setNameBatch(String.format("Lo %s dot %s", itemDisplayName, datePart));
+                newBatch.setQuantity(detail.getQuantity());
+                newBatch.setQuantityRemaining(detail.getQuantity());
+                newBatch.setUnitCost(detail.getUnitprice());
+                newBatch.setReceiptDetail(detail);
+                batchRepository.save(newBatch);
             }
         }
 
@@ -234,7 +234,8 @@ public class GoodsReceiptService {
     public GoodsReceiptResponse cancel(Long id) {
         GoodsReceipt receipt = findOrThrow(id);
         requireStatus(receipt, DocStatus.DRAFT, "Chỉ có thể hủy phiếu ở trạng thái DRAFT");
-        // Delete any batches created for this draft receipt — they should not exist if the receipt is not approved.
+        // Delete any batches created for this draft receipt — they should not exist if
+        // the receipt is not approved.
         deleteBatchesForReceipt(id);
         receipt.setDocstatus(DocStatus.CANCELLED);
         receipt.setModifiedAt(LocalDateTime.now());
@@ -246,13 +247,16 @@ public class GoodsReceiptService {
         return toResponse(receipt);
     }
 
-    // ───────────────────────── AVAILABLE LOCATIONS (NHẬP KHO) ─────────────────────────
+    // ───────────────────────── AVAILABLE LOCATIONS (NHẬP KHO)
+    // ─────────────────────────
 
     /**
      * Liệt kê TẤT CẢ vị trí còn chỗ trống (kể cả < quantity cần nhập).
      * Mỗi vị trí kèm danh sách sản phẩm đang chứa tại đó.
-     * FE dùng để hiển thị danh sách tất cả vị trí còn chỗ (không so sánh với quantity cần nhập).
-     * Ưu tiên vị trí đã chứa cùng itemId (EXISTING) → trống hoàn toàn (EMPTY) → chứa hàng khác (PARTIAL).
+     * FE dùng để hiển thị danh sách tất cả vị trí còn chỗ (không so sánh với
+     * quantity cần nhập).
+     * Ưu tiên vị trí đã chứa cùng itemId (EXISTING) → trống hoàn toàn (EMPTY) →
+     * chứa hàng khác (PARTIAL).
      */
     public List<LocationDetailResponse> listAvailableForReceipt(Long itemId) {
         List<Location> locations = locationRepository.findAllLocationsWithAnySpace();
@@ -271,29 +275,37 @@ public class GoodsReceiptService {
                     il.getItem().getItemname(),
                     il.getItem().getUnitof(),
                     il.getQuantity(),
-                    batchRepository.findConfirmedByItemId(il.getItem().getId())
-                    .stream()
-                    .map(b -> b.getBatchCode()).collect(Collectors.toList())
-            )).collect(Collectors.toList());
+                    batchRepository.findAllByReceiptDetailLocationIdAndItemId(loc.getId(), il.getItem().getId())
+                            .stream()
+                            .map(Batch::getBatchCode).collect(Collectors.toList())))
+                    .collect(Collectors.toList());
+
+                List<String> itemCodes = itemsAtLoc.stream()
+                    .map(il -> il.getItem().getItemcode())
+                    .distinct()
+                    .collect(Collectors.toList());
 
             // Phân loại vị trí
             boolean hasThisItem = itemsAtLoc.stream().anyMatch(il -> il.getItem().getId().equals(itemId));
             boolean isEmpty = itemsAtLoc.isEmpty();
             String type = hasThisItem ? "EXISTING" : (isEmpty ? "EMPTY" : "PARTIAL");
 
-            result.add(new LocationDetailResponse(
+                result.add(new LocationDetailResponse(
                     loc.getId(), loc.getLocationcode(), loc.getLocationname(),
                     loc.getRackno(), loc.getFloorno(), loc.getColumnno(),
-                    loc.getCapacity(), used, remaining, type, stockList));
+                    loc.getCapacity(), used, remaining, type, stockList, itemCodes));
         }
 
         // Sắp xếp: EXISTING trước → EMPTY → PARTIAL
         result.sort((a, b) -> {
             int order = typeOrder(a.getType()) - typeOrder(b.getType());
-            if (order != 0) return order;
+            if (order != 0)
+                return order;
             // Cùng loại: ưu tiên vị trí còn nhiều chỗ hơn (null = unlimited → để đầu)
-            if (a.getRemainingCapacity() == null) return -1;
-            if (b.getRemainingCapacity() == null) return 1;
+            if (a.getRemainingCapacity() == null)
+                return -1;
+            if (b.getRemainingCapacity() == null)
+                return 1;
             return b.getRemainingCapacity().compareTo(a.getRemainingCapacity());
         });
 
@@ -303,8 +315,8 @@ public class GoodsReceiptService {
     private int typeOrder(String type) {
         return switch (type) {
             case "EXISTING" -> 0;
-            case "EMPTY"    -> 1;
-            default         -> 2; // PARTIAL
+            case "EMPTY" -> 1;
+            default -> 2; // PARTIAL
         };
     }
 
@@ -348,8 +360,10 @@ public class GoodsReceiptService {
     // ───────────────────────── PRIVATE HELPERS ─────────────────────────
 
     /**
-     * Gợi ý phân bổ số lượng cần nhập qua nhiều vị trí (khi quantity > capacity một vị trí).
-     * Thứ tự ưu tiên: EXISTING → EMPTY. Tự động tính suggestedQuantity cho mỗi vị trí.
+     * Gợi ý phân bổ số lượng cần nhập qua nhiều vị trí (khi quantity > capacity một
+     * vị trí).
+     * Thứ tự ưu tiên: EXISTING → EMPTY. Tự động tính suggestedQuantity cho mỗi vị
+     * trí.
      */
     public List<LocationSuggestionResponse> suggestSplit(Long itemId, BigDecimal quantity) {
         List<LocationSuggestionResponse> all = suggestLocations(itemId, quantity);
@@ -357,10 +371,12 @@ public class GoodsReceiptService {
         BigDecimal remaining = quantity;
 
         for (LocationSuggestionResponse loc : all) {
-            if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
+            if (remaining.compareTo(BigDecimal.ZERO) <= 0)
+                break;
             // null availableSpace = unlimited capacity → có thể nhận toàn bộ số còn lại
             BigDecimal space = loc.getAvailableSpace() != null ? loc.getAvailableSpace() : remaining;
-            if (space.compareTo(BigDecimal.ZERO) <= 0) continue;
+            if (space.compareTo(BigDecimal.ZERO) <= 0)
+                continue;
             BigDecimal take = remaining.min(space);
             loc.setSuggestedQuantity(take);
             result.add(loc);
@@ -369,7 +385,7 @@ public class GoodsReceiptService {
 
         if (remaining.compareTo(BigDecimal.ZERO) > 0) {
             throw new RuntimeException(
-                "Không đủ vị trí trống để chứa " + quantity + " (còn thiếu " + remaining + ")");
+                    "Không đủ vị trí trống để chứa " + quantity + " (còn thiếu " + remaining + ")");
         }
         return result;
     }
@@ -386,11 +402,13 @@ public class GoodsReceiptService {
         }
         if (request.getCustomerId() != null) {
             Customer customer = customerRepository.findById(request.getCustomerId())
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy khách hàng id: " + request.getCustomerId()));
+                    .orElseThrow(
+                            () -> new RuntimeException("Không tìm thấy khách hàng id: " + request.getCustomerId()));
             receipt.setCustomer(customer);
             receipt.setTaxcode(customer.getTaxcode());
         }
-        // If this receipt is created as an adjustment for an inventory audit, mark the audit.
+        // If this receipt is created as an adjustment for an inventory audit, mark the
+        // audit.
         if (request.getInventoryAuditId() != null) {
             receipt.setInventoryAuditId(request.getInventoryAuditId());
             var optAudit = inventoryAuditRepository.findById(request.getInventoryAuditId());
@@ -412,7 +430,8 @@ public class GoodsReceiptService {
 
     private void notifyManagersIfStaffCreated(GoodsReceipt receipt) {
         User creator = receipt.getUser();
-        if (creator == null || creator.getRole() != Role.STAFF) return;
+        if (creator == null || creator.getRole() != Role.STAFF)
+            return;
         String docno = receipt.getDocno();
         notificationService.notifyManagers(
                 NotificationType.APPROVAL_REQUIRED,
@@ -420,13 +439,13 @@ public class GoodsReceiptService {
                 receipt.getId(),
                 docno,
                 "Phieu nhap can duyet",
-                "Phieu nhap " + docno + " can duyet"
-        );
+                "Phieu nhap " + docno + " can duyet");
     }
 
     private void notifyCreatorApproved(GoodsReceipt receipt) {
         User creator = receipt.getUser();
-        if (creator == null || creator.getRole() != Role.STAFF) return;
+        if (creator == null || creator.getRole() != Role.STAFF)
+            return;
         String docno = receipt.getDocno();
         notificationService.notifyUser(
                 creator,
@@ -435,19 +454,20 @@ public class GoodsReceiptService {
                 receipt.getId(),
                 docno,
                 "Phieu nhap da duyet",
-                "Phieu nhap " + docno + " da duyet"
-        );
+                "Phieu nhap " + docno + " da duyet");
     }
 
     private java.util.Optional<User> getCurrentUser() {
         var auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated()) return java.util.Optional.empty();
+        if (auth == null || !auth.isAuthenticated())
+            return java.util.Optional.empty();
         String username = auth.getName();
         return userRepository.findByUsername(username);
     }
 
     private void saveDetails(GoodsReceipt receipt, List<GoodsReceiptDetailRequest> detailRequests) {
-        if (detailRequests == null) return;
+        if (detailRequests == null)
+            return;
         for (GoodsReceiptDetailRequest req : detailRequests) {
             Item item = itemRepository.findById(req.getItemId())
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy hàng hóa id: " + req.getItemId()));
@@ -493,9 +513,11 @@ public class GoodsReceiptService {
     }
 
     private int extractSequence(String docno, String prefix) {
-        if (docno == null || !docno.startsWith(prefix)) return -1;
+        if (docno == null || !docno.startsWith(prefix))
+            return -1;
         String numeric = docno.substring(prefix.length());
-        if (!numeric.matches("\\d+")) return -1;
+        if (!numeric.matches("\\d+"))
+            return -1;
         return Integer.parseInt(numeric);
     }
 
@@ -505,7 +527,8 @@ public class GoodsReceiptService {
      */
     private void deleteBatchesForReceipt(Long receiptId) {
         List<GoodsReceiptDetail> existing = detailRepository.findByGoodsReceiptId(receiptId);
-        if (existing == null || existing.isEmpty()) return;
+        if (existing == null || existing.isEmpty())
+            return;
         for (GoodsReceiptDetail d : existing) {
             batchRepository.findByReceiptDetailId(d.getId()).ifPresent(batchRepository::delete);
         }
@@ -539,6 +562,8 @@ public class GoodsReceiptService {
         List<GoodsReceiptDetail> details = detailRepository.findByGoodsReceiptId(receipt.getId());
         res.setInvoiceNumber(receipt.getInvoiceNumber());
         res.setInventoryAuditId(receipt.getInventoryAuditId());
+        // Set document type: ADJUSTMENT when linked to inventory audit, otherwise NORMAL
+        res.setDoctype(receipt.getInventoryAuditId() != null ? "ADJUSTMENT" : "NORMAL");
         res.setDetails(details.stream().map(d -> {
             GoodsReceiptDetailResponse dr = new GoodsReceiptDetailResponse();
             dr.setId(d.getId());
@@ -556,7 +581,7 @@ public class GoodsReceiptService {
                 dr.setLocationcode(d.getLocation().getLocationcode());
                 dr.setLocationname(d.getLocation().getLocationname());
             }
-            batchRepository.findByItemIdAndReceiptId(d.getItem() != null ? d.getItem().getId() : null, receipt.getId()).ifPresent(batch -> {
+            batchRepository.findByReceiptDetailId(d.getId()).ifPresent(batch -> {
                 if (batch.getReceiptDetail() != null && batch.getReceiptDetail().getGoodsReceipt() != null
                         && batch.getReceiptDetail().getGoodsReceipt().getDocstatus() == DocStatus.CONFIRMED) {
                     dr.setBatchId(batch.getId());

@@ -179,7 +179,9 @@ export default function OverviewPage() {
                 zone: entry.location.rackno || "--",
                 rack: entry.location.columnno || "--",
                 floor: entry.location.floorno || "--",
-                capacity: entry.detail?.remainingCapacity ?? entry.location.capacity ?? "Không giới hạn",
+                capacity: entry.detail && entry.detail.hasOwnProperty('remainingCapacity') && entry.detail.remainingCapacity == null
+                    ? "Không giới hạn"
+                    : (entry.detail?.remainingCapacity ?? entry.location.capacity ?? "Không giới hạn"),
             }))
             .slice(0, 8);
     }, [locationDetails]);

@@ -5,10 +5,12 @@ import "./supplies.css";
 import { getItemById, updateItem } from "../../api/itemApi";
 import { getAllBatches } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
+import notify from "../../utils/notify";
 
 const EMPTY_FORM = {
     itemcode: "", itemname: "", invoicename: "",
     itemcatg: "", description: "", unitof: "", itemtype: "",
+    minStockLevel: "", maxStockLevel: "",
 };
 
 export default function SuppliesDetailPage() {
@@ -23,22 +25,46 @@ export default function SuppliesDetailPage() {
     const [error, setError] = useState(null);
     const [fieldErrors, setFieldErrors] = useState({});
     const [currentStock, setCurrentStock] = useState(0);
+    const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const isStaff = currentUser?.role === "STAFF" || currentUser?.role === "NV";
 
-    useEffect(() => {
+    const fetchItem = async () => {
         setLoading(true);
         setError(null);
-        Promise.all([getItemById(id), getAllBatches()])
-            .then(([data, batches]) => {
-                setForm({ ...EMPTY_FORM, ...data });
-                setOriginal({ ...EMPTY_FORM, ...data });
-                const total = (batches || []).reduce((sum, batch) => {
-                    if (String(batch.itemId) !== String(id)) return sum;
-                    return sum + Number(batch.quantityRemaining ?? 0);
-                }, 0);
-                setCurrentStock(total);
-            })
-            .catch(() => setError("Không thể tải thông tin vật tư."))
-            .finally(() => setLoading(false));
+        try {
+            const [data, batches] = await Promise.all([getItemById(id), getAllBatches()]);
+            // normalize backend field variants to the form's camelCase shape
+            const normalized = {
+                ...data,
+                itemcode: data?.itemcode ?? data?.itemCode ?? data?.code ?? "",
+                itemname: data?.itemname ?? data?.itemName ?? "",
+                invoicename: data?.invoicename ?? data?.invoiceName ?? "",
+                unitof: data?.unitof ?? data?.unitOf ?? "",
+                itemcatg: data?.itemcatg ?? "",
+                itemtype: data?.itemtype ?? "",
+                // prefer explicit numeric/string values for inputs
+                minStockLevel: data?.minStockLevel ?? data?.minstocklevel ?? "",
+                maxStockLevel: data?.maxStockLevel ?? data?.maxstocklevel ?? "",
+                description: data?.description ?? "",
+            };
+
+            setForm({ ...EMPTY_FORM, ...normalized });
+            setOriginal({ ...EMPTY_FORM, ...normalized });
+
+            const total = (batches || []).reduce((sum, batch) => {
+                if (String(batch.itemId) !== String(id)) return sum;
+                return sum + Number(batch.quantityRemaining ?? 0);
+            }, 0);
+            setCurrentStock(total);
+        } catch (e) {
+            setError("Không thể tải thông tin vật tư.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchItem();
     }, [id]);
 
     const handleChange = (field, value) => {
@@ -52,6 +78,17 @@ export default function SuppliesDetailPage() {
         if (!form.itemname.trim()) errs.itemname = "Bắt buộc";
         if (!form.unitof.trim()) errs.unitof = "Bắt buộc";
         if (!form.itemtype.trim()) errs.itemtype = "Bắt buộc";
+        if (form.minStockLevel !== undefined && form.minStockLevel !== "" && (isNaN(Number(form.minStockLevel)) || Number(form.minStockLevel) < 0)) errs.minStockLevel = "Phải là số >= 0";
+        if (form.maxStockLevel !== undefined && form.maxStockLevel !== "" && (isNaN(Number(form.maxStockLevel)) || Number(form.maxStockLevel) < 0)) errs.maxStockLevel = "Phải là số >= 0";
+        // if both provided, ensure min <= max
+        if (form.minStockLevel !== undefined && form.minStockLevel !== "" && form.maxStockLevel !== undefined && form.maxStockLevel !== "") {
+            const minV = Number(form.minStockLevel);
+            const maxV = Number(form.maxStockLevel);
+            if (!isNaN(minV) && !isNaN(maxV) && minV > maxV) {
+                errs.minStockLevel = "Tồn tối thiểu phải nhỏ hơn hoặc bằng Tồn tối đa";
+                errs.maxStockLevel = "Tồn tối đa phải lớn hơn hoặc bằng Tồn tối thiểu";
+            }
+        }
         return errs;
     };
 
@@ -61,7 +98,7 @@ export default function SuppliesDetailPage() {
         setSaving(true);
         setError(null);
         try {
-            const updated = await updateItem(id, {
+            const payload = {
                 itemcode: form.itemcode,
                 itemname: form.itemname,
                 invoicename: form.invoicename,
@@ -70,9 +107,14 @@ export default function SuppliesDetailPage() {
                 unitof: form.unitof,
                 itemtype: form.itemtype,
                 modifiedBy: "user",
-            });
-            setOriginal({ ...EMPTY_FORM, ...updated });
-            setForm({ ...EMPTY_FORM, ...updated });
+            };
+            // Backend expects lowercase keys like `minstocklevel`/`maxstocklevel`.
+            if (form.minStockLevel !== undefined) payload.minstocklevel = form.minStockLevel === "" ? undefined : Number(form.minStockLevel);
+            if (form.maxStockLevel !== undefined) payload.maxstocklevel = form.maxStockLevel === "" ? undefined : Number(form.maxStockLevel);
+
+            await updateItem(id, payload);
+            // re-fetch fresh data from server to reflect any server-side normalization
+            await fetchItem();
             setIsEditing(false);
         } catch {
             setError("Lưu thất bại. Vui lòng thử lại.");
@@ -178,22 +220,19 @@ export default function SuppliesDetailPage() {
                                         onChange={(e) => handleChange("description", e.target.value)}
                                     />
                                 </div>
-                                <div className="sd-field-half" />
+                                <div className="sd-field-half">
+                                    <label className="sd-label">Đơn vị tính</label>
+                                    <input
+                                        className={`sd-input${fieldErrors.unitof ? " sd-input-error" : ""}`}
+                                        value={form.unitof}
+                                        disabled={!isEditing}
+                                        onChange={(e) => handleChange("unitof", e.target.value)}
+                                    />
+                                    {fieldErrors.unitof && <span className="sd-error-msg">{fieldErrors.unitof}</span>}
+                                </div>
                             </div>
 
                             <div className="sd-field sd-field-row">
-                                <div className="sd-field-half">
-                                    <label className="sd-label">Đơn vị tính <span className="sd-required">*</span></label>
-                                    <div className="sd-input-wrap">
-                                        <input
-                                            className={`sd-input${fieldErrors.unitof ? " sd-input-error" : ""}`}
-                                            value={form.unitof}
-                                            disabled={!isEditing}
-                                            onChange={(e) => handleChange("unitof", e.target.value)}
-                                        />
-                                        {fieldErrors.unitof && <span className="sd-error-msg">{fieldErrors.unitof}</span>}
-                                    </div>
-                                </div>
                                 <div className="sd-field-half">
                                     <label className="sd-label">Loại vật tư <span className="sd-required">*</span></label>
                                     <div className="sd-input-wrap">
@@ -206,6 +245,20 @@ export default function SuppliesDetailPage() {
                                         {fieldErrors.itemtype && <span className="sd-error-msg">{fieldErrors.itemtype}</span>}
                                     </div>
                                 </div>
+                                <div className="sd-field-half">
+                                    <label className="sd-label">Tồn tối thiểu</label>
+                                    <div className="sd-input-wrap">
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            className={`sd-input${fieldErrors.minStockLevel ? " sd-input-error" : ""}`}
+                                            value={form.minStockLevel ?? ""}
+                                            disabled={!isEditing}
+                                            onChange={(e) => handleChange("minStockLevel", e.target.value)}
+                                        />
+                                        {fieldErrors.minStockLevel && <span className="sd-error-msg">{fieldErrors.minStockLevel}</span>}
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="sd-field sd-field-row">
@@ -214,16 +267,19 @@ export default function SuppliesDetailPage() {
                                     <input className="sd-input" value={currentStock} disabled readOnly />
                                 </div>
                                 <div className="sd-field-half">
-                                    <label className="sd-label">Tồn tối thiểu</label>
-                                    <input className="sd-input" value={50} readOnly />
-                                </div>
-                            </div>
-                            <div className="sd-field sd-field-row">
-                                <div className="sd-field-half">
                                     <label className="sd-label">Tồn tối đa</label>
-                                    <input className="sd-input" value={500} readOnly />
+                                    <div className="sd-input-wrap">
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            className={`sd-input${fieldErrors.maxStockLevel ? " sd-input-error" : ""}`}
+                                            value={form.maxStockLevel ?? ""}
+                                            disabled={!isEditing}
+                                            onChange={(e) => handleChange("maxStockLevel", e.target.value)}
+                                        />
+                                        {fieldErrors.maxStockLevel && <span className="sd-error-msg">{fieldErrors.maxStockLevel}</span>}
+                                    </div>
                                 </div>
-                                <div className="sd-field-half" />
                             </div>
                         </div>
 
@@ -243,9 +299,11 @@ export default function SuppliesDetailPage() {
                                     <button className="sd-btn-back" onClick={() => navigate("/supplies")}>
                                         Quay lại
                                     </button>
-                                    <button className="sd-btn-edit" onClick={() => setIsEditing(true)}>
-                                        Sửa
-                                    </button>
+                                    {!isStaff && (
+                                        <button className="sd-btn-edit" onClick={() => setIsEditing(true)}>
+                                            Sửa
+                                        </button>
+                                    )}
                                 </>
                             )}
                         </div>

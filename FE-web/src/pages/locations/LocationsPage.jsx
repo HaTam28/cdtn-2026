@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../styles/shared.css";
 import { getAllLocations, getItemsAtLocation } from "../../api/locationApi";
+import { getBatchesByLocation } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
@@ -52,6 +53,7 @@ export default function LocationsPage() {
 
     useEffect(() => { fetchItems(); }, [fetchItems]);
 
+
     const filtered = useMemo(() => {
         const sorted = [...items].sort((a, b) => (a.id || 0) - (b.id || 0));
         if (!search.trim()) return sorted;
@@ -68,7 +70,8 @@ export default function LocationsPage() {
     const start = (page - 1) * rowsPerPage;
     const rows = filtered.slice(start, start + rowsPerPage);
 
-    // Fetch items summary for visible rows
+    // Fetch items summary for visible rows (depend on stable rowIds string to avoid running on each render)
+    const rowIds = rows.map((r) => r.id).join(",");
     useEffect(() => {
         let cancelled = false;
         const ids = rows.map((r) => r.id);
@@ -77,14 +80,25 @@ export default function LocationsPage() {
             const map = {};
             await Promise.all(ids.map(async (id) => {
                 try {
+                    // Prefer batch-aware endpoint for per-location batch list
+                    const batches = await getBatchesByLocation(id);
+                    if (Array.isArray(batches) && batches.length > 0) {
+                        // Extract up to 3 distinct item codes from batches
+                        const codes = Array.from(new Set(batches.map(b => (b.itemcode ?? b.itemCode ?? b.code ?? '').toString?.().trim() ?? ''))).filter(Boolean);
+                        const parts = codes.slice(0, 3);
+                        if (codes.length > 3) parts.push("...");
+                        map[id] = parts.join(", ");
+                        return;
+                    }
+
+                    // Fallback to legacy location items endpoint
                     const data = await getItemsAtLocation(id);
                     const items = Array.isArray(data) ? data : (data?.items || []);
                     if (!items || items.length === 0) {
                         map[id] = "—";
                         return;
                     }
-                    // build short summary: up to 3 items 'CODE(qty)'
-                    const parts = items.slice(0, 3).map((it) => it.itemcode || "");
+                    const parts = items.slice(0, 3).map((it) => (it.itemcode ?? it.itemCode ?? it.code ?? ''));
                     if (items.length > 3) parts.push("...");
                     map[id] = parts.join(", ");
                 } catch {
@@ -95,7 +109,9 @@ export default function LocationsPage() {
         };
         fetchFor();
         return () => { cancelled = true; };
-    }, [rows]);
+    }, [rowIds]);
+
+
 
     const allIds = rows.map((r) => r.id);
     const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
@@ -243,6 +259,7 @@ export default function LocationsPage() {
                             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                         />
                     </div>
+
                     <div className="sp-toolbar-spacer" />
                     <button className="sp-btn-primary" onClick={() => navigate("/locations/create")}>
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">

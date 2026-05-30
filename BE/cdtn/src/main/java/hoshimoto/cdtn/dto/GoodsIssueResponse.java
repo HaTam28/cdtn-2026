@@ -14,6 +14,7 @@ public class GoodsIssueResponse {
     private LocalDate docDate;
     private String description;
     private DocStatus docstatus;
+    private String doctype;
     private Long customerId;
     private String customerName;
     private String customerTaxcode;

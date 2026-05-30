@@ -11,6 +11,12 @@ const COMPANY_ADDRESS_LINE1 = "Căn số 49-TT5, Khu nhà ở Đài phát sóng 
 const COMPANY_ADDRESS_LINE2 = "Phường Đại Mỗ, TP Hà Nội";
 
 const STATUS_LABELS = { DRAFT: "Chờ duyệt", CONFIRMED: "Đã duyệt", CANCELLED: "Hủy" };
+
+const DOC_TYPE_LABELS = {
+    NORMAL: "Thông thường",
+    ADJUSTMENT: "Điều chỉnh",
+    RETURN: "Hàng trả về",
+};
 const STATUS_CLASS = {
     DRAFT: "rc-status-pill rc-status-pill-draft",
     CONFIRMED: "rc-status-pill rc-status-pill-confirmed",
@@ -439,7 +445,7 @@ export default function ReceiptDetailPage() {
                                 <label className="rc-form-label" style={{ marginLeft: 16 }}>Số</label>
                                 <input className="rc-form-input rc-input-auto" value={receipt.docno || ""} readOnly />
                                 <label className="rc-form-label" style={{ marginLeft: 16 }}>Loại</label>
-                                <input className="rc-form-input rc-input-auto" value={receipt.docType || receipt.doctype || "Thông thường"} readOnly />
+                                <input className="rc-form-input rc-input-auto" value={DOC_TYPE_LABELS[(String(receipt.docType || receipt.doctype || "NORMAL")).toUpperCase()] || (receipt.docType || receipt.doctype || "NORMAL")} readOnly />
                                 {/* Status pill – static badge, no dropdown */}
                                 <span className={`${STATUS_CLASS[receipt.docstatus] || "rc-status-pill"} rc-status-inline`} style={{ marginLeft: "auto", cursor: "default", pointerEvents: "none" }}>
                                     {STATUS_LABELS[receipt.docstatus] || receipt.docstatus}
