@@ -838,6 +838,7 @@ Response: `GET /api/items` and `GET /api/items/{id}` will include `currentStock`
     "locationId": 3,
     "locationcode": "A1-01",
     "locationname": "Kệ A1, tầng 1, cột 1",
+    "itemCodes": ["SP001","SP002"],
     "rackno": "A1",
     "floorno": "1",
     "columnno": "1",
@@ -872,6 +873,8 @@ Response: `GET /api/items` and `GET /api/items/{id}` will include `currentStock`
 > `quantity` trong mỗi dòng = `batch.quantity` (số lượng **ban đầu** của lô), **không phải** `quantityRemaining` (tồn còn lại).  
 > `remainingCapacity`: `null` nếu vị trí không giới hạn sức chứa (`capacity = null`).
 > `batchCodes`: mỗi dòng chứa đúng 1 `batchCode` (tương ứng với lô của dòng đó).
+
+> `itemCodes`: (summary) một mảng các `itemcode` duy nhất đang có tại vị trí — dùng cho FE khi cần hiển thị nhanh danh sách mã hàng ở vị trí (ví dụ: pill list hoặc quick filter). Ở nhiều UI, FE chỉ cần `itemCodes` để show danh sách mã hàng nhanh, rồi gọi chi tiết (items) khi người dùng drill-in.
 
 > **Lưu ý cho FE về tên trường:**
 > - `itemcode` (lower-case) là trường mã vật tư. FE hãy sử dụng chính xác `itemcode` để hiển thị cột "Mã vật tư".
