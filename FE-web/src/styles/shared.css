@@ -321,6 +321,56 @@
     color: #6b7c72;
 }
 
+.sp-notif-load-more {
+    width: 100%;
+    text-align: center;
+    background: #f3faf6;
+    border: none;
+    border-top: 1px solid #e0ece5;
+    padding: 10px 14px;
+    font-size: 0.8rem;
+    color: #1E854A;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.sp-notif-load-more:hover {
+    background: #e8f5ee;
+}
+
+.sp-notif-search-wrap {
+    padding: 8px 10px;
+    border-bottom: 1px solid #eef4ef;
+}
+
+.sp-notif-search {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 10px;
+    border: 1px solid #d0e4d8;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    color: #243427;
+    outline: none;
+    background: #f8fcf9;
+}
+
+.sp-notif-search:focus {
+    border-color: #1E854A;
+    background: #fff;
+}
+
+.sp-notif-date-label {
+    padding: 5px 14px 3px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #7b8a81;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: #f8fcf9;
+    border-bottom: 1px solid #f0f4f1;
+}
+
 .sp-content {
     flex: 1;
     padding: 22px 28px 24px;

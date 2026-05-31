@@ -3,18 +3,19 @@ import { useNavigate, useParams } from "react-router-dom";
 import "../../styles/shared.css";
 import "../receipts/receipts.css";
 import "./issues.css";
-import { getIssueById, confirmIssue, cancelIssue } from "../../api/issueApi";
+import { getIssueById, confirmIssue, cancelIssue, rejectIssue } from "../../api/issueApi";
 import TopbarRight from "../../components/TopbarRight";
 
 const COMPANY_NAME = "CÔNG TY TNHH HOSHIMOTO VIỆT NAM";
 const COMPANY_ADDRESS_LINE1 = "Căn số 49-TT5, Khu nhà ở Đài phát sóng phát thanh Mễ Trì,";
 const COMPANY_ADDRESS_LINE2 = "Phường Đại Mỗ, TP Hà Nội";
 
-const STATUS_LABELS = { DRAFT: "Chờ duyệt", CONFIRMED: "Đã duyệt", CANCELLED: "Hủy" };
+const STATUS_LABELS = { DRAFT: "Chờ duyệt", CONFIRMED: "Đã duyệt", CANCELLED: "Hủy", REJECTED: "Đã từ chối" };
 const STATUS_CLASS = {
     DRAFT: "rc-status-pill rc-status-pill-draft",
     CONFIRMED: "rc-status-pill rc-status-pill-confirmed",
     CANCELLED: "rc-status-pill rc-status-pill-cancelled",
+    REJECTED: "rc-status-pill rc-status-pill-rejected",
 };
 
 function formatDate(str) {
@@ -61,6 +62,8 @@ export default function IssueDetailPage() {
     const [toast, setToast] = useState(null);
     const [actionLoading, setActionLoading] = useState(false);
     const [confirmModal, setConfirmModal] = useState(false);
+    const [rejectModal, setRejectModal] = useState(false);
+    const [rejectReason, setRejectReason] = useState("");
 
     const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3500); };
 
@@ -110,6 +113,27 @@ export default function IssueDetailPage() {
                 await fetchIssue();
             } else {
                 showToast("error", res?.message || "Hủy thất bại.");
+            }
+        } catch (err) {
+            showToast("error", err?.response?.data?.message || "Có lỗi xảy ra.");
+        } finally { setActionLoading(false); }
+    };
+
+    const handleReject = async () => {
+        if (!rejectReason.trim()) {
+            showToast("error", "Vui lòng nhập lý do từ chối.");
+            return;
+        }
+        setRejectModal(false);
+        setActionLoading(true);
+        try {
+            const res = await rejectIssue(id, rejectReason.trim());
+            if (res?.success) {
+                showToast("success", "Đã từ chối phiếu xuất kho.");
+                setRejectReason("");
+                await fetchIssue();
+            } else {
+                showToast("error", res?.message || "Từ chối thất bại.");
             }
         } catch (err) {
             showToast("error", err?.response?.data?.message || "Có lỗi xảy ra.");
@@ -257,6 +281,35 @@ export default function IssueDetailPage() {
 
     return (
         <>
+            {rejectModal && (
+                <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div style={{ background: "#fff", borderRadius: 12, padding: "32px 36px", minWidth: 360, maxWidth: 440, boxShadow: "0 8px 32px rgba(0,0,0,0.15)", border: "1.5px solid #ffccbc", textAlign: "center" }}>
+                        <div style={{ width: 52, height: 52, borderRadius: "50%", background: "#fbe9e7", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+                            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#bf360c" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
+                            </svg>
+                        </div>
+                        <h3 style={{ margin: "0 0 8px", color: "#bf360c", fontSize: "1.1rem", fontWeight: 700 }}>Từ chối phiếu xuất kho</h3>
+                        <p style={{ margin: "0 0 12px", color: "#4c6152", fontSize: "0.92rem" }}>Vui lòng nhập lý do từ chối để thông báo cho người lập phiếu.</p>
+                        <textarea
+                            style={{ width: "100%", minHeight: 80, padding: 8, borderRadius: 6, border: "1.5px solid #ffb74d", fontSize: "0.9rem", resize: "vertical", outline: "none", boxSizing: "border-box" }}
+                            placeholder="Nhập lý do từ chối..."
+                            value={rejectReason}
+                            onChange={(e) => setRejectReason(e.target.value)}
+                        />
+                        <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 16 }}>
+                            <button className="sp-btn-outline" onClick={() => { setRejectModal(false); setRejectReason(""); }} disabled={actionLoading} style={{ minWidth: 100 }}>Hủy bỏ</button>
+                            <button
+                                style={{ minWidth: 120, background: "#bf360c", color: "#fff", border: "none", borderRadius: 6, padding: "8px 20px", fontWeight: 700, cursor: "pointer", fontSize: "0.9rem" }}
+                                onClick={handleReject}
+                                disabled={actionLoading || !rejectReason.trim()}
+                            >
+                                {actionLoading ? "Đang xử lý..." : "Từ chối"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {confirmModal && (
                 <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <div style={{ background: "#fff", borderRadius: 12, padding: "32px 36px", minWidth: 340, boxShadow: "0 8px 32px rgba(30,133,74,0.15)", border: "1.5px solid #c6dfd0", textAlign: "center" }}>
@@ -319,18 +372,29 @@ export default function IssueDetailPage() {
                             {issue.docstatus === "CANCELLED" ? (
                                 <div className="rc-header-row" style={{ marginTop: -6 }}>
                                     <label className="rc-form-label">Người hủy</label>
-                                    <input className="rc-form-input" style={{ minWidth: 200 }} value={issue.cancelledByFullname || issue.cancelledByUsername || ""} readOnly />
-                                    {issue.cancelledAt && (
+                                    <input className="rc-form-input" style={{ minWidth: 200 }} value={issue.actionByFullname || issue.actionByUsername || ""} readOnly />
+                                    {issue.approvedAt && (
                                         <>
                                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Ngày hủy</label>
-                                            <input className="rc-form-input" style={{ minWidth: 170 }} value={formatDate(issue.cancelledAt)} readOnly />
+                                            <input className="rc-form-input" style={{ minWidth: 170 }} value={formatDate(issue.approvedAt)} readOnly />
                                         </>
                                     )}
                                 </div>
-                            ) : issue.approvedByFullname || issue.approvedByUsername ? (
+                            ) : issue.docstatus === "REJECTED" && (issue.actionByFullname || issue.actionByUsername) ? (
+                                <div className="rc-header-row" style={{ marginTop: -6 }}>
+                                    <label className="rc-form-label">Người từ chối</label>
+                                    <input className="rc-form-input" style={{ minWidth: 200 }} value={issue.actionByFullname || issue.actionByUsername || ""} readOnly />
+                                    {issue.approvedAt && (
+                                        <>
+                                            <label className="rc-form-label" style={{ marginLeft: 16 }}>Ngày từ chối</label>
+                                            <input className="rc-form-input" style={{ minWidth: 170 }} value={formatDate(issue.approvedAt)} readOnly />
+                                        </>
+                                    )}
+                                </div>
+                            ) : issue.actionByFullname || issue.actionByUsername ? (
                                 <div className="rc-header-row" style={{ marginTop: -6 }}>
                                     <label className="rc-form-label">Người duyệt</label>
-                                    <input className="rc-form-input" style={{ minWidth: 200 }} value={issue.approvedByFullname || issue.approvedByUsername || ""} readOnly />
+                                    <input className="rc-form-input" style={{ minWidth: 200 }} value={issue.actionByFullname || issue.actionByUsername || ""} readOnly />
                                     {issue.approvedAt && (
                                         <>
                                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Ngày duyệt</label>
@@ -348,7 +412,7 @@ export default function IssueDetailPage() {
                             </div>
 
                             {/* ── Diễn giải ── */}
-                            <div className="rc-form-row rc-form-row-wrap">
+                            <div className="rc-form-row">
                                 <label className="rc-form-label">Diễn giải</label>
                                 <input className="rc-form-input rc-form-full" value={issue.description || ""} readOnly />
                             </div>
@@ -358,6 +422,13 @@ export default function IssueDetailPage() {
                                 <div className="rc-form-row">
                                     <label className="rc-form-label">Địa chỉ</label>
                                     <input className="rc-form-input rc-form-full" value={issue.address} readOnly />
+                                </div>
+                            )}
+
+                            {issue.docstatus === "REJECTED" && issue.rejectReason && (
+                                <div className="rc-form-row" style={{ marginTop: 6 }}>
+                                    <label className="rc-form-label">Lý do</label>
+                                    <input className="rc-form-input rc-form-full" value={issue.rejectReason} readOnly />
                                 </div>
                             )}
 
@@ -408,8 +479,8 @@ export default function IssueDetailPage() {
                                 <button className="sp-btn-outline" onClick={() => navigate("/issues")}>Quay lại</button>
                                 {issue.docstatus === "DRAFT" && canConfirmCancel && (
                                     <>
-                                        <button className="sp-btn-danger-outline" onClick={handleCancel} disabled={actionLoading}>
-                                            {actionLoading ? "Đang xử lý..." : "Từ chối"}
+                                        <button className="sp-btn-danger-outline" onClick={() => setRejectModal(true)} disabled={actionLoading}>
+                                            Từ chối
                                         </button>
                                         <button className="sp-btn-primary" onClick={() => setConfirmModal(true)} disabled={actionLoading}>
                                             Xác nhận

@@ -28,6 +28,12 @@
     border: 1px solid #f48fb1;
 }
 
+.rc-badge-rejected {
+    background: #fbe9e7;
+    color: #bf360c;
+    border: 1px solid #ff8a65;
+}
+
 /* ── Filter tabs ─────────────────────────────────────── */
 .rc-tabs {
     display: flex;
@@ -786,6 +792,12 @@
     background: #fce4ec;
     color: #b71c1c;
     border-color: #f48fb1;
+}
+
+.rc-status-pill-rejected {
+    background: #fff3f0;
+    color: #bf360c;
+    border-color: #ffccbc;
 }
 
 /* Static inline status badge (no button behaviour) */

@@ -55,6 +55,12 @@ export const cancelReceipt = async (id) => {
     return res.data;
 };
 
+/** POST /api/goods-receipts/{id}/reject — Manager từ chối duyệt (kèm lý do) */
+export const rejectReceipt = async (id, reason) => {
+    const res = await axiosInstance.post(`${BASE}/${id}/reject`, { reason });
+    return res.data;
+};
+
 /** GET /api/goods-receipts/suggest-split?itemId=X&quantity=Y
  *  BE tự động chia số lượng qua nhiều vị trí (ưu tiên EXISTING → EMPTY)
  *  Mỗi phần tử trả về có thêm trường `suggestedQuantity`

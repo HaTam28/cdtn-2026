@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import "../../styles/shared.css";
 import "./receipts.css";
-import { getReceiptById, confirmReceipt, cancelReceipt } from "../../api/receiptApi";
+import { getReceiptById, confirmReceipt, cancelReceipt, rejectReceipt } from "../../api/receiptApi";
 import { getAllBatches } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
 
@@ -10,7 +10,7 @@ const COMPANY_NAME = "CÔNG TY TNHH HOSHIMOTO VIỆT NAM";
 const COMPANY_ADDRESS_LINE1 = "Căn số 49-TT5, Khu nhà ở Đài phát sóng phát thanh Mễ Trì,";
 const COMPANY_ADDRESS_LINE2 = "Phường Đại Mỗ, TP Hà Nội";
 
-const STATUS_LABELS = { DRAFT: "Chờ duyệt", CONFIRMED: "Đã duyệt", CANCELLED: "Hủy" };
+const STATUS_LABELS = { DRAFT: "Chờ duyệt", CONFIRMED: "Đã duyệt", CANCELLED: "Hủy", REJECTED: "Đã từ chối" };
 
 const DOC_TYPE_LABELS = {
     NORMAL: "Thông thường",
@@ -21,6 +21,7 @@ const STATUS_CLASS = {
     DRAFT: "rc-status-pill rc-status-pill-draft",
     CONFIRMED: "rc-status-pill rc-status-pill-confirmed",
     CANCELLED: "rc-status-pill rc-status-pill-cancelled",
+    REJECTED: "rc-status-pill rc-status-pill-rejected",
 };
 
 function formatDate(str) {
@@ -132,6 +133,8 @@ export default function ReceiptDetailPage() {
     const [toast, setToast] = useState(null);
     const [actionLoading, setActionLoading] = useState(false);
     const [confirmModal, setConfirmModal] = useState(false);
+    const [rejectModal, setRejectModal] = useState(false);
+    const [rejectReason, setRejectReason] = useState("");
 
     const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3500); };
 
@@ -196,6 +199,27 @@ export default function ReceiptDetailPage() {
                 await fetchReceipt();
             } else {
                 showToast("error", res?.message || "Hủy thất bại.");
+            }
+        } catch (err) {
+            showToast("error", err?.response?.data?.message || "Có lỗi xảy ra.");
+        } finally { setActionLoading(false); }
+    };
+
+    const handleReject = async () => {
+        if (!rejectReason.trim()) {
+            showToast("error", "Vui lòng nhập lý do từ chối.");
+            return;
+        }
+        setRejectModal(false);
+        setActionLoading(true);
+        try {
+            const res = await rejectReceipt(id, rejectReason.trim());
+            if (res?.success) {
+                showToast("success", "Đã từ chối phiếu nhập kho.");
+                setRejectReason("");
+                await fetchReceipt();
+            } else {
+                showToast("error", res?.message || "Từ chối thất bại.");
             }
         } catch (err) {
             showToast("error", err?.response?.data?.message || "Có lỗi xảy ra.");
@@ -456,18 +480,29 @@ export default function ReceiptDetailPage() {
                             {receipt.docstatus === "CANCELLED" ? (
                                 <div className="rc-header-row" style={{ marginTop: -6 }}>
                                     <label className="rc-form-label">Người hủy</label>
-                                    <input className="rc-form-input" style={{ minWidth: 200 }} value={receipt.cancelledByFullname || receipt.cancelledByUsername || ""} readOnly />
-                                    {receipt.cancelledAt && (
+                                    <input className="rc-form-input" style={{ minWidth: 200 }} value={receipt.actionByFullname || receipt.actionByUsername || ""} readOnly />
+                                    {receipt.approvedAt && (
                                         <>
                                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Ngày hủy</label>
-                                            <input className="rc-form-input" style={{ minWidth: 170 }} value={formatDate(receipt.cancelledAt)} readOnly />
+                                            <input className="rc-form-input" style={{ minWidth: 170 }} value={formatDate(receipt.approvedAt)} readOnly />
                                         </>
                                     )}
                                 </div>
-                            ) : receipt.approvedByFullname || receipt.approvedByUsername ? (
+                            ) : receipt.docstatus === "REJECTED" && (receipt.actionByFullname || receipt.actionByUsername) ? (
+                                <div className="rc-header-row" style={{ marginTop: -6 }}>
+                                    <label className="rc-form-label">Người từ chối</label>
+                                    <input className="rc-form-input" style={{ minWidth: 200 }} value={receipt.actionByFullname || receipt.actionByUsername || ""} readOnly />
+                                    {receipt.approvedAt && (
+                                        <>
+                                            <label className="rc-form-label" style={{ marginLeft: 16 }}>Ngày từ chối</label>
+                                            <input className="rc-form-input" style={{ minWidth: 170 }} value={formatDate(receipt.approvedAt)} readOnly />
+                                        </>
+                                    )}
+                                </div>
+                            ) : receipt.actionByFullname || receipt.actionByUsername ? (
                                 <div className="rc-header-row" style={{ marginTop: -6 }}>
                                     <label className="rc-form-label">Người duyệt</label>
-                                    <input className="rc-form-input" style={{ minWidth: 200 }} value={receipt.approvedByFullname || receipt.approvedByUsername || ""} readOnly />
+                                    <input className="rc-form-input" style={{ minWidth: 200 }} value={receipt.actionByFullname || receipt.actionByUsername || ""} readOnly />
                                     {receipt.approvedAt && (
                                         <>
                                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Ngày duyệt</label>
@@ -485,7 +520,7 @@ export default function ReceiptDetailPage() {
                             </div>
 
                             {/* ── Diễn giải ── */}
-                            <div className="rc-form-row rc-form-row-wrap">
+                            <div className="rc-form-row">
                                 <label className="rc-form-label">Diễn giải</label>
                                 <input className="rc-form-input rc-form-full" value={receipt.description || ""} readOnly />
                             </div>
@@ -495,6 +530,42 @@ export default function ReceiptDetailPage() {
                                 <div className="rc-form-row">
                                     <label className="rc-form-label">Địa chỉ</label>
                                     <input className="rc-form-input rc-form-full" value={receipt.address} readOnly />
+                                </div>
+                            )}
+
+                            {receipt.docstatus === "REJECTED" && receipt.rejectReason && (
+                                <div className="rc-form-row" style={{ marginTop: 6 }}>
+                                    <label className="rc-form-label">Lý do</label>
+                                    <input className="rc-form-input rc-form-full" value={receipt.rejectReason} readOnly />
+                                </div>
+                            )}
+                            {rejectModal && (
+                                <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                    <div style={{ background: "#fff", borderRadius: 12, padding: "32px 36px", minWidth: 360, maxWidth: 440, boxShadow: "0 8px 32px rgba(0,0,0,0.15)", border: "1.5px solid #ffccbc", textAlign: "center" }}>
+                                        <div style={{ width: 52, height: 52, borderRadius: "50%", background: "#fbe9e7", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+                                            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#bf360c" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
+                                            </svg>
+                                        </div>
+                                        <h3 style={{ margin: "0 0 8px", color: "#bf360c", fontSize: "1.1rem", fontWeight: 700 }}>Từ chối phiếu nhập kho</h3>
+                                        <p style={{ margin: "0 0 12px", color: "#4c6152", fontSize: "0.92rem" }}>Vui lòng nhập lý do từ chối để thông báo cho người lập phiếu.</p>
+                                        <textarea
+                                            style={{ width: "100%", minHeight: 80, padding: 8, borderRadius: 6, border: "1.5px solid #ffb74d", fontSize: "0.9rem", resize: "vertical", outline: "none", boxSizing: "border-box" }}
+                                            placeholder="Nhập lý do từ chối..."
+                                            value={rejectReason}
+                                            onChange={(e) => setRejectReason(e.target.value)}
+                                        />
+                                        <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 16 }}>
+                                            <button className="sp-btn-outline" onClick={() => { setRejectModal(false); setRejectReason(""); }} disabled={actionLoading} style={{ minWidth: 100 }}>Hủy bỏ</button>
+                                            <button
+                                                style={{ minWidth: 120, background: "#bf360c", color: "#fff", border: "none", borderRadius: 6, padding: "8px 20px", fontWeight: 700, cursor: "pointer", fontSize: "0.9rem" }}
+                                                onClick={handleReject}
+                                                disabled={actionLoading || !rejectReason.trim()}
+                                            >
+                                                {actionLoading ? "Đang xử lý..." : "Từ chối"}
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
 
@@ -574,7 +645,7 @@ export default function ReceiptDetailPage() {
                                 <button className="sp-btn-outline" onClick={() => navigate("/receipts")}>Quay lại</button>
                                 {receipt.docstatus === "DRAFT" && canConfirmCancel && (
                                     <>
-                                        <button className="sp-btn-danger-outline" onClick={handleCancel} disabled={actionLoading}>
+                                        <button className="sp-btn-danger-outline" onClick={() => setRejectModal(true)} disabled={actionLoading}>
                                             {actionLoading ? "Đang xử lý..." : "Từ chối"}
                                         </button>
                                         <button className="sp-btn-primary" onClick={() => setConfirmModal(true)} disabled={actionLoading}>
