@@ -173,7 +173,7 @@ function LocationModal({ open, onClose, onConfirm, loading, suggestions, quantit
         if (next.has(loc.locationId)) {
             next.delete(loc.locationId);
         } else {
-            const cap = loc.remainingCapacity == null ? Infinity : Number(loc.remainingCapacity || 0);
+            const cap = Number(loc.remainingCapacity) || 0;
             const autoFill = Math.max(1, Math.min(cap, remaining));
             next.set(loc.locationId, autoFill);
         }
@@ -193,7 +193,7 @@ function LocationModal({ open, onClose, onConfirm, loading, suggestions, quantit
 
     const renderRow = (loc, extraCol) => {
         const isSel = selected.has(loc.locationId);
-        const cap = loc.remainingCapacity == null ? Infinity : Number(loc.remainingCapacity || 0);
+        const cap = Number(loc.remainingCapacity) || 0;
         const isDisabled = !isSel && (remaining === 0 || cap === 0);
         return (
             <tr
@@ -206,7 +206,7 @@ function LocationModal({ open, onClose, onConfirm, loading, suggestions, quantit
                 {extraCol}
                 <td>{loc.locationcode}</td>
                 <td>{loc.capacity ?? "∞"}</td>
-                <td>{cap === Infinity ? "∞" : cap}</td>
+                <td>{cap}</td>
             </tr>
         );
     };
@@ -229,7 +229,7 @@ function LocationModal({ open, onClose, onConfirm, loading, suggestions, quantit
                         <div style={{ background: "#d4edda", borderRadius: 4, height: 8, overflow: "hidden" }}>
                             <div style={{ background: remaining === 0 ? "#2DBE60" : "#f9a825", width: `${pct}%`, height: "100%", borderRadius: 4, transition: "width 0.2s" }} />
                         </div>
-                        {remaining > 0 && qty > 0 && suggestions.length > 0 && !suggestions.some((s) => (s.remainingCapacity == null ? Infinity : Number(s.remainingCapacity || 0)) >= qty) && (
+                        {remaining > 0 && qty > 0 && suggestions.length > 0 && !suggestions.some((s) => (Number(s.remainingCapacity) || 0) >= qty) && (
                             <div style={{ marginTop: 6, fontSize: "0.8rem", color: "#e65100", display: "flex", alignItems: "center", gap: 4 }}>
                                 <IconWarn /> Số lượng vượt sức chứa 1 vị trí — vui lòng chọn nhiều vị trí để phân bổ đủ.
                             </div>
@@ -514,7 +514,7 @@ export default function ReceiptCreatePage() {
                 }, 0);
                 return {
                     ...loc,
-                    remainingCapacity: loc.remainingCapacity == null ? null : Math.max(0, Number(loc.remainingCapacity || 0) - alreadyAllocated),
+                    remainingCapacity: Math.max(0, (Number(loc.remainingCapacity) || 0) - alreadyAllocated),
                 };
             });
             setLocModal((prev) => ({ ...prev, suggestions: adjusted, loading: false }));
@@ -541,25 +541,17 @@ export default function ReceiptCreatePage() {
             const r = rows[i];
             if (!r.itemId) { showToast("error", `Dòng ${i + 1}: Vui lòng chọn mặt hàng.`); return; }
             if (!r.quantity || Number(r.quantity) <= 0) { showToast("error", `Dòng ${i + 1}: Số lượng không hợp lệ.`); return; }
-            // if (!r.price || Number(r.price) <= 0) { showToast("error", `Dòng ${i + 1}: Đơn giá phải lớn hơn 0.`); return; }
-            // Note: location may be assigned later (DRAFT allowed). Do not require selectedLocations for draft creation.
+            if (!r.price || Number(r.price) <= 0) { showToast("error", `Dòng ${i + 1}: Đơn giá phải lớn hơn 0.`); return; }
+            if (r.selectedLocations.length === 0) { showToast("error", `Dòng ${i + 1}: Vui lòng chọn vị trí lưu trữ.`); return; }
         }
-        const details = rows.flatMap((r) => {
-            if (r.selectedLocations && r.selectedLocations.length > 0) {
-                return r.selectedLocations.map((loc) => ({
-                    itemId: Number(r.itemId),
-                    locationId: Number(loc.locationId),
-                    quantity: Number(loc.allocQty),
-                    unitprice: Number(r.price),
-                }));
-            }
-            return [{
+        const details = rows.flatMap((r) =>
+            r.selectedLocations.map((loc) => ({
                 itemId: Number(r.itemId),
-                locationId: null,
-                quantity: Number(r.quantity),
+                locationId: Number(loc.locationId),
+                quantity: Number(loc.allocQty),
                 unitprice: Number(r.price),
-            }];
-        });
+            }))
+        );
         setSaving(true);
         const adjAuditId = searchParams.get("auditId");
         try {
@@ -568,8 +560,8 @@ export default function ReceiptCreatePage() {
                 docDate: form.date,
                 description: form.description.trim(),
                 customerId: Number(form.customerId),
-                // Backend expects `doctype` (lowercase). Create always as DRAFT; use confirm endpoint to change status.
-                doctype: form.docType,
+                docType: form.docType,
+                docstatus: isManager ? "CONFIRMED" : "DRAFT",
                 invoiceDate: invoice.date || undefined,
                 taxcode: invoice.taxcode || undefined,
                 invoiceNumber: invoice.number || undefined,

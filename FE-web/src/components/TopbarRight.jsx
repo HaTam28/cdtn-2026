@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+// avatar will display user's initial; no logo import needed
 import { useNavigate } from "react-router-dom";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { getNotifications, getUnreadCount, markRead, markReadAll } from "../api/notificationApi";
@@ -31,6 +32,8 @@ function TopbarRightContent() {
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [realtimeEnabled, setRealtimeEnabled] = useState(true);
+    const [visibleCount, setVisibleCount] = useState(10);
+    const [search, setSearch] = useState("");
 
     const firestore = useMemo(() => getFirestoreDb(), []);
 
@@ -42,8 +45,13 @@ function TopbarRightContent() {
         }
     }, []);
 
-    const displayName = (user.fullname || user.username || "U").trim();
+    const displayName = (user.fullname || user.username || "User").trim();
     const initial = displayName ? displayName.charAt(0).toUpperCase() : "U";
+
+    useEffect(() => {
+        // Set web title to include user name for context
+        try { document.title = `${displayName} — Warehouse Management`; } catch { /* ignore */ }
+    }, [displayName]);
 
     useEffect(() => {
         if (!firestore || !user?.id || !realtimeEnabled) return;
@@ -111,6 +119,8 @@ function TopbarRightContent() {
         const next = !open;
         setOpen(next);
         if (!next) return;
+        setVisibleCount(10);
+        setSearch("");
         if (!firestore || !realtimeEnabled) {
             setLoading(true);
             try {
@@ -149,6 +159,47 @@ function TopbarRightContent() {
         navigate("/account");
     };
 
+    const formatDateLabel = (date) => {
+        if (!date) return "Không rõ ngày";
+        const d = date instanceof Date ? date : new Date(date);
+        if (isNaN(d)) return "Không rõ ngày";
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        const isSameDay = (a, b) =>
+            a.getFullYear() === b.getFullYear() &&
+            a.getMonth() === b.getMonth() &&
+            a.getDate() === b.getDate();
+        if (isSameDay(d, today)) return "Hôm nay";
+        if (isSameDay(d, yesterday)) return "Hôm qua";
+        return d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+    };
+
+    const filteredNotifications = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        if (!q) return notifications;
+        return notifications.filter(
+            (n) =>
+                (n.title || "").toLowerCase().includes(q) ||
+                (n.message || "").toLowerCase().includes(q)
+        );
+    }, [notifications, search]);
+
+    const groupedNotifications = useMemo(() => {
+        const visible = filteredNotifications.slice(0, visibleCount);
+        const groups = [];
+        let lastLabel = null;
+        for (const note of visible) {
+            const label = formatDateLabel(note.createdAt);
+            if (label !== lastLabel) {
+                groups.push({ type: "date", label });
+                lastLabel = label;
+            }
+            groups.push({ type: "note", note });
+        }
+        return groups;
+    }, [filteredNotifications, visibleCount]);
+
     return (
         <div className="sp-topbar-right">
             <div className="sp-notif-wrap">
@@ -164,25 +215,66 @@ function TopbarRightContent() {
                 {open && (
                     <div className="sp-notif-panel">
                         <div className="sp-notif-head">Thông báo</div>
+                        <div className="sp-notif-search-wrap">
+                            <input
+                                className="sp-notif-search"
+                                type="text"
+                                placeholder="Tìm kiếm thông báo..."
+                                value={search}
+                                onChange={(e) => { setSearch(e.target.value); setVisibleCount(10); }}
+                            />
+                        </div>
                         {loading && <div className="sp-notif-empty">Đang tải...</div>}
-                        {!loading && notifications.length === 0 && (
-                            <div className="sp-notif-empty">Chưa có thông báo.</div>
+                        {!loading && filteredNotifications.length === 0 && (
+                            <div className="sp-notif-empty">
+                                {search ? "Không tìm thấy thông báo." : "Chưa có thông báo."}
+                            </div>
                         )}
-                        {!loading && notifications.map((note) => (
+                        {!loading && groupedNotifications.map((item, idx) =>
+                            item.type === "date" ? (
+                                <div key={`date-${idx}`} className="sp-notif-date-label">{item.label}</div>
+                            ) : (
+                                <button
+                                    key={item.note.id}
+                                    className={`sp-notif-item${item.note.isRead ? "" : " sp-notif-unread"}`}
+                                    onClick={() => handleOpenNotification(item.note)}
+                                >
+                                    <div className="sp-notif-title">{item.note.title || "Thông báo"}</div>
+                                    <div className="sp-notif-msg">{item.note.message || ""}</div>
+                                </button>
+                            )
+                        )}
+                        {!loading && filteredNotifications.length > visibleCount && (
                             <button
-                                key={note.id}
-                                className={`sp-notif-item${note.isRead ? "" : " sp-notif-unread"}`}
-                                onClick={() => handleOpenNotification(note)}
+                                className="sp-notif-load-more"
+                                onClick={() => setVisibleCount((v) => v + 10)}
                             >
-                                <div className="sp-notif-title">{note.title || "Thông báo"}</div>
-                                <div className="sp-notif-msg">{note.message || ""}</div>
+                                Xem thêm ({filteredNotifications.length - visibleCount} thông báo)
                             </button>
-                        ))}
+                        )}
                     </div>
                 )}
             </div>
-            <button className="sp-avatar sp-avatar-btn" onClick={handleAccountClick}>
-                <span className="sp-avatar-text">{initial}</span>
+            <button
+                className="sp-avatar sp-avatar-btn"
+                onClick={handleAccountClick}
+                title={user.fullname || user.username || "Account"}
+                aria-label="Account"
+                style={{ padding: 0, border: "none", background: "transparent" }}
+            >
+                <div style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "#1E854A",
+                    color: "#fff",
+                    fontWeight: 700,
+                    fontSize: 14,
+                    userSelect: "none"
+                }}>{initial}</div>
             </button>
         </div>
     );

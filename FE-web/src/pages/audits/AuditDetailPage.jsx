@@ -435,11 +435,10 @@ export default function AuditDetailPage() {
                                         readOnly
                                     />
                                     <span style={{ marginLeft: 10, fontSize: "0.82rem", color: "#f57f17", fontWeight: 600 }}>
-                                        {audit.docstatus === "REQUESTED" ? "Đang chờ nhân viên bắt đầu kiểm kê"
-                                            : audit.docstatus === "IN_PROGRESS" ? "Nhân viên đang thực hiện kiểm kê"
-                                                : audit.docstatus === "SUBMITTED" ? "Nhân viên đã gửi kết quả"
-                                                    : audit.docstatus === "PENDING_PROCESS" ? "Có chênh lệch, cần xử lý"
-                                                        : ""}
+                                        {audit.docstatus === "IN_PROGRESS" ? "Nhân viên đang thực hiện kiểm kê"
+                                            : audit.docstatus === "SUBMITTED" ? "Nhân viên đã gửi kết quả"
+                                                : audit.docstatus === "PENDING_PROCESS" ? "Có chênh lệch, cần xử lý"
+                                                    : ""}
                                     </span>
                                 </div>
                             )}
@@ -497,11 +496,7 @@ export default function AuditDetailPage() {
                                     Phiếu đang ở trạng thái <strong>Nháp</strong>. Có thể giao cho nhân viên hoặc xác nhận trực tiếp.
                                 </div>
                             )}
-                            {audit.docstatus === "REQUESTED" && (
-                                <div style={{ background: "#fff9c4", border: "1px solid #ffd54f", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: "0.85rem", color: "#5d4037" }}>
-                                    Phiếu đã <strong>giao cho nhân viên</strong>. Đang chờ nhân viên bắt đầu kiểm kê.
-                                </div>
-                            )}
+
                             {audit.docstatus === "IN_PROGRESS" && (
                                 <div style={{ background: "#e3f2fd", border: "1px solid #90caf9", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: "0.85rem", color: "#1565c0" }}>
                                     Nhân viên đang <strong>thực hiện kiểm kê</strong>. Vui lòng chờ kết quả.

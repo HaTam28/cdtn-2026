@@ -55,6 +55,12 @@ export const cancelIssue = async (id) => {
     return res.data;
 };
 
+/** POST /api/goods-issues/{id}/reject — Manager từ chối duyệt (kèm lý do) */
+export const rejectIssue = async (id, reason) => {
+    const res = await axiosInstance.post(`${BASE}/${id}/reject`, { reason });
+    return res.data;
+};
+
 /** GET /api/goods-issues/suggest-split?itemId=X&quantity=Y
  *  BE tự động chia số lượng xuất qua nhiều vị trí (ưu tiên vị trí tồn kho nhiều nhất)
  *  Mỗi phần tử trả về có thêm trường `suggestedQuantity`

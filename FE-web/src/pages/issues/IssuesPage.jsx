@@ -159,15 +159,22 @@ export default function IssuesPage() {
     const pageData = filtered.slice((safeP - 1) * rowsPerPage, safeP * rowsPerPage);
 
     const allChecked = pageData.length > 0 && pageData.every((r) => selected.has(r.id));
-    const toggleAll = () => {
-        const next = new Set();
-        if (!allChecked && pageData[0]) next.add(pageData[0].id);
-        setSelected(next);
+    const someChecked = pageData.some((r) => selected.has(r.id)) && !allChecked;
+    const toggleAll = (checked) => {
+        setSelected((prev) => {
+            const next = new Set(prev);
+            if (checked) pageData.forEach((r) => next.add(r.id));
+            else pageData.forEach((r) => next.delete(r.id));
+            return next;
+        });
     };
     const toggleOne = (id) => {
-        const next = new Set();
-        if (!selected.has(id)) next.add(id);
-        setSelected(next);
+        setSelected((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
     };
 
     const handleClone = () => {
@@ -243,7 +250,9 @@ export default function IssuesPage() {
                         <thead>
                             <tr>
                                 <th className="sp-th-cb">
-                                    <input type="checkbox" checked={allChecked} onChange={toggleAll} />
+                                    <input type="checkbox" checked={allChecked}
+                                        ref={(el) => { if (el) el.indeterminate = someChecked; }}
+                                        onChange={(e) => toggleAll(e.target.checked)} />
                                 </th>
                                 <th>Số phiếu <IconSort /></th>
                                 <th>Ngày <IconSort /></th>

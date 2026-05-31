@@ -77,4 +77,7 @@ public class GoodsReceipt {
     @Column(name = "inventory_audit_id")
     private Long inventoryAuditId;
 
+    @Column(name = "rejectreason", columnDefinition = "TEXT")
+    private String rejectReason;
+
 }
