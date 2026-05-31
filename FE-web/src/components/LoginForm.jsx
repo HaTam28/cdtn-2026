@@ -16,7 +16,33 @@ export default function LoginForm() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [info, setInfo] = useState("");
+    const [failCount, setFailCount] = useState(() => Number(localStorage.getItem("login_fail_count") || 0));
+    const [lockUntil, setLockUntil] = useState(() => Number(localStorage.getItem("login_lock_until") || 0));
+    const [countdown, setCountdown] = useState(0);
     const navigate = useNavigate();
+
+    const MAX_FAILS = 5;
+    const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 phút
+
+    // Countdown timer khi đang bị khóa
+    useEffect(() => {
+        if (lockUntil <= Date.now()) return;
+        const tick = () => {
+            const remaining = lockUntil - Date.now();
+            if (remaining <= 0) {
+                setCountdown(0);
+                setLockUntil(0);
+                setFailCount(0);
+                localStorage.removeItem("login_lock_until");
+                localStorage.removeItem("login_fail_count");
+            } else {
+                setCountdown(Math.ceil(remaining / 1000));
+            }
+        };
+        tick();
+        const id = setInterval(tick, 1000);
+        return () => clearInterval(id);
+    }, [lockUntil]);
 
     useEffect(() => {
         const msg = localStorage.getItem('auth_success');
@@ -34,13 +60,18 @@ export default function LoginForm() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        // Chặn submit khi đang bị khóa
+        if (lockUntil > Date.now()) return;
         setError("");
         setLoading(true);
         try {
             const res = await login({ username, password });
             if (res.success) {
                 localStorage.setItem("user", JSON.stringify(res.data));
-                // Persist username if remember checked
+                localStorage.removeItem("login_fail_count");
+                localStorage.removeItem("login_lock_until");
+                setFailCount(0);
+                setLockUntil(0);
                 if (remember) {
                     localStorage.setItem('remember_username', username);
                 } else {
@@ -48,18 +79,26 @@ export default function LoginForm() {
                 }
                 navigate("/overview");
             } else {
-                setError(res.message || "Đăng nhập thất bại");
+                const next = failCount + 1;
+                setFailCount(next);
+                localStorage.setItem("login_fail_count", next);
+                if (next >= MAX_FAILS) {
+                    const until = Date.now() + LOCK_DURATION_MS;
+                    setLockUntil(until);
+                    localStorage.setItem("login_lock_until", until);
+                }
             }
         } catch (err) {
-            // If server responded with 401 (unauthorized / account not found),
-            // show the specific message requested by the user.
-            if (err && err.response && err.response.status === 401) {
-                setError("Tài khoản hoặc email không đúng");
-            } else if (err && err.response && err.response.data && err.response.data.message) {
-                // Prefer server-provided message when available
-                setError(err.response.data.message);
-            } else {
-                setError("Lỗi kết nối hoặc sai tài khoản/mật khẩu");
+            const next = failCount + 1;
+            setFailCount(next);
+            localStorage.setItem("login_fail_count", next);
+            if (next >= MAX_FAILS) {
+                const until = Date.now() + LOCK_DURATION_MS;
+                setLockUntil(until);
+                localStorage.setItem("login_lock_until", until);
+            }
+            if (!err?.response) {
+                setError("Lỗi kết nối. Vui lòng thử lại.");
             }
         }
         setLoading(false);
@@ -104,8 +143,22 @@ export default function LoginForm() {
                         <Link to="/forgot-password">Quên mật khẩu?</Link>
                     </div>
                     {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
+                    {failCount > 0 && failCount < MAX_FAILS && lockUntil <= Date.now() && (
+                        <div style={{ color: '#e65100', marginBottom: 8, fontSize: '0.88rem' }}>
+                            Bạn đã đăng nhập sai <strong>{failCount}/{MAX_FAILS}</strong> lần.
+                            {MAX_FAILS - failCount === 1
+                                ? " Thêm 1 lần sai nữa tài khoản sẽ bị tạm khóa 15 phút."
+                                : ` Còn ${MAX_FAILS - failCount} lần trước khi tài khoản bị tạm khóa 15 phút.`}
+                        </div>
+                    )}
+                    {lockUntil > Date.now() && countdown > 0 && (
+                        <div style={{ background: '#fbe9e7', border: '1px solid #ff8a65', borderRadius: 7, padding: '8px 12px', marginBottom: 8, color: '#bf360c', fontSize: '0.88rem' }}>
+                            ⚠️ Tài khoản bị <strong>tạm khóa</strong> do đăng nhập sai quá {MAX_FAILS} lần.
+                            Vui lòng thử lại sau <strong>{Math.floor(countdown / 60)}:{String(countdown % 60).padStart(2, '0')}</strong> phút.
+                        </div>
+                    )}
                     {info && <div style={{ color: 'green', marginBottom: 8 }}>{info}</div>}
-                    <button className="login-button" type="submit" disabled={loading}>{loading ? "Đang đăng nhập..." : "Đăng nhập"}</button>
+                    <button className="login-button" type="submit" disabled={loading || lockUntil > Date.now()}>{loading ? "Đang đăng nhập..." : "Đăng nhập"}</button>
                 </form>
             </div>
         </div>
