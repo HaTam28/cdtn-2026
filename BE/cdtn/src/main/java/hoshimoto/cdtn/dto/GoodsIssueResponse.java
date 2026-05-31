@@ -26,4 +26,5 @@ public class GoodsIssueResponse {
     private String actionByFullname;
     private LocalDateTime approvedAt;
     private List<GoodsIssueDetailResponse> details;
+    private String rejectReason;
 }

@@ -19,6 +19,7 @@ import hoshimoto.cdtn.dto.LocationDetailResponse.LocationItemStock;
 import hoshimoto.cdtn.dto.LocationSuggestionResponse;
 import hoshimoto.cdtn.dto.request.GoodsReceiptDetailRequest;
 import hoshimoto.cdtn.dto.request.GoodsReceiptRequest;
+import hoshimoto.cdtn.dto.request.RejectRequest;
 import hoshimoto.cdtn.entity.Batch;
 import hoshimoto.cdtn.entity.Customer;
 import hoshimoto.cdtn.entity.Enum.DocStatus;
@@ -247,6 +248,28 @@ public class GoodsReceiptService {
         return toResponse(receipt);
     }
 
+    /**
+     * Từ chối duyệt phiếu nhập.
+     */
+    @Transactional
+    public GoodsReceiptResponse reject(Long id, RejectRequest request) {
+        GoodsReceipt receipt = findOrThrow(id);
+        if (receipt.getDocstatus() == DocStatus.CONFIRMED || receipt.getDocstatus() == DocStatus.CANCELLED
+                || receipt.getDocstatus() == DocStatus.REJECTED) {
+            throw new RuntimeException("Không thể từ chối phiếu đã được xử lý");
+        }
+        receipt.setDocstatus(DocStatus.REJECTED);
+        receipt.setRejectReason(request.getReason());
+        receipt.setModifiedAt(LocalDateTime.now());
+        getCurrentUser().ifPresent(u -> {
+            receipt.setApprover(u);
+            receipt.setModifiedBy(u.getUsername());
+        });
+        receiptRepository.save(receipt);
+        notifyCreatorRejected(receipt);
+        return toResponse(receipt);
+    }
+
     // ───────────────────────── AVAILABLE LOCATIONS (NHẬP KHO)
     // ─────────────────────────
 
@@ -457,6 +480,22 @@ public class GoodsReceiptService {
                 "Phieu nhap " + docno + " da duyet");
     }
 
+    private void notifyCreatorRejected(GoodsReceipt receipt) {
+        User creator = receipt.getUser();
+        if (creator == null || creator.getRole() != Role.STAFF)
+            return;
+        String docno = receipt.getDocno();
+        notificationService.notifyUser(
+                creator,
+                NotificationType.REJECTED,
+                NotificationTargetType.GOODS_RECEIPT,
+                receipt.getId(),
+                docno,
+                "Phieu nhap bi tu choi",
+                "Phieu nhap " + docno + " bi tu choi: " + receipt.getRejectReason()
+        );
+    }
+
     private java.util.Optional<User> getCurrentUser() {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated())
@@ -590,6 +629,7 @@ public class GoodsReceiptService {
             });
             return dr;
         }).collect(Collectors.toList()));
+        res.setRejectReason(receipt.getRejectReason());
         return res;
     }
 }

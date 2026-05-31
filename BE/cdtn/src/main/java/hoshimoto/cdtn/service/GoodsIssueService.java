@@ -18,6 +18,7 @@ import hoshimoto.cdtn.dto.LocationDetailResponse.LocationItemStock;
 import hoshimoto.cdtn.dto.LocationSuggestionResponse;
 import hoshimoto.cdtn.dto.request.GoodsIssueDetailRequest;
 import hoshimoto.cdtn.dto.request.GoodsIssueRequest;
+import hoshimoto.cdtn.dto.request.RejectRequest;
 import hoshimoto.cdtn.entity.Batch;
 import hoshimoto.cdtn.entity.Customer;
 import hoshimoto.cdtn.entity.Enum.DocStatus;
@@ -220,6 +221,28 @@ public class GoodsIssueService {
         return toResponse(issue);
     }
 
+    /**
+     * Từ chối duyệt phiếu xuất.
+     */
+    @Transactional
+    public GoodsIssueResponse reject(Long id, RejectRequest request) {
+        GoodsIssue issue = findOrThrow(id);
+        if (issue.getDocstatus() == DocStatus.CONFIRMED || issue.getDocstatus() == DocStatus.CANCELLED
+                || issue.getDocstatus() == DocStatus.REJECTED) {
+            throw new RuntimeException("Không thể từ chối phiếu đã được xử lý");
+        }
+        issue.setDocstatus(DocStatus.REJECTED);
+        issue.setRejectReason(request.getReason());
+        issue.setModifiedAt(LocalDateTime.now());
+        getCurrentUser().ifPresent(u -> {
+            issue.setApprover(u);
+            issue.setModifiedBy(u.getUsername());
+        });
+        issueRepository.save(issue);
+        notifyCreatorRejected(issue);
+        return toResponse(issue);
+    }
+
     // ───────────────────────── AVAILABLE LOCATIONS (XUẤT KHO)
     // ─────────────────────────
 
@@ -395,6 +418,22 @@ public class GoodsIssueService {
                 "Phieu xuat " + docno + " da duyet");
     }
 
+    private void notifyCreatorRejected(GoodsIssue issue) {
+        User creator = issue.getUser();
+        if (creator == null || creator.getRole() != Role.STAFF)
+            return;
+        String docno = issue.getDocno();
+        notificationService.notifyUser(
+                creator,
+                NotificationType.REJECTED,
+                NotificationTargetType.GOODS_ISSUE,
+                issue.getId(),
+                docno,
+                "Phieu xuat bi tu choi",
+                "Phieu xuat " + docno + " bi tu choi: " + issue.getRejectReason()
+        );
+    }
+
     private java.util.Optional<User> getCurrentUser() {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated())
@@ -517,6 +556,7 @@ public class GoodsIssueService {
         res.setInventoryAuditId(issue.getInventoryAuditId());
         // Set document type: ADJUSTMENT when linked to inventory audit, otherwise NORMAL
         res.setDoctype(issue.getInventoryAuditId() != null ? "ADJUSTMENT" : "NORMAL");
+        res.setRejectReason(issue.getRejectReason());
         return res;
     }
 }

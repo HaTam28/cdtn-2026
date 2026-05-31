@@ -20,6 +20,7 @@ import hoshimoto.cdtn.dto.GoodsReceiptResponse;
 import hoshimoto.cdtn.dto.LocationDetailResponse;
 import hoshimoto.cdtn.dto.LocationSuggestionResponse;
 import hoshimoto.cdtn.dto.request.GoodsReceiptRequest;
+import hoshimoto.cdtn.dto.request.RejectRequest;
 import hoshimoto.cdtn.service.GoodsReceiptService;
 import jakarta.validation.Valid;
 
@@ -122,5 +123,15 @@ public class GoodsReceiptController {
     public ResponseEntity<ApiResponse<GoodsReceiptResponse>> cancel(@PathVariable Long id) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Hủy phiếu nhập thành công",
                 goodsReceiptService.cancel(id)));
+    }
+
+    /** Từ chối phiếu nhập */
+    @PostMapping("/{id}/reject")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<ApiResponse<GoodsReceiptResponse>> reject(
+            @PathVariable Long id,
+            @Valid @RequestBody RejectRequest request) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Từ chối phiếu nhập thành công",
+                goodsReceiptService.reject(id, request)));
     }
 }

@@ -238,6 +238,13 @@ If you want, I can implement the controller + import pipeline and tests next. Re
 - GoodsReceipt / GoodsIssue / InventoryAudit: `docno`
 - Batch: `batchCode` (BE tự sinh, FE không gửi)
 
+---
+
+**Changelog (backend):**
+- Thêm cột `rejectreason` (TEXT) cho bảng `goodsreceipt` và `goodsissue` trong migration: `src/main/resources/db/migration/V6__add_rejectreason_to_receipt_and_issue.sql`.
+- Response DTOs `GoodsReceiptResponse` và `GoodsIssueResponse` hiện có trường `rejectReason` (string). FE có thể hiển thị lý do từ chối khi `docstatus = REJECTED`.
+
+
 ### Ràng buộc logic
 
 - Customer: nếu `iscustomer=false` thì phải có `issupplier=true`, và ngược lại.
@@ -900,9 +907,50 @@ Response: `GET /api/items` and `GET /api/items/{id}` will include `currentStock`
 | PUT | `/api/goods-receipts/{id}` | Sửa phiếu DRAFT | ADMIN, MANAGER, STAFF |
 | POST | `/api/goods-receipts/{id}/confirm` | Xác nhận → cộng tồn | ADMIN, MANAGER |
 | POST | `/api/goods-receipts/{id}/cancel` | Hủy phiếu DRAFT | ADMIN, MANAGER |
+| POST | `/api/goods-receipts/{id}/reject` | Từ chối phiếu nhập | ADMIN, MANAGER |
 | GET | `/api/goods-receipts/available-locations?itemId=` | Vị trí còn chỗ | ADMIN, MANAGER, STAFF |
 | GET | `/api/goods-receipts/suggest-locations?itemId=&quantity=` | Gợi ý vị trí | ADMIN, MANAGER, STAFF |
 | GET | `/api/goods-receipts/suggest-split?itemId=&quantity=` | Gợi ý phân bổ nhiều vị trí | ADMIN, MANAGER, STAFF |
+
+### 7.3 Từ chối phiếu nhập (Reject)
+
+FE: Khi quản lý muốn từ chối một phiếu nhập đang ở trạng thái chờ duyệt, gọi endpoint dưới đây với lý do.
+
+Endpoint: `POST /api/goods-receipts/{id}/reject`
+
+Permissions: `ADMIN`, `MANAGER`
+
+Request body (JSON):
+```json
+{
+  "reason": "Lý do từ chối ví dụ: hóa đơn không hợp lệ"
+}
+```
+
+Behavior:
+- Server set `docstatus = REJECTED` và lưu `rejectReason` (TEXT).
+- Response `GoodsReceiptResponse` sẽ có trường `rejectReason` chứa lý do.
+- Notification: creator (STAFF) sẽ nhận thông báo `REJECTED` kèm lý do.
+
+Response (200) example:
+```json
+{
+  "success": true,
+  "message": "Từ chối phiếu nhập thành công",
+  "data": {
+    "id": 12,
+    "docno": "PN-12",
+    "docstatus": "REJECTED",
+    "rejectReason": "Hóa đơn không hợp lệ",
+    "actionByUsername": "manager01",
+    "actionByFullname": "Trưởng kho",
+    "approvedAt": "2026-05-31T10:30:00"
+  }
+}
+```
+
+**Lỗi có thể trả về:**
+- `"Phiếu nhập đã ở trạng thái CONFIRMED/CANCELLED/REJECTED, không thể từ chối"`
 
 ### 7.1 Tạo / Cập nhật phiếu nhập (DRAFT)
 
@@ -971,6 +1019,7 @@ Response: `GET /api/items` and `GET /api/items/{id}` will include `currentStock`
     "actionByUsername": null,
     "actionByFullname": null,
     "approvedAt": null,
+    "rejectReason": null,
     "details": [
       {
         "id": 1,
@@ -1008,12 +1057,29 @@ BE thực hiện:
 
 **Note on `doctype`:** If a `GoodsReceipt` is created/linked from an `InventoryAudit` (the request contains `inventoryAuditId`), the backend will automatically set `doctype = "ADJUSTMENT"` to indicate this is an adjustment receipt. FE **does not** need to set `doctype` when creating adjustment receipts via the audit flow; BE will enforce the correct type.
 
+### 7.2.1 Luồng end-to-end (chi tiết từng bước)
+
+1. FE: Gọi `POST /api/goods-receipts` với body (có thể để `docno` trống). BE trả về phiếu `DRAFT`.
+2. FE: Gọi `GET /api/goods-receipts/available-locations?itemId=` hoặc `suggest-locations` để chọn `locationId` cho từng dòng nếu cần.
+3. FE: Người dùng gán `locationId` cho các dòng chưa có; FE cập nhật bằng `PUT /api/goods-receipts/{id}`.
+4. FE: Khi sẵn sàng, gọi `POST /api/goods-receipts/{id}/confirm` để xác nhận.
+5. BE (trong `confirm`):
+  - Kiểm tra tất cả dòng có `locationId` (nếu thiếu, trả lỗi và dừng).
+  - Kiểm tra capacity từng vị trí; nếu không đủ, trả lỗi và không thay đổi dữ liệu.
+  - Cộng `quantity` vào `ItemLocation` tương ứng (tạo mới nếu chưa có) và đảm bảo `isActive=true`.
+  - Cộng `quantity` vào `InventoryBalance` (tồn tổng) và cập nhật `lastUpdated`.
+  - Tạo hoặc cập nhật `Batch` cho mỗi dòng (mỗi dòng-lô gắn vị trí tạo/lưu batch với `quantity` và `quantityRemaining`).
+  - Đặt `docstatus = CONFIRMED`, lưu `modifiedBy`/`approver` nếu có, và trả về phiếu đã cập nhật.
+6. BE: Nếu phiếu được tạo từ `InventoryAudit` (có `inventoryAuditId`), BE tự động gán `doctype = ADJUSTMENT` và (nếu có) lưu `adjustmentFlags` vào audit record.
+7. FE: Sau confirm, gọi `GET /api/goods-receipts/{id}` để lấy lại phiếu đã được confirm — response sẽ chứa `batchId`/`batchCode` cho các dòng đã tạo lô, `docstatus = CONFIRMED`, và `doctype`.
+8. FE (tuỳ UI): Cập nhật view vị trí / danh sách lô bằng `GET /api/locations/{id}/items` hoặc `GET /api/batches/by-location` để hiển thị lô mới xuất hiện trên vị trí.
+
 **Lỗi có thể trả về:**
 - `"Phiếu nhập không có dòng chi tiết nào"`
 - `"Dòng chi tiết với mã hàng 'X' chưa được gán vị trí"`
 - `"Vị trí 'A1-01' không đủ sức chứa. Còn trống: 20, cần nhập: 100"`
 
-### 7.3 API hỗ trợ chọn vị trí
+### 7.4 API hỗ trợ chọn vị trí
 
 **`GET /available-locations?itemId={id}`** — Liệt kê vị trí còn chỗ, không cần truyền `quantity`.
 
@@ -1086,8 +1152,49 @@ Trả về danh sách sắp xếp: `EXISTING` → `EMPTY` → `PARTIAL`.
 | PUT | `/api/goods-issues/{id}` | Sửa phiếu DRAFT | ADMIN, MANAGER, STAFF |
 | POST | `/api/goods-issues/{id}/confirm` | Xác nhận → trừ tồn | ADMIN, MANAGER |
 | POST | `/api/goods-issues/{id}/cancel` | Hủy phiếu DRAFT | ADMIN, MANAGER |
+| POST | `/api/goods-issues/{id}/reject` | Từ chối phiếu xuất | ADMIN, MANAGER |
 | GET | `/api/goods-issues/available-locations?itemId=` | Vị trí có hàng | ADMIN, MANAGER, STAFF |
 | GET | `/api/goods-issues/suggest-split?itemId=&quantity=` | Gợi ý phân bổ nhiều vị trí | ADMIN, MANAGER, STAFF |
+
+### 8.3 Từ chối phiếu xuất (Reject)
+
+FE: Khi quản lý từ chối một phiếu xuất, gọi endpoint này với lý do từ chối.
+
+Endpoint: `POST /api/goods-issues/{id}/reject`
+
+Permissions: `ADMIN`, `MANAGER`
+
+Request body (JSON):
+```json
+{
+  "reason": "Lý do từ chối ví dụ: đơn hàng bị huỷ"
+}
+```
+
+Behavior:
+- Server set `docstatus = REJECTED` và lưu `rejectReason` (TEXT) vào bản ghi.
+- Response `GoodsIssueResponse` sẽ có trường `rejectReason` chứa lý do.
+- Notification: creator (STAFF) sẽ nhận thông báo `REJECTED` kèm lý do.
+
+Response (200) example:
+```json
+{
+  "success": true,
+  "message": "Từ chối phiếu xuất thành công",
+  "data": {
+    "id": 9,
+    "docno": "PX-09",
+    "docstatus": "REJECTED",
+    "rejectReason": "Đơn hàng bị huỷ",
+    "actionByUsername": "manager01",
+    "actionByFullname": "Trưởng kho",
+    "approvedAt": "2026-05-31T10:30:00"
+  }
+}
+```
+
+**Lỗi có thể trả về:**
+- `"Phiếu xuất đã ở trạng thái CONFIRMED/CANCELLED/REJECTED, không thể từ chối"`
 
 ### 8.1 Tạo / Cập nhật phiếu xuất (DRAFT)
 
@@ -1133,6 +1240,22 @@ BE thực hiện:
 6. Nếu dòng chi tiết có `batchId`: kiểm tra và trừ `quantityRemaining` của lô tương ứng.
 7. Set `docstatus = CONFIRMED`.
 
+### 8.2.1 Luồng end-to-end (chi tiết từng bước)
+
+1. FE: Gọi `POST /api/goods-issues` với body (có thể để `docno` trống). BE trả về phiếu `DRAFT`.
+2. FE: Gọi `GET /api/goods-issues/available-locations?itemId=` hoặc `suggest-split` để chọn `locationId` / `batchId` cho từng dòng.
+3. FE: Người dùng gán `locationId`/`batchId` cho các dòng; FE cập nhật bằng `PUT /api/goods-issues/{id}`.
+4. FE: Khi sẵn sàng, gọi `POST /api/goods-issues/{id}/confirm` để xác nhận.
+5. BE (trong `confirm`):
+  - Kiểm tra tất cả dòng có `locationId` (nếu thiếu, trả lỗi và dừng).
+  - Kiểm tra `ItemLocation` tại vị trí đó có đủ `quantity`; nếu không đủ, trả lỗi.
+  - Trừ `quantity` ở `ItemLocation` và set `isActive=false` khi còn 0.
+  - Trừ `quantity` tại `InventoryBalance` (tồn tổng) và cập nhật `lastUpdated`.
+  - Nếu dòng có `batchId`: kiểm tra `quantityRemaining` của lô và trừ tương ứng.
+  - Đặt `docstatus = CONFIRMED`, lưu `modifiedBy`/`approver` nếu có, và trả về phiếu đã cập nhật.
+6. BE: Nếu phiếu được tạo từ `InventoryAudit` (có `inventoryAuditId`), BE tự động gán `doctype = ADJUSTMENT`.
+7. FE: Sau confirm, gọi `GET /api/goods-issues/{id}` để lấy lại phiếu — response sẽ có `docstatus = CONFIRMED`, `doctype`, và lộ trình thay đổi tồn.
+
 **Lỗi có thể trả về:**
 - `"Phiếu xuất không có dòng chi tiết nào"`
 - `"Không tìm thấy tồn kho của 'SP001' tại vị trí 'A1-01'"`
@@ -1140,7 +1263,7 @@ BE thực hiện:
 - `"Tồn kho tổng của 'SP001' không đủ số lượng để xuất"`
 - `"Số lượng của lô 'LITEM00120260506' không đủ để xuất (cần 50, còn lại 30)"`
 
-### 8.3 API hỗ trợ chọn vị trí
+### 8.4 API hỗ trợ chọn vị trí
 
 **`GET /available-locations?itemId={id}`** — Liệt kê vị trí đang chứa item với `quantity > 0`, sắp xếp tồn giảm dần. Mỗi vị trí trả kèm tất cả hàng đang chứa tại đó.
 
