@@ -49,8 +49,8 @@ function TopbarRightContent() {
     const initial = displayName ? displayName.charAt(0).toUpperCase() : "U";
 
     useEffect(() => {
-        // Set web title to include user name for context
-        try { document.title = `${displayName} — Warehouse Management`; } catch { /* ignore */ }
+        // Keep the site title stable (CDTN) instead of overwriting with user name
+        try { document.title = 'CDTN'; } catch { /* ignore */ }
     }, [displayName]);
 
     useEffect(() => {
