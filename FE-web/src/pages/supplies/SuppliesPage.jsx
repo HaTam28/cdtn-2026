@@ -468,34 +468,34 @@ export default function SuppliesPage() {
                             ))}
                         </tbody>
                     </table>
+                </div>
 
-                    {/* Pagination */}
-                    <div className="sp-pagination">
-                        <span className="sp-rows-info">
-                            Rows per page
-                            <select
-                                className="sp-rows-select"
-                                value={rowsPerPage}
-                                onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(1); }}
-                            >
-                                {ROWS_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                            </select>
-                            <span className="sp-total-label">of {totalRows} rows</span>
-                        </span>
-                        <button className="sp-page-btn" disabled={page === 1} onClick={() => setPage(1)}>«</button>
-                        <button className="sp-page-btn" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>‹</button>
-                        {getPages().map((p, idx) =>
-                            p === "…"
-                                ? <span key={`e${idx}`} className="sp-page-ellipsis">…</span>
-                                : <button
-                                    key={p}
-                                    className={`sp-page-btn${p === page ? " sp-page-active" : ""}`}
-                                    onClick={() => setPage(p)}
-                                >{p}</button>
-                        )}
-                        <button className="sp-page-btn" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>›</button>
-                        <button className="sp-page-btn" disabled={page === totalPages} onClick={() => setPage(totalPages)}>»</button>
-                    </div>
+                {/* Pagination */}
+                <div className="sp-pagination">
+                    <span className="sp-rows-info">
+                        Rows per page
+                        <select
+                            className="sp-rows-select"
+                            value={rowsPerPage}
+                            onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(1); }}
+                        >
+                            {ROWS_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                        </select>
+                        <span className="sp-total-label">of {totalRows} rows</span>
+                    </span>
+                    <button className="sp-page-btn" disabled={page === 1} onClick={() => setPage(1)}>«</button>
+                    <button className="sp-page-btn" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>‹</button>
+                    {getPages().map((p, idx) =>
+                        p === "…"
+                            ? <span key={`e${idx}`} className="sp-page-ellipsis">…</span>
+                            : <button
+                                key={p}
+                                className={`sp-page-btn${p === page ? " sp-page-active" : ""}`}
+                                onClick={() => setPage(p)}
+                            >{p}</button>
+                    )}
+                    <button className="sp-page-btn" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>›</button>
+                    <button className="sp-page-btn" disabled={page === totalPages} onClick={() => setPage(totalPages)}>»</button>
                 </div>
             </div>
         </div >

@@ -496,6 +496,19 @@
     overflow: hidden;
 }
 
+/* When pagination immediately follows table-wrap, flatten bottom corners */
+.sp-table-wrap:has(+ .sp-pagination) {
+    border-radius: 10px 10px 0 0;
+    border-bottom: none;
+}
+
+.sp-table-wrap+.sp-pagination {
+    background: #fff;
+    border: 1.5px solid #c6dfd0;
+    border-top: 1px solid #edf3ef;
+    border-radius: 0 0 10px 10px;
+}
+
 .sp-table-wrap.sp-scrollable {
     overflow-x: auto;
     overflow-y: visible;

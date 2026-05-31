@@ -275,36 +275,36 @@ export default function AuditsPage() {
                             ))}
                         </tbody>
                     </table>
+                </div>
 
-                    {/* Pagination */}
-                    <div className="sp-pagination">
-                        <div className="sp-rows-info">
-                            <span>Rows per page</span>
-                            <select
-                                className="sp-rows-select"
-                                value={rowsPerPage}
-                                onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(1); }}
-                            >
-                                {ROWS_OPTIONS.map((n) => <option key={n}>{n}</option>)}
-                            </select>
-                            <span className="sp-total-label">of {filtered.length} rows</span>
-                        </div>
-                        <button className="sp-page-btn" onClick={() => setPage(1)} disabled={safeP === 1}>«</button>
-                        <button className="sp-page-btn" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safeP === 1}>‹</button>
-                        {pages.map((p, i) =>
-                            p === "..." ? (
-                                <span key={i} className="sp-page-ellipsis">...</span>
-                            ) : (
-                                <button
-                                    key={p}
-                                    className={`sp-page-btn${safeP === p ? " sp-page-active" : ""}`}
-                                    onClick={() => setPage(p)}
-                                >{p}</button>
-                            )
-                        )}
-                        <button className="sp-page-btn" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safeP === totalPages}>›</button>
-                        <button className="sp-page-btn" onClick={() => setPage(totalPages)} disabled={safeP === totalPages}>»</button>
+                {/* Pagination */}
+                <div className="sp-pagination">
+                    <div className="sp-rows-info">
+                        <span>Rows per page</span>
+                        <select
+                            className="sp-rows-select"
+                            value={rowsPerPage}
+                            onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(1); }}
+                        >
+                            {ROWS_OPTIONS.map((n) => <option key={n}>{n}</option>)}
+                        </select>
+                        <span className="sp-total-label">of {filtered.length} rows</span>
                     </div>
+                    <button className="sp-page-btn" onClick={() => setPage(1)} disabled={safeP === 1}>«</button>
+                    <button className="sp-page-btn" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safeP === 1}>‹</button>
+                    {pages.map((p, i) =>
+                        p === "..." ? (
+                            <span key={i} className="sp-page-ellipsis">...</span>
+                        ) : (
+                            <button
+                                key={p}
+                                className={`sp-page-btn${safeP === p ? " sp-page-active" : ""}`}
+                                onClick={() => setPage(p)}
+                            >{p}</button>
+                        )
+                    )}
+                    <button className="sp-page-btn" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safeP === totalPages}>›</button>
+                    <button className="sp-page-btn" onClick={() => setPage(totalPages)} disabled={safeP === totalPages}>»</button>
                 </div>
             </div>
         </div>
