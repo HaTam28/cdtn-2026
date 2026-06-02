@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import "../../styles/shared.css";
 import "./receipts.css";
-import { getAllReceipts } from "../../api/receiptApi";
+import { getAllReceipts, getReceiptsByUser } from "../../api/receiptApi";
 import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
@@ -92,7 +92,6 @@ export default function ReceiptsPage() {
     const user = JSON.parse(localStorage.getItem("user") || "{}");
     const isStaff = user?.role === "STAFF";
     const userId = user?.id ?? user?.userId;
-    const userCode = user?.usercode || user?.username || user?.userCode;
     const [receipts, setReceipts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -107,31 +106,21 @@ export default function ReceiptsPage() {
         setLoading(true);
         setError(null);
         try {
-            const data = await getAllReceipts();
+            const data = isStaff && userId
+                ? await getReceiptsByUser(userId)
+                : await getAllReceipts();
             setReceipts(data);
         } catch {
             setError("Không thể tải danh sách phiếu nhập kho.");
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [isStaff, userId]);
 
     useEffect(() => { fetchReceipts(); }, [fetchReceipts]);
 
     const filtered = useMemo(() => {
         let list = receipts;
-        if (isStaff) {
-            list = list.filter((r) => {
-                const createdById = r?.createdById ?? r?.createdByUserId ?? r?.userId ?? r?.staffId ?? r?.employeeId ?? r?.createdBy;
-                const createdByObjId = r?.createdBy?.id ?? r?.createdBy?.userId;
-                if (userId && (String(createdById) === String(userId) || String(createdByObjId) === String(userId))) return true;
-                if (userCode) {
-                    const createdByCode = r?.createdByUsername ?? r?.createdByUsercode ?? r?.createdByUserCode;
-                    if (createdByCode && String(createdByCode) === String(userCode)) return true;
-                }
-                return false;
-            });
-        }
         if (activeTab !== "Tất cả") {
             const st = TAB_STATUS[activeTab];
             list = list.filter((r) => r.docstatus === st);

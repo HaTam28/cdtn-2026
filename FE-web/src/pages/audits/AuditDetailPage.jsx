@@ -462,6 +462,13 @@ export default function AuditDetailPage() {
                                 </div>
                             )}
 
+                            {audit.docstatus === "REJECTED" && audit.rejectReason && (
+                                <div className="rc-form-row" style={{ marginTop: 6 }}>
+                                    <label className="rc-form-label">Lý do từ chối</label>
+                                    <input className="rc-form-input rc-form-full" value={audit.rejectReason} readOnly style={{ color: "#bf360c", borderColor: "#ffb74d", background: "#fff8f5" }} />
+                                </div>
+                            )}
+
                             {/* ── Summary bar (chỉ show khi có dữ liệu diff) ──
                             {audit.docstatus !== "DRAFT" && summary && (
                                 <div className="au-summary-bar">
@@ -520,9 +527,6 @@ export default function AuditDetailPage() {
                             {audit.docstatus === "REJECTED" && (
                                 <div style={{ background: "#fbe9e7", border: "1px solid #ff8a65", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: "0.85rem", color: "#bf360c" }}>
                                     Phiếu kiểm kê đã bị <strong>từ chối</strong>.
-                                    {audit.rejectReason && (
-                                        <span> Lý do: <strong>{audit.rejectReason}</strong></span>
-                                    )}
                                 </div>
                             )}
 
