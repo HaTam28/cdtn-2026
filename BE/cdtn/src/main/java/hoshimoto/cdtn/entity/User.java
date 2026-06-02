@@ -50,7 +50,6 @@ public class User {
     @Column(columnDefinition = "TEXT")
     private String address;
 
-    @CreationTimestamp
     private LocalDateTime birthdate;
 
     @Column(length = 10)

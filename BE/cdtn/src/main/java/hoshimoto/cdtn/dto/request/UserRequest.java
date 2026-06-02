@@ -30,6 +30,8 @@ public class UserRequest {
 
     private String gender;
 
+    private String birthdate;
+
     @Size(max = 50)
     private String bankaccount;
 

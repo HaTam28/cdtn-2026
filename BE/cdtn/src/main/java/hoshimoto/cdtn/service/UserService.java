@@ -1,6 +1,8 @@
 package hoshimoto.cdtn.service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Optional;
 
@@ -142,6 +144,22 @@ public class UserService {
         if (request.getPhoneNumber() != null) u.setPhoneNumber(request.getPhoneNumber());
         if (request.getAddress() != null) u.setAddress(request.getAddress());
         if (request.getGender() != null) u.setGender(request.getGender());
+        if (request.getBirthdate() != null) {
+            String b = request.getBirthdate().trim();
+            if (!b.isEmpty()) {
+                try {
+                    // try date-only first (yyyy-MM-dd)
+                    u.setBirthdate(LocalDate.parse(b).atStartOfDay());
+                } catch (DateTimeParseException e) {
+                    try {
+                        // try full datetime
+                        u.setBirthdate(LocalDateTime.parse(b));
+                    } catch (DateTimeParseException ex) {
+                        throw new RuntimeException("birthdate không hợp lệ. Dùng định dạng yyyy-MM-dd hoặc ISO datetime");
+                    }
+                }
+            }
+        }
         if (request.getBankaccount() != null) u.setBankaccount(request.getBankaccount());
         if (request.getBankname() != null) u.setBankname(request.getBankname());
         if (request.getIsActive() != null) u.setIsActive(request.getIsActive());
