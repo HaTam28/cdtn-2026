@@ -230,8 +230,9 @@ export default function PartnersCreatePage() {
                                         <input
                                             className="sd-input"
                                             placeholder="Nhập số điện thoại"
+                                            inputMode="numeric"
                                             value={form.mobile}
-                                            onChange={(e) => set("mobile", e.target.value)}
+                                            onChange={(e) => set("mobile", e.target.value.replace(/\D/g, ""))}
                                         />
                                     </div>
                                 </div>
@@ -251,8 +252,9 @@ export default function PartnersCreatePage() {
                                         <input
                                             className="sd-input"
                                             placeholder="Nhập SDT"
+                                            inputMode="numeric"
                                             value={form.partnermobile}
-                                            onChange={(e) => set("partnermobile", e.target.value)}
+                                            onChange={(e) => set("partnermobile", e.target.value.replace(/\D/g, ""))}
                                         />
                                     </div>
                                 </div>
@@ -272,8 +274,9 @@ export default function PartnersCreatePage() {
                                         <input
                                             className="sd-input"
                                             placeholder="Nhập mã số thuế"
+                                            inputMode="numeric"
                                             value={form.taxcode}
-                                            onChange={(e) => set("taxcode", e.target.value)}
+                                            onChange={(e) => set("taxcode", e.target.value.replace(/\D/g, ""))}
                                         />
                                     </div>
                                 </div>
