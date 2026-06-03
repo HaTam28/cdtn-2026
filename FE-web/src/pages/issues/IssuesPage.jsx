@@ -12,14 +12,16 @@ const STATUS_LABELS = {
     DRAFT: "Chờ duyệt",
     CONFIRMED: "Đã duyệt",
     CANCELLED: "Hủy",
+    REJECTED: "Đã từ chối",
 };
 const STATUS_BADGE = {
     DRAFT: "rc-badge rc-badge-draft",
     CONFIRMED: "rc-badge rc-badge-confirmed",
     CANCELLED: "rc-badge rc-badge-cancelled",
+    REJECTED: "rc-badge rc-badge-rejected",
 };
-const TABS = ["Tất cả", "Chờ duyệt", "Đã duyệt", "Hủy"];
-const TAB_STATUS = { "Chờ duyệt": "DRAFT", "Đã duyệt": "CONFIRMED", "Hủy": "CANCELLED" };
+const TABS = ["Tất cả", "Chờ duyật", "Đã duyật", "Hủy", "Đã từ chối"];
+const TAB_STATUS = { "Chờ duyật": "DRAFT", "Đã duyật": "CONFIRMED", "Hủy": "CANCELLED", "Đã từ chối": "REJECTED" };
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
 function formatDate(str) {
@@ -293,6 +295,11 @@ export default function IssuesPage() {
                                         <span className={STATUS_BADGE[r.docstatus] || "rc-badge"}>
                                             {STATUS_LABELS[r.docstatus] || r.docstatus}
                                         </span>
+                                        {r.docstatus === "REJECTED" && r.rejectReason && (
+                                            <div style={{ fontSize: "0.78rem", color: "#bf360c", marginTop: 3, maxWidth: 200, whiteSpace: "normal" }}>
+                                                Lý do: {r.rejectReason}
+                                            </div>
+                                        )}
                                     </td>
                                     <td className="sp-td-action" onClick={(e) => { e.stopPropagation(); navigate(`/issues/${r.id}`); }}>
                                         <button className="sp-edit-btn" title="Xem chi tiết"><IconEye /></button>

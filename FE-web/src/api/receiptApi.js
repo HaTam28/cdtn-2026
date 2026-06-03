@@ -9,6 +9,12 @@ export const getAllReceipts = async () => {
     return res.data.data || [];
 };
 
+/** GET /api/goods-receipts?userId={userId} — Phiếu nhập của một nhân viên */
+export const getReceiptsByUser = async (userId) => {
+    const res = await axiosInstance.get(`${BASE}?userId=${userId}`);
+    return res.data.data || [];
+};
+
 /** GET /api/goods-receipts/{id} — Chi tiết phiếu nhập */
 export const getReceiptById = async (id) => {
     const res = await axiosInstance.get(`${BASE}/${id}`);

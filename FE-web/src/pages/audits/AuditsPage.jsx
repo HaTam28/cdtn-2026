@@ -267,6 +267,11 @@ export default function AuditsPage() {
                                         <span className={STATUS_BADGE[r.docstatus] || "rc-badge"}>
                                             {STATUS_LABELS[r.docstatus] || r.docstatus}
                                         </span>
+                                        {r.docstatus === "REJECTED" && r.rejectReason && (
+                                            <div style={{ fontSize: "0.78rem", color: "#bf360c", marginTop: 3, maxWidth: 200, whiteSpace: "normal" }}>
+                                                Lý do: {r.rejectReason}
+                                            </div>
+                                        )}
                                     </td>
                                     <td className="sp-td-action" onClick={(e) => { e.stopPropagation(); navigate(isStaff ? `/audits/requests?id=${r.id}` : `/audits/${r.id}`); }}>
                                         <button className="sp-edit-btn" title="Xem chi tiết"><IconEye /></button>

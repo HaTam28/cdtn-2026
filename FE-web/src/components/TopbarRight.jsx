@@ -105,12 +105,16 @@ function TopbarRightContent() {
     }, [firestore, realtimeEnabled]);
 
     const buildTargetUrl = (note) => {
+        if (!note) return "/overview";
         if (note.targetUrl) return note.targetUrl;
-        if (note.targetType === "GOODS_RECEIPT") return `/receipts/${note.targetId}`;
-        if (note.targetType === "GOODS_ISSUE") return `/issues/${note.targetId}`;
-        if (note.targetType === "INVENTORY_AUDIT") {
-            if (user?.role === "STAFF") return `/audits/requests?id=${note.targetId}`;
-            return `/audits/${note.targetId}`;
+        const t = String(note.targetType || "").toUpperCase();
+        const id = note.targetId ?? (note.target && note.target.id);
+        if (t.includes("GOODS_RECEIPT")) return `/receipts/${id}`;
+        if (t.includes("GOODS_ISSUE")) return `/issues/${id}`;
+        // Match any audit-related targetType (INVENTORY_AUDIT, INVENTORY_AUDIT_REQUEST, etc.)
+        if (t.includes("AUDIT")) {
+            if (user?.role === "STAFF") return `/audits/requests?id=${id}`;
+            return `/audits/${id}`;
         }
         return "/overview";
     };

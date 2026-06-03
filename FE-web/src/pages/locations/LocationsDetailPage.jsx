@@ -58,30 +58,64 @@ export default function LocationsDetailPage() {
         getBatchesByLocation(id)
             .then((list) => {
                 if (Array.isArray(list) && list.length > 0) {
-                    // normalize batch entries to a consistent item shape
-                    const items = list.map((b) => ({
+                    // Normalize each batch entry into a per-batch row
+                    const rows = list.map((b, idx) => ({
+                        rowId: `${b.id ?? b.batchId ?? b.batchCode ?? idx}`,
                         itemId: b.itemId ?? b.itemid ?? "",
                         itemcode: b.itemcode ?? b.itemCode ?? b.code ?? "",
                         itemname: b.itemname ?? b.name ?? "",
                         unitof: b.unitOf ?? b.unitof ?? b.unit ?? "",
-                        quantity: b.quantity ?? b.qty ?? 0,
-                        batchCodes: b.batchCode ? [b.batchCode] : (b.batchCodes || [])
+                        quantity: Number(b.quantityRemaining ?? b.quantity ?? b.qty ?? 0),
+                        batchCode: b.batchCode ?? (Array.isArray(b.batchCodes) && b.batchCodes[0]) ?? null,
                     }));
-                    setStoredItems(items);
+                    const filtered = rows.filter((r) => Number(r.quantity) > 0);
+                    setStoredItems(filtered);
                     return;
                 }
                 // fallback to existing location items endpoint
                 return getItemsAtLocation(id).then((data) => {
                     const raw = Array.isArray(data) ? data : (data?.items || []);
-                    const items = raw.map((it) => ({
-                        itemId: it.itemId ?? it.itemid ?? it.id ?? "",
-                        itemcode: it.itemcode ?? it.itemCode ?? it.code ?? "",
-                        itemname: it.itemname ?? it.name ?? "",
-                        unitof: it.unitOf ?? it.unitof ?? it.unit ?? "",
-                        quantity: it.quantity ?? it.qty ?? 0,
-                        batchCodes: it.batchCodes ?? (it.batchCode ? [it.batchCode] : [])
-                    }));
-                    setStoredItems(items);
+                    const rows = raw.flatMap((it, idx) => {
+                        const codes = it.batchCodes ?? (it.batchCode ? [it.batchCode] : []);
+                        const quantities = it.batchQuantities ?? it.batchQuantitiesList ?? null;
+                        if (Array.isArray(codes) && codes.length > 0) {
+                            // if per-batch quantities provided, map them; else if single code, use item.quantity; otherwise create single aggregated row
+                            if (Array.isArray(quantities) && quantities.length === codes.length) {
+                                return codes.map((code, i) => ({
+                                    rowId: `${it.itemId ?? it.itemcode ?? idx}-${code}`,
+                                    itemId: it.itemId ?? it.itemid ?? it.id ?? "",
+                                    itemcode: it.itemcode ?? it.itemCode ?? it.code ?? "",
+                                    itemname: it.itemname ?? it.name ?? "",
+                                    unitof: it.unitOf ?? it.unitof ?? it.unit ?? "",
+                                    quantity: Number(quantities[i] ?? 0),
+                                    batchCode: code,
+                                }));
+                            }
+                            if (codes.length === 1) {
+                                return [{
+                                    rowId: `${it.itemId ?? it.itemcode ?? idx}-${codes[0]}`,
+                                    itemId: it.itemId ?? it.itemid ?? it.id ?? "",
+                                    itemcode: it.itemcode ?? it.itemCode ?? it.code ?? "",
+                                    itemname: it.itemname ?? it.name ?? "",
+                                    unitof: it.unitOf ?? it.unitof ?? it.unit ?? "",
+                                    quantity: Number(it.quantity ?? it.qty ?? 0),
+                                    batchCode: codes[0],
+                                }];
+                            }
+                            // multiple codes but no per-batch quantities: fall back to single aggregated row
+                        }
+                        return [{
+                            rowId: `${it.itemId ?? it.itemcode ?? idx}`,
+                            itemId: it.itemId ?? it.itemid ?? it.id ?? "",
+                            itemcode: it.itemcode ?? it.itemCode ?? it.code ?? "",
+                            itemname: it.itemname ?? it.name ?? "",
+                            unitof: it.unitOf ?? it.unitof ?? it.unit ?? "",
+                            quantity: Number(it.quantity ?? it.qty ?? 0),
+                            batchCode: null,
+                        }];
+                    });
+                    const filtered = rows.filter((r) => Number(r.quantity) > 0);
+                    setStoredItems(filtered);
                 });
             })
             .catch(() => {
@@ -143,19 +177,14 @@ export default function LocationsDetailPage() {
     };
 
     const itemRows = useMemo(() => (
-        storedItems.flatMap((item) => {
-            const codes = Array.isArray(item.batchCodes) && item.batchCodes.length > 0
-                ? item.batchCodes
-                : [null];
-            return codes.map((code, idx) => ({
-                rowId: `${item.itemId || item.itemcode || "item"}-${code || idx}`,
-                itemcode: item.itemcode,
-                itemname: item.itemname,
-                unitof: item.unitof,
-                quantity: item.quantity,
-                batchCode: code,
-            }));
-        })
+        storedItems.map((item, idx) => ({
+            rowId: item.rowId ?? `${item.itemId || item.itemcode || "item"}-${idx}`,
+            itemcode: item.itemcode,
+            itemname: item.itemname,
+            unitof: item.unitof,
+            quantity: item.quantity,
+            batchCode: item.batchCode ?? null,
+        }))
     ), [storedItems]);
 
     return (

@@ -91,7 +91,8 @@ export default function AuditDetailPage() {
     const canReject = !isStaff && ["SUBMITTED", "PENDING_PROCESS"].includes(audit?.docstatus);
     const canCancel = !isStaff && audit?.docstatus === "DRAFT";
     const canOpenMenu = canConfirm || canReject || canCancel;
-    // Sau khi PROCESSED: hiện nút tạo phiếu điều chỉnh vị trí (ItemLocation) — tuỳ chọn
+    // Hiện nút tạo phiếu điều chỉnh vị trí chỉ khi quản lý đã xác nhận chênh lệch (sau đó trạng thái sẽ là PROCESSED).
+    // Vì vậy chỉ cho phép tạo phiếu điều chỉnh khi audit.docstatus === "PROCESSED" và không phải STAFF.
     const canCreateAdjustment = !isStaff && audit?.docstatus === "PROCESSED";
 
     const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3500); };
@@ -112,8 +113,9 @@ export default function AuditDetailPage() {
     useEffect(() => { fetchAudit(); }, [fetchAudit]);
 
     // Kiểm tra từng mã hàng: chỉ ẩn nút khi TẤT CẢ mặt hàng có chênh lệch đã được điều chỉnh và xác nhận
+    // Run this check for PENDING_PROCESS and PROCESSED so we can detect already-created adjustment vouchers
     useEffect(() => {
-        if (!audit?.docno || !audit?.details || audit?.docstatus !== "PROCESSED") return;
+        if (!audit?.docno || !audit?.details || !["PROCESSED", "PENDING_PROCESS"].includes(audit?.docstatus)) return;
 
         const negDiffItemIds = audit.details
             .filter((d) => (d.diffquantity || 0) < 0)
@@ -462,6 +464,13 @@ export default function AuditDetailPage() {
                                 </div>
                             )}
 
+                            {audit.docstatus === "REJECTED" && audit.rejectReason && (
+                                <div className="rc-form-row" style={{ marginTop: 6 }}>
+                                    <label className="rc-form-label">Lý do từ chối</label>
+                                    <input className="rc-form-input rc-form-full" value={audit.rejectReason} readOnly style={{ color: "#bf360c", borderColor: "#ffb74d", background: "#fff8f5" }} />
+                                </div>
+                            )}
+
                             {/* ── Summary bar (chỉ show khi có dữ liệu diff) ──
                             {audit.docstatus !== "DRAFT" && summary && (
                                 <div className="au-summary-bar">
@@ -520,9 +529,6 @@ export default function AuditDetailPage() {
                             {audit.docstatus === "REJECTED" && (
                                 <div style={{ background: "#fbe9e7", border: "1px solid #ff8a65", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: "0.85rem", color: "#bf360c" }}>
                                     Phiếu kiểm kê đã bị <strong>từ chối</strong>.
-                                    {audit.rejectReason && (
-                                        <span> Lý do: <strong>{audit.rejectReason}</strong></span>
-                                    )}
                                 </div>
                             )}
 
