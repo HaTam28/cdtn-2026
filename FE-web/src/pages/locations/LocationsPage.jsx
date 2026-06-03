@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../styles/shared.css";
-import { getAllLocations, getItemsAtLocation } from "../../api/locationApi";
+import { getAllLocations, getItemsAtLocation, getLocationById } from "../../api/locationApi";
 import { getBatchesByLocation } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
@@ -27,6 +27,50 @@ function escapeHtml(str) {
         .replace(/'/g, "&#39;");
 }
 
+function getLocationId(location) {
+    return location?.id ?? location?.locationId;
+}
+
+function extractItemCode(item) {
+    return (item?.itemcode ?? item?.itemCode ?? item?.code ?? "").toString?.().trim() ?? "";
+}
+
+async function fetchLocationItemSummary(id) {
+    try {
+        const batches = await getBatchesByLocation(id);
+        if (Array.isArray(batches) && batches.length > 0) {
+            const codes = Array.from(new Set(batches.map(extractItemCode))).filter(Boolean);
+            const codesStr = codes.join(", ") || "—";
+            const total = batches.reduce((s, b) => s + Number(b.quantityRemaining ?? b.quantity ?? 0), 0);
+            return { codes: codesStr, searchText: codes.join(" ").toLowerCase(), total };
+        }
+
+        const data = await getItemsAtLocation(id);
+        const storedItems = Array.isArray(data) ? data : (data?.items || []);
+        const codes = Array.from(new Set(storedItems.map(extractItemCode))).filter(Boolean);
+        const codesStr = codes.join(", ") || "—";
+        const total = (storedItems || []).reduce((s, it) => s + Number(it.quantity ?? 0), 0);
+        return { codes: codesStr, searchText: codes.join(" ").toLowerCase(), total };
+    } catch {
+        return { codes: "—", searchText: "", total: "—" };
+    }
+}
+
+function extractTotalFromLocationData(loc) {
+    if (!loc) return null;
+    const keys = ["usedCapacity", "usedcapacity", "used", "totalQuantity", "totalquantity", "total", "stock", "currentStock", "currentQuantity", "quantity"];
+    for (const k of keys) {
+        if (loc.hasOwnProperty(k) && loc[k] !== null && loc[k] !== undefined) {
+            const n = Number(loc[k]);
+            if (!Number.isNaN(n)) return n;
+        }
+    }
+    // some APIs return items[] with quantities — sum them
+    const items = loc.items || loc.Items || loc.itemsList || null;
+    if (Array.isArray(items)) return items.reduce((s, it) => s + Number(it.quantity ?? it.qty ?? 0), 0);
+    return null;
+}
+
 export default function LocationsPage() {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -36,6 +80,8 @@ export default function LocationsPage() {
     const [rowsPerPage, setRowsPerPage] = useState(15);
     const [selected, setSelected] = useState(new Set());
     const [locationItemsMap, setLocationItemsMap] = useState({});
+    const [locationItemSearchMap, setLocationItemSearchMap] = useState({});
+    const [locationTotalsMap, setLocationTotalsMap] = useState({});
     const navigate = useNavigate();
 
     const fetchItems = useCallback(async () => {
@@ -43,7 +89,7 @@ export default function LocationsPage() {
         setError(null);
         try {
             const data = await getAllLocations();
-            setItems(data);
+            setItems(data || []);
         } catch {
             setError("Không thể tải danh sách vị trí. Vui lòng thử lại.");
         } finally {
@@ -54,16 +100,60 @@ export default function LocationsPage() {
     useEffect(() => { fetchItems(); }, [fetchItems]);
 
 
+    useEffect(() => {
+        let cancelled = false;
+        const ids = items.map(getLocationId).filter((id) => id !== undefined && id !== null);
+        const missingIds = ids.filter((id) => locationItemsMap[id] === undefined || locationItemSearchMap[id] === undefined);
+        if (missingIds.length === 0) return;
+
+        const fetchAllSummaries = async () => {
+            const entries = await Promise.all(missingIds.map(async (id) => {
+                const [meta, loc] = await Promise.all([fetchLocationItemSummary(id), getLocationById(id).catch(() => null)]);
+                return [id, meta, loc];
+            }));
+            if (cancelled) return;
+            setLocationItemsMap((prev) => {
+                const next = { ...prev };
+                entries.forEach(([id, meta]) => { next[id] = meta.codes ?? meta.summary ?? "—"; });
+                return next;
+            });
+            setLocationItemSearchMap((prev) => {
+                const next = { ...prev };
+                entries.forEach(([id, meta]) => { next[id] = meta.searchText ?? ""; });
+                return next;
+            });
+            setLocationTotalsMap((prev) => {
+                const next = { ...prev };
+                entries.forEach(([id, meta, loc]) => {
+                    const locTotal = extractTotalFromLocationData(loc);
+                    next[id] = locTotal !== null ? locTotal : (meta.total ?? "—");
+                });
+                return next;
+            });
+        };
+
+        fetchAllSummaries();
+        return () => { cancelled = true; };
+    }, [items, locationItemsMap, locationItemSearchMap]);
+
     const filtered = useMemo(() => {
-        const sorted = [...items].sort((a, b) => (a.id || 0) - (b.id || 0));
+        const sorted = [...items].sort((a, b) => (getLocationId(a) || 0) - (getLocationId(b) || 0));
         if (!search.trim()) return sorted;
-        const q = search.toLowerCase();
-        return sorted.filter((r) =>
-            r.locationcode?.toLowerCase().includes(q) ||
-            r.locationname?.toLowerCase().includes(q) ||
-            r.description?.toLowerCase().includes(q)
-        );
-    }, [search, items]);
+        const q = search.trim().toLowerCase();
+        return sorted
+            .map((r) => {
+                const id = getLocationId(r);
+                const matchesItemCode = (locationItemSearchMap[id] || "").includes(q);
+                const matchesLocation =
+                    r.locationcode?.toLowerCase().includes(q) ||
+                    r.locationname?.toLowerCase().includes(q) ||
+                    r.description?.toLowerCase().includes(q);
+                return { row: r, matchesItemCode, matches: matchesItemCode || matchesLocation };
+            })
+            .filter((entry) => entry.matches)
+            .sort((a, b) => Number(b.matchesItemCode) - Number(a.matchesItemCode))
+            .map((entry) => entry.row);
+    }, [search, items, locationItemSearchMap]);
 
     const totalRows = filtered.length;
     const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage));
@@ -71,41 +161,47 @@ export default function LocationsPage() {
     const rows = filtered.slice(start, start + rowsPerPage);
 
     // Fetch items summary for visible rows (depend on stable rowIds string to avoid running on each render)
-    const rowIds = rows.map((r) => r.id).join(",");
+    const rowIds = rows.map((r) => getLocationId(r)).join(",");
     useEffect(() => {
         let cancelled = false;
-        const ids = rows.map((r) => r.id);
+        const ids = rowIds.split(",").filter(Boolean);
         if (ids.length === 0) return;
         const fetchFor = async () => {
-            const map = {};
+            const codesMap = {};
+            const totalsMap = {};
             await Promise.all(ids.map(async (id) => {
                 try {
-                    // Prefer batch-aware endpoint for per-location batch list
-                    const batches = await getBatchesByLocation(id);
+                    // prefer location detail for totals
+                    const [batches, loc] = await Promise.all([getBatchesByLocation(id).catch(() => null), getLocationById(id).catch(() => null)]);
                     if (Array.isArray(batches) && batches.length > 0) {
-                        // Extract up to 3 distinct item codes from batches
                         const codes = Array.from(new Set(batches.map(b => (b.itemcode ?? b.itemCode ?? b.code ?? '').toString?.().trim() ?? ''))).filter(Boolean);
-                        const parts = codes.slice(0, 3);
-                        if (codes.length > 3) parts.push("...");
-                        map[id] = parts.join(", ");
+                        codesMap[id] = codes.join(", ") || "—";
+                        const batchesTotal = batches.reduce((s, b) => s + Number(b.quantityRemaining ?? b.quantity ?? 0), 0);
+                        const locTotal = extractTotalFromLocationData(loc);
+                        totalsMap[id] = locTotal !== null ? locTotal : batchesTotal;
                         return;
                     }
 
-                    // Fallback to legacy location items endpoint
                     const data = await getItemsAtLocation(id);
                     const items = Array.isArray(data) ? data : (data?.items || []);
                     if (!items || items.length === 0) {
-                        map[id] = "—";
+                        codesMap[id] = "—";
+                        totalsMap[id] = extractTotalFromLocationData(loc) ?? "—";
                         return;
                     }
-                    const parts = items.slice(0, 3).map((it) => (it.itemcode ?? it.itemCode ?? it.code ?? ''));
-                    if (items.length > 3) parts.push("...");
-                    map[id] = parts.join(", ");
+                    const codes = Array.from(new Set(items.map((it) => (it.itemcode ?? it.itemCode ?? it.code ?? '')))).filter(Boolean);
+                    codesMap[id] = codes.join(", ") || "—";
+                    const itemsTotal = (items || []).reduce((s, it) => s + Number(it.quantity ?? 0), 0);
+                    totalsMap[id] = extractTotalFromLocationData(loc) ?? itemsTotal;
                 } catch {
-                    map[id] = "—";
+                    codesMap[id] = "—";
+                    totalsMap[id] = "—";
                 }
             }));
-            if (!cancelled) setLocationItemsMap((prev) => ({ ...prev, ...map }));
+            if (!cancelled) {
+                setLocationItemsMap((prev) => ({ ...prev, ...codesMap }));
+                setLocationTotalsMap((prev) => ({ ...prev, ...totalsMap }));
+            }
         };
         fetchFor();
         return () => { cancelled = true; };
@@ -113,7 +209,7 @@ export default function LocationsPage() {
 
 
 
-    const allIds = rows.map((r) => r.id);
+    const allIds = rows.map((r) => getLocationId(r));
     const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
     const someChecked = allIds.some((id) => selected.has(id)) && !allChecked;
 
@@ -139,7 +235,7 @@ export default function LocationsPage() {
             return;
         }
         const id = Array.from(selected)[0];
-        const item = items.find((r) => r.id === id);
+        const item = items.find((r) => getLocationId(r) === id);
         if (!item) return;
         navigate("/locations/create", { state: { clone: item } });
     };
@@ -148,16 +244,11 @@ export default function LocationsPage() {
         if (selected.size === 0) return;
         const now = new Date();
         const title = "DANH MỤC VỊ TRÍ";
-        const exportRows = filtered.filter((r) => selected.has(r.id));
+        const exportRows = filtered.filter((r) => selected.has(getLocationId(r)));
         const getTotalQty = (locId) => {
-            const summary = locationItemsMap[locId];
-            if (!summary || summary === "—" || summary === "...") return "—";
-            try {
-                return summary.split(",").reduce((s, part) => {
-                    const m = part.match(/\(([-0-9]+)\)/);
-                    return s + (m ? Number(m[1]) : 0);
-                }, 0);
-            } catch { return "—"; }
+            const v = locationTotalsMap[locId];
+            if (v === undefined || v === null || v === "—") return "—";
+            return Number.isFinite(Number(v)) ? Number(v).toLocaleString("vi-VN") : v;
         };
 
         const rowsHtml = exportRows.map((r, idx) => `
@@ -165,9 +256,8 @@ export default function LocationsPage() {
                 <td class="center">${idx + 1}</td>
                 <td>${escapeHtml(r.locationcode || "")}</td>
                 <td>${escapeHtml(r.locationname || "")}</td>
-                <td>${escapeHtml(r.description || "")}</td>
-                <td>${escapeHtml(locationItemsMap[r.id] ?? "")}</td>
-                <td class="right">${getTotalQty(r.id)}</td>
+                <td>${escapeHtml(locationItemsMap[getLocationId(r)] ?? "")}</td>
+                <td class="right">${getTotalQty(getLocationId(r))}</td>
             </tr>
         `).join("");
 
@@ -192,16 +282,15 @@ export default function LocationsPage() {
   <h1>${title}</h1>
   <div class="sub">Ngày ${now.toLocaleDateString("vi-VN")}</div>
   <table>
-    <thead>
-      <tr>
-        <th>STT</th>
-        <th>Mã vị trí</th>
-        <th>Tên</th>
-        <th>Diễn giải</th>
-        <th>Mã vật tư</th>
-         <th>Số lượng</th>
-      </tr>
-    </thead>
+        <thead>
+            <tr>
+                <th>STT</th>
+                <th>Mã vị trí</th>
+                <th>Tên</th>
+                <th>Mã vật tư</th>
+                <th>Số lượng</th>
+            </tr>
+        </thead>
     <tbody>${rowsHtml}</tbody>
   </table>
 </body>
@@ -300,40 +389,45 @@ export default function LocationsPage() {
                                 </th>
                                 <th className="sp-th-sticky">Mã vị trí <SortIcon /></th>
                                 <th>Tên <SortIcon /></th>
-                                <th>Diễn giải <SortIcon /></th>
                                 <th>Mã vật tư</th>
-                                {/* <th style={{ textAlign: "right" }}>Số lượng</th> */}
+                                <th style={{ textAlign: "center" }}>Số lượng <SortIcon /></th>
                                 <th className="sp-th-action">Thao tác</th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr><td colSpan={7} className="sp-status-row">Đang tải...</td></tr>
+                                <tr><td colSpan={6} className="sp-status-row">Đang tải...</td></tr>
                             ) : error ? (
-                                <tr><td colSpan={7} className="sp-status-row sp-status-error">{error}</td></tr>
+                                <tr><td colSpan={6} className="sp-status-row sp-status-error">{error}</td></tr>
                             ) : rows.length === 0 ? (
-                                <tr><td colSpan={7} className="sp-status-row">Không có dữ liệu</td></tr>
+                                <tr><td colSpan={6} className="sp-status-row">Không có dữ liệu</td></tr>
                             ) : rows.map((r) => (
                                 <tr
-                                    key={r.id}
-                                    className={`sp-row-clickable${selected.has(r.id) ? " sp-row-selected" : ""}`}
-                                    onClick={() => navigate(`/locations/${r.id}`)}
+                                    key={getLocationId(r)}
+                                    className={`sp-row-clickable${selected.has(getLocationId(r)) ? " sp-row-selected" : ""}`}
+                                    onClick={() => navigate(`/locations/${getLocationId(r)}`)}
                                 >
                                     <td className="sp-td-cb" onClick={(e) => e.stopPropagation()}>
                                         <input
                                             type="checkbox"
-                                            checked={selected.has(r.id)}
-                                            onChange={() => toggleRow(r.id)}
+                                            checked={selected.has(getLocationId(r))}
+                                            onChange={() => toggleRow(getLocationId(r))}
                                         />
                                     </td>
                                     <td className="sp-td-id sp-td-sticky">{r.locationcode}</td>
                                     <td>{r.locationname}</td>
-                                    <td>{r.description}</td>
-                                    <td style={{ fontSize: "0.9rem", color: "#234", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 260 }}>{locationItemsMap[r.id] ?? "..."}</td>
+                                    <td style={{ fontSize: "0.9rem", color: "#234" }}>{locationItemsMap[getLocationId(r)] ?? "..."}</td>
+                                    <td style={{ textAlign: "center", fontWeight: 600 }}>{
+                                        (() => {
+                                            const v = locationTotalsMap[getLocationId(r)];
+                                            if (v === undefined || v === null || v === "—") return "—";
+                                            return Number.isFinite(Number(v)) ? Number(v).toLocaleString("vi-VN") : v;
+                                        })()
+                                    }</td>
                                     {/* <td style={{ textAlign: "right", fontWeight: 600 }}>{
                                         // compute total quantity for this location if available
                                         (() => {
-                                            const summary = locationItemsMap[r.id];
+                                            const summary = locationItemsMap[getLocationId(r)];
                                             if (!summary || summary === "—" || summary === "...") return "—";
                                             // summary like 'CODE(qty), ...' -> sum the numbers
                                             try {
@@ -345,7 +439,7 @@ export default function LocationsPage() {
                                         })()
                                     }</td> */}
                                     <td className="sp-td-action" onClick={(e) => e.stopPropagation()}>
-                                        <button className="sp-edit-btn" title="Chỉnh sửa" onClick={() => navigate(`/locations/${r.id}`)}>
+                                        <button className="sp-edit-btn" title="Chỉnh sửa" onClick={() => navigate(`/locations/${getLocationId(r)}`)}>
                                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                                                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
