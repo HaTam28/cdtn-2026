@@ -91,7 +91,7 @@ export default function BatchesPage() {
     const filtered = useMemo(() => {
         const sorted = [...batches]
             .filter((batch) => receiptStatusByDetailId[batch.receiptDetailId] === "CONFIRMED")
-            .sort((a, b) => (a.id || 0) - (b.id || 0));
+            .sort((a, b) => (b.id || 0) - (a.id || 0));
         if (!search.trim()) return sorted;
         const q = search.toLowerCase();
         return sorted.filter((r) =>
@@ -298,6 +298,7 @@ export default function BatchesPage() {
                                             type="checkbox"
                                             checked={selected.has(r.id)}
                                             onChange={() => toggleRow(r.id)}
+                                            onClick={(e) => e.stopPropagation()}
                                         />
                                     </td>
                                     <td className="sp-td-id sp-td-sticky">{r.batchCode}</td>

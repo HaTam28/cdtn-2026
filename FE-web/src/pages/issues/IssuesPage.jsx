@@ -282,7 +282,7 @@ export default function IssuesPage() {
                                     onClick={() => navigate(`/issues/${r.id}`)}
                                 >
                                     <td className="sp-td-cb" onClick={(e) => { e.stopPropagation(); toggleOne(r.id); }}>
-                                        <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleOne(r.id)} />
+                                        <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleOne(r.id)} onClick={(e) => e.stopPropagation()} />
                                     </td>
                                     <td className="sp-td-id">{r.docno}</td>
                                     <td>{formatDate(r.docDate)}</td>

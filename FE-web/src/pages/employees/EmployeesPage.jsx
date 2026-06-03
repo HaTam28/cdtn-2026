@@ -281,6 +281,7 @@ export default function EmployeesPage() {
                                             type="checkbox"
                                             checked={selected.has(r.id)}
                                             onChange={() => toggleRow(r.id)}
+                                            onClick={(e) => e.stopPropagation()}
                                         />
                                     </td>
                                     <td className="sp-td-id sp-td-sticky">{r.usercode}</td>
