@@ -578,6 +578,7 @@ When presenting errors to users, show user-friendly messages and avoid leaking i
   "phoneNumber": "0901234567",
   "address": "123 Đường A",
   "gender": "Nam",
+  "birthdate": "1990-05-20",
   "bankaccount": "1234567890",
   "bankname": "Vietcombank",
   "role": "STAFF",
@@ -602,6 +603,7 @@ When presenting errors to users, show user-friendly messages and avoid leaking i
     "email": "staff01@company.com",
     "department": "KHO",
     "role": "STAFF",
+    "birthdate": "1990-05-20",
     "isActive": true
   }
 }
@@ -628,9 +630,15 @@ When presenting errors to users, show user-friendly messages and avoid leaking i
 {
   "fullname": "Nhân viên kho mới",
   "department": "KHO2",
+  "birthdate": "1990-05-20",
   "isActive": true
 }
 ```
+
+> Lưu ý về `birthdate`:
+>- BE hiện cho phép FE gửi trường `birthdate` khi tạo/cập nhật người dùng. Trường này là chuỗi và chấp nhận định dạng `yyyy-MM-dd` (ví dụ `1990-05-20`) hoặc ISO datetime (ví dụ `1990-05-20T00:00:00`).
+>- Trước đây `birthdate` bị auto-set — hiện đã sửa để BE không tự gán ngày hiện tại nữa; FE phải cung cấp ngày sinh nếu muốn lưu.
+>- Nếu định dạng không hợp lệ, BE trả `400 Bad Request` với message dạng: `birthdate không hợp lệ. Dùng định dạng yyyy-MM-dd hoặc ISO datetime`.
 
 ### 3.3 Vô hiệu hóa người dùng
 
