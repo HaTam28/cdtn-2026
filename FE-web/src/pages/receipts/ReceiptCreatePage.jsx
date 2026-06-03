@@ -536,6 +536,8 @@ export default function ReceiptCreatePage() {
         if (!form.date) { showToast("error", "Vui lòng chọn ngày."); return; }
         if (!form.docno.trim()) { showToast("error", "Vui lòng nhập số chứng từ."); return; }
         if (!form.customerId) { showToast("error", "Vui lòng chọn đối tượng."); return; }
+        if (!invoice.date) { showToast("error", "Vui lòng chọn ngày hóa đơn."); return; }
+        if (!invoice.number || !String(invoice.number).trim()) { showToast("error", "Vui lòng nhập số hóa đơn."); return; }
         if (rows.length === 0) { showToast("error", "Vui lòng thêm ít nhất một dòng vật tư."); return; }
         for (let i = 0; i < rows.length; i++) {
             const r = rows[i];
