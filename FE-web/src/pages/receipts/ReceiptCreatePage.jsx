@@ -608,9 +608,9 @@ export default function ReceiptCreatePage() {
 
                         {/* ── Header row ── */}
                         <div className="rc-header-row">
-                            <label className="rc-form-label">Ngày</label>
+                            <label className="rc-form-label">Ngày<span className="rc-required">*</span></label>
                             <input type="date" className="rc-form-input" style={{ minWidth: 150 }} value={form.date} onChange={(e) => handleFormChange("date", e.target.value)} />
-                            <label className="rc-form-label" style={{ marginLeft: 16 }}>Số</label>
+                            <label className="rc-form-label" style={{ marginLeft: 16 }}>Số<span className="rc-required">*</span></label>
                             <input className="rc-form-input" style={{ minWidth: 200 }} placeholder="Nhập số chứng từ" value={form.docno} onChange={(e) => handleFormChange("docno", e.target.value)} />
                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Loại</label>
                             <select className="rc-form-select" value={form.docType} onChange={(e) => handleFormChange("docType", e.target.value)}>
@@ -621,7 +621,7 @@ export default function ReceiptCreatePage() {
 
                         {/* ── Đối tượng ── */}
                         <div className="rc-form-row">
-                            <label className="rc-form-label">Đối tượng</label>
+                            <label className="rc-form-label">Đối tượng<span className="rc-required">*</span></label>
                             <select className="rc-form-select rc-form-full" value={form.customerId} onChange={(e) => handleCustomerChange(e.target.value)} disabled={loadingData}>
                                 <option value="">Chọn đối tượng</option>
                                 {customers.map((c) => (
@@ -648,13 +648,13 @@ export default function ReceiptCreatePage() {
                                 <thead>
                                     <tr>
                                         <th className="rc-td-stt" style={{ width: 36 }}>STT</th>
-                                        <th style={{ width: "9%" }}>Mã hàng</th>
+                                        <th style={{ width: "9%" }}>Mã hàng<span className="rc-required">*</span></th>
                                         <th style={{ width: "16%" }}>Tên vật tư hàng hóa</th>
                                         <th style={{ width: "15%" }}>Mã lô</th>
                                         <th style={{ width: "7%" }}>ĐVT</th>
-                                        <th style={{ width: "7%" }}>SL</th>
-                                        <th style={{ width: "12%" }}>Vị trí</th>
-                                        <th style={{ width: "9%" }}>Đơn giá</th>
+                                        <th style={{ width: "7%" }}>SL<span className="rc-required">*</span></th>
+                                        <th style={{ width: "12%" }}>Vị trí<span className="rc-required">*</span></th>
+                                        <th style={{ width: "9%" }}>Đơn giá<span className="rc-required">*</span></th>
                                         <th style={{ width: "10%" }}>Thành tiền</th>
                                         <th style={{ width: 32 }}></th>
                                     </tr>
@@ -738,7 +738,7 @@ export default function ReceiptCreatePage() {
                         <div className="rc-section-sub">Thông tin hóa đơn</div>
                         <div className="rc-form-2col">
                             <div className="rc-form-field">
-                                <label className="rc-form-label">Ngày HD</label>
+                                <label className="rc-form-label">Ngày HD<span className="rc-required">*</span></label>
                                 <input type="date" className="rc-form-input" value={invoice.date} onChange={(e) => handleInvoiceChange("date", e.target.value)} />
                             </div>
                             <div className="rc-form-field">
@@ -748,7 +748,7 @@ export default function ReceiptCreatePage() {
                         </div>
                         <div className="rc-form-2col">
                             <div className="rc-form-field">
-                                <label className="rc-form-label">Số hóa đơn</label>
+                                <label className="rc-form-label">Số hóa đơn<span className="rc-required">*</span></label>
                                 <input className="rc-form-input" placeholder="Nhập số hóa đơn" value={invoice.number} onChange={(e) => handleInvoiceChange("number", e.target.value)} />
                             </div>
                             <div className="rc-form-field">

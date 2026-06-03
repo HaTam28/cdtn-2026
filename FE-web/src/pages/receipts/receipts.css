@@ -83,6 +83,13 @@
     background: #eaf7f0;
 }
 
+/* Required field asterisk */
+.rc-required {
+    color: #e53935;
+    margin-left: 6px;
+    font-weight: 700;
+}
+
 /* ── Form layout ─────────────────────────────────────── */
 .rc-form-card {
     background: #fff;
