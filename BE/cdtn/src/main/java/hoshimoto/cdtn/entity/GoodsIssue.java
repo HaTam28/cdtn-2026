@@ -77,4 +77,7 @@ public class GoodsIssue {
     @Column(name = "rejectreason", columnDefinition = "TEXT")
     private String rejectReason;
 
+    @Column(length = 20, name = "doctype")
+    private String doctype;
+
 }

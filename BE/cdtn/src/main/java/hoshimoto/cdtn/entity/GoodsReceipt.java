@@ -77,6 +77,9 @@ public class GoodsReceipt {
     @Column(name = "inventory_audit_id")
     private Long inventoryAuditId;
 
+    @Column(length = 20, name = "doctype")
+    private String doctype;
+
     @Column(name = "rejectreason", columnDefinition = "TEXT")
     private String rejectReason;
 

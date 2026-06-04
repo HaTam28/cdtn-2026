@@ -74,8 +74,26 @@ public class GoodsReceiptService {
 
     // ───────────────────────── CRUD ─────────────────────────
 
-    public List<GoodsReceiptResponse> getAll() {
-        return receiptRepository.findAllByOrderByCreatedAtDesc()
+    public List<GoodsReceiptResponse> getAll(Long userId) {
+        // If userId is not provided, return all receipts.
+        if (userId == null) {
+            return receiptRepository.findAllByOrderByCreatedAtDesc()
+                    .stream().map(this::toResponse).collect(Collectors.toList());
+        }
+
+        // If userId provided, enforce permission: STAFF cannot view other users' receipts.
+        var optCurrent = getCurrentUser();
+        if (optCurrent.isPresent()) {
+            User current = optCurrent.get();
+            if (current.getRole() != Role.ADMIN && current.getRole() != Role.MANAGER) {
+                // STAFF — must only request their own receipts
+                if (!current.getId().equals(userId)) {
+                    throw new RuntimeException("Không có quyền xem phiếu của nhân viên khác");
+                }
+            }
+        }
+
+        return receiptRepository.findByUserIdOrderByCreatedAtDesc(userId)
                 .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
@@ -444,6 +462,11 @@ public class GoodsReceiptService {
                 }
                 inventoryAuditRepository.save(audit);
             }
+            // mark document type as ADJUSTMENT when linked to an inventory audit
+            receipt.setDoctype("ADJUSTMENT");
+        }
+        else if (receipt.getDoctype() == null) {
+            receipt.setDoctype("NORMAL");
         }
         // Gán người tạo từ JWT token (chỉ set khi tạo mới, không ghi đè khi update)
         if (receipt.getUser() == null) {
@@ -601,8 +624,8 @@ public class GoodsReceiptService {
         List<GoodsReceiptDetail> details = detailRepository.findByGoodsReceiptId(receipt.getId());
         res.setInvoiceNumber(receipt.getInvoiceNumber());
         res.setInventoryAuditId(receipt.getInventoryAuditId());
-        // Set document type: ADJUSTMENT when linked to inventory audit, otherwise NORMAL
-        res.setDoctype(receipt.getInventoryAuditId() != null ? "ADJUSTMENT" : "NORMAL");
+        // Use persisted doctype if present, otherwise derive from inventoryAuditId for backward compatibility
+        res.setDoctype(receipt.getDoctype() != null ? receipt.getDoctype() : (receipt.getInventoryAuditId() != null ? "ADJUSTMENT" : "NORMAL"));
         res.setDetails(details.stream().map(d -> {
             GoodsReceiptDetailResponse dr = new GoodsReceiptDetailResponse();
             dr.setId(d.getId());

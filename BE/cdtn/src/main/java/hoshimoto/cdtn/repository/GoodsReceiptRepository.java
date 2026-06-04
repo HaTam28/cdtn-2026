@@ -14,6 +14,7 @@ public interface GoodsReceiptRepository extends JpaRepository<GoodsReceipt, Long
     Optional<GoodsReceipt> findByDocno(String docno);
     List<GoodsReceipt> findByDocstatus(DocStatus docstatus);
     List<GoodsReceipt> findAllByOrderByCreatedAtDesc();
+    List<GoodsReceipt> findByUserIdOrderByCreatedAtDesc(Long userId);
 
     @Query("select r.docno from GoodsReceipt r where r.docno like concat(:prefix, '%')")
     List<String> findDocnosByPrefix(@Param("prefix") String prefix);
