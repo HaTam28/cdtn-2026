@@ -382,6 +382,11 @@ public class GoodsIssueService {
                 }
                 inventoryAuditRepository.save(audit);
             }
+            // mark document type as ADJUSTMENT when linked to an inventory audit
+            issue.setDoctype("ADJUSTMENT");
+        }
+        else if (issue.getDoctype() == null) {
+            issue.setDoctype("NORMAL");
         }
         // Gán người tạo từ JWT token (chỉ set khi tạo mới, không ghi đè khi update)
         if (issue.getUser() == null) {
@@ -554,8 +559,8 @@ public class GoodsIssueService {
             return dr;
         }).collect(Collectors.toList()));
         res.setInventoryAuditId(issue.getInventoryAuditId());
-        // Set document type: ADJUSTMENT when linked to inventory audit, otherwise NORMAL
-        res.setDoctype(issue.getInventoryAuditId() != null ? "ADJUSTMENT" : "NORMAL");
+        // Use persisted doctype if present, otherwise derive from inventoryAuditId for backward compatibility
+        res.setDoctype(issue.getDoctype() != null ? issue.getDoctype() : (issue.getInventoryAuditId() != null ? "ADJUSTMENT" : "NORMAL"));
         res.setRejectReason(issue.getRejectReason());
         return res;
     }

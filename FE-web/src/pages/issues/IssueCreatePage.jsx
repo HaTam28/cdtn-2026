@@ -118,7 +118,7 @@ function IconChevron() {
 }
 
 // ─── Location Picker Modal (Available Stock) ──────────────────────────────────
-function LocationModal({ open, onClose, onConfirm, loading, locations, quantity, rowName, itemId }) {
+function LocationModal({ open, onClose, onConfirm, loading, locations, quantity, rowName, itemId, batchId }) {
     const [search, setSearch] = useState("");
     const [rackFilter, setRackFilter] = useState("Tất cả dãy");
     const [selected, setSelected] = useState(new Map()); // Map<locationId, allocQty>
@@ -150,8 +150,14 @@ function LocationModal({ open, onClose, onConfirm, loading, locations, quantity,
         if (next.has(loc.locationId)) {
             next.delete(loc.locationId);
         } else {
-            // items[].quantity = tồn của mã hàng đang chọn tại vị trí đó
-            const stockAtLoc = (loc.items || []).find((it) => String(it.itemId) === String(itemId))?.quantity || 0;
+            // Prefer batch-specific stock when batchId provided
+            let stockAtLoc = 0;
+            if (batchId) {
+                stockAtLoc = (loc.items || []).find((it) => String(it.itemId) === String(itemId) && String(it.batchId || it.batchId) === String(batchId))?.quantity || 0;
+            }
+            if (!stockAtLoc) {
+                stockAtLoc = (loc.items || []).find((it) => String(it.itemId) === String(itemId))?.quantity || 0;
+            }
             const autoFill = Math.max(1, Math.min(Number(stockAtLoc), remaining));
             next.set(loc.locationId, autoFill);
         }
@@ -225,7 +231,14 @@ function LocationModal({ open, onClose, onConfirm, loading, locations, quantity,
                                 <tbody>
                                     {visibleLocs.map((loc) => {
                                         const isSel = selected.has(loc.locationId);
-                                        const stockAtLoc = (loc.items || []).find((it) => String(it.itemId) === String(itemId))?.quantity || 0;
+                                        // show batch-specific stock when batchId provided
+                                        let stockAtLoc = 0;
+                                        if (batchId) {
+                                            stockAtLoc = (loc.items || []).find((it) => String(it.itemId) === String(itemId) && String(it.batchId || it.batchId) === String(batchId))?.quantity || 0;
+                                        }
+                                        if (!stockAtLoc) {
+                                            stockAtLoc = (loc.items || []).find((it) => String(it.itemId) === String(itemId))?.quantity || 0;
+                                        }
                                         const isDisabled = !isSel && (remaining === 0 || Number(stockAtLoc) === 0);
                                         return (
                                             <tr
@@ -465,6 +478,8 @@ export default function IssueCreatePage() {
                 const alreadyAllocated = rows.reduce((sum, r, i) => {
                     if (i === idx) return sum; // ignore current row
                     if (String(r.itemId) !== String(row.itemId)) return sum; // only same item
+                    // if a batch is selected in other row, only subtract allocations from same batch
+                    if (row.batchId && String(r.batchId) !== String(row.batchId)) return sum;
                     const alloc = (r.selectedLocations || []).reduce((s, l) => s + (String(l.locationId) === String(loc.locationId) ? Number(l.allocQty || 0) : 0), 0);
                     return sum + alloc;
                 }, 0);
@@ -502,6 +517,15 @@ export default function IssueCreatePage() {
             const r = rows[i];
             if (!r.itemId) { showToast("error", `Dòng ${i + 1}: Vui lòng chọn mặt hàng.`); return; }
             if (!r.quantity || Number(r.quantity) <= 0) { showToast("error", `Dòng ${i + 1}: Số lượng không hợp lệ.`); return; }
+            // Validate requested quantity does not exceed available stock
+            const requested = (r.selectedLocations && r.selectedLocations.length > 0)
+                ? r.selectedLocations.reduce((s, l) => s + (Number(l.allocQty) || 0), 0)
+                : Number(r.quantity || 0);
+            const totalStock = stockByItem[String(r.itemId)]?.total;
+            if (totalStock !== undefined && requested > totalStock) {
+                showToast("error", `Dòng ${i + 1}: Số lượng yêu cầu (${requested}) vượt tồn hiện tại (${totalStock}).`);
+                return;
+            }
             // Note: location may be assigned later (DRAFT allowed). Do not require selectedLocations for draft creation.
         }
         const details = rows.flatMap((r) => {
@@ -567,6 +591,7 @@ export default function IssueCreatePage() {
                 quantity={currentRow?.quantity || 0}
                 rowName={currentRow?.itemcode || ""}
                 itemId={currentRow?.itemId || ""}
+                batchId={currentRow?.batchId || ""}
             />
             <div className="sp-main">
                 <div className="sp-topbar">
@@ -674,6 +699,11 @@ export default function IssueCreatePage() {
                                                     <option value="">-- Chọn lô --</option>
                                                     {batches
                                                         .filter((b) => String(b.itemId) === String(row.itemId) && (b.quantityRemaining ?? b.quantity) > 0)
+                                                        .sort((a, b) => {
+                                                            const ta = new Date(a.createdAt || a.date || 0).getTime();
+                                                            const tb = new Date(b.createdAt || b.date || 0).getTime();
+                                                            return ta - tb; // oldest first
+                                                        })
                                                         .map((b) => (
                                                             <option key={b.id} value={b.id}>{b.batchCode} (còn: {b.quantityRemaining ?? b.quantity})</option>
                                                         ))}

@@ -34,9 +34,10 @@ public class GoodsReceiptController {
     /** Lấy danh sách tất cả phiếu nhập */
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'STAFF')")
-    public ResponseEntity<ApiResponse<List<GoodsReceiptResponse>>> getAll() {
+    public ResponseEntity<ApiResponse<List<GoodsReceiptResponse>>> getAll(
+            @RequestParam(required = false) Long userId) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Lấy danh sách phiếu nhập thành công",
-                goodsReceiptService.getAll()));
+                goodsReceiptService.getAll(userId)));
     }
 
     /** Lấy chi tiết 1 phiếu nhập */

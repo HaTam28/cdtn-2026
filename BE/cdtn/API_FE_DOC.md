@@ -920,6 +920,24 @@ Response: `GET /api/items` and `GET /api/items/{id}` will include `currentStock`
 | GET | `/api/goods-receipts/suggest-locations?itemId=&quantity=` | Gợi ý vị trí | ADMIN, MANAGER, STAFF |
 | GET | `/api/goods-receipts/suggest-split?itemId=&quantity=` | Gợi ý phân bổ nhiều vị trí | ADMIN, MANAGER, STAFF |
 
+**Filter by user:** `GET /api/goods-receipts?userId={userId}`
+
+- Mô tả: trả danh sách phiếu do `userId` tạo (lọc theo cột `userid`).
+- Query param: `userId` (optional). Nếu không gửi, trả tất cả phiếu (theo quyền người gọi).
+- Quyền & hành vi:
+  - `ADMIN`, `MANAGER`: có thể xem tất cả phiếu hoặc chỉ các phiếu của `userId` được chỉ định.
+  - `STAFF`: chỉ được xem phiếu của chính mình — nếu `STAFF` gửi `userId` khác id của họ, server sẽ từ chối với lỗi quyền (không cho truy vấn phiếu của nhân viên khác).
+
+Example:
+
+```
+GET /api/goods-receipts?userId=123
+Authorization: Bearer <token>
+```
+
+Response: giống `GET /api/goods-receipts` nhưng chỉ chứa các phiếu do `userId=123` tạo.
+
+
 ### 7.3 Từ chối phiếu nhập (Reject)
 
 FE: Khi quản lý muốn từ chối một phiếu nhập đang ở trạng thái chờ duyệt, gọi endpoint dưới đây với lý do.
