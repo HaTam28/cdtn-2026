@@ -13,13 +13,13 @@ import {
     formatNumber,
     getAuditEndDate,
     getAuditStartDate,
-    getDisplayStatus,
+    getAuditWorkflowStatus,
     normalizeAuditDetails,
     toInputDate,
     toNumber,
 } from "./auditRowUtils";
 
-const STATUS_FILTERS = ["ALL", "REQUESTED", "IN_PROGRESS", "SUBMITTED", "PENDING_PROCESS", "PROCESSED", "OVERDUE", "REJECTED"];
+const STATUS_FILTERS = ["ALL", "REQUESTED", "IN_PROGRESS", "SUBMITTED", "APPROVED", "PROCESSED", "OVERDUE", "REJECTED"];
 
 function formatDate(str) {
     const input = toInputDate(str);
@@ -93,15 +93,25 @@ export default function AuditTasksPage() {
         const counts = { ALL: audits.length };
         STATUS_FILTERS.forEach((s) => { if (s !== "ALL") counts[s] = 0; });
         audits.forEach((a) => {
-            const st = a?.docstatus;
+            const st = getAuditWorkflowStatus(a);
             if (st) counts[st] = (counts[st] || 0) + 1;
         });
         return counts;
     }, [audits]);
 
+    const visibleStatusFilters = useMemo(() => (
+        STATUS_FILTERS.filter((status) => status === "ALL" || (statusCounts[status] || 0) > 0)
+    ), [statusCounts]);
+
+    useEffect(() => {
+        if (!visibleStatusFilters.includes(statusFilter)) {
+            setStatusFilter("ALL");
+        }
+    }, [statusFilter, visibleStatusFilters]);
+
     const filteredAudits = useMemo(() => {
         if (statusFilter === "ALL") return audits;
-        return audits.filter((a) => a?.docstatus === statusFilter);
+        return audits.filter((a) => getAuditWorkflowStatus(a) === statusFilter);
     }, [audits, statusFilter]);
 
     const totals = useMemo(() => {
@@ -210,7 +220,7 @@ export default function AuditTasksPage() {
                 {!queryId && (
                     <div className="rc-form-card">
                         <div className="au-status-bar">
-                            {STATUS_FILTERS.map((status) => (
+                            {visibleStatusFilters.map((status) => (
                                 <button
                                     key={status}
                                     className={`au-status-chip${statusFilter === status ? " au-status-chip-active" : ""}`}
@@ -225,7 +235,7 @@ export default function AuditTasksPage() {
                         {loading && <div className="sp-status-row">Đang tải...</div>}
                         {!loading && error && <div className="sp-status-row sp-status-error">{error}</div>}
                         {!loading && !error && filteredAudits.map((audit) => {
-                            const displayStatus = getDisplayStatus(audit);
+                            const displayStatus = getAuditWorkflowStatus(audit);
                             return (
                                 <div
                                     key={audit.id}
@@ -259,7 +269,7 @@ export default function AuditTasksPage() {
                             <input type="date" className="rc-form-input" style={{ minWidth: 150 }} value={toInputDate(getAuditEndDate(active))} readOnly />
                             <span style={{ marginLeft: "auto" }}>
                                 {(() => {
-                                    const displayStatus = getDisplayStatus(active);
+                                    const displayStatus = getAuditWorkflowStatus(active);
                                     return (
                                         <span className={AUDIT_STATUS_BADGE[displayStatus] || "rc-badge"}>
                                             {AUDIT_STATUS_LABELS[displayStatus] || displayStatus}

@@ -1,13 +1,14 @@
 export const AUDIT_STATUS_LABELS = {
     DRAFT: "Nháp",
-    REQUESTED: "Đã giao",
+    REQUESTED: "Chờ kiểm kê",
     IN_PROGRESS: "Đang kiểm kê",
     SUBMITTED: "Chờ duyệt",
-    PENDING_PROCESS: "Có chênh lệch",
+    PENDING_PROCESS: "Chờ duyệt",
     PROCESSED: "Đã xử lý chênh lệch",
-    CONFIRMED: "Đã xác nhận",
+    CONFIRMED: "Đã duyệt",
+    APPROVED: "Đã duyệt",
     CANCELLED: "Đã hủy",
-    REJECTED: "Bị từ chối",
+    REJECTED: "Đã từ chối",
     OVERDUE: "Quá hạn",
 };
 
@@ -15,10 +16,11 @@ export const AUDIT_STATUS_BADGE = {
     DRAFT: "rc-badge au-badge-draft",
     REQUESTED: "rc-badge au-badge-requested",
     IN_PROGRESS: "rc-badge au-badge-in-progress",
-    SUBMITTED: "rc-badge au-badge-processed",
-    PENDING_PROCESS: "rc-badge au-badge-processed",
+    SUBMITTED: "rc-badge au-badge-submitted",
+    PENDING_PROCESS: "rc-badge au-badge-submitted",
     PROCESSED: "rc-badge au-badge-processed",
     CONFIRMED: "rc-badge au-badge-processed",
+    APPROVED: "rc-badge au-badge-confirmed",
     CANCELLED: "rc-badge au-badge-cancelled",
     REJECTED: "rc-badge au-badge-rejected",
     OVERDUE: "rc-badge au-badge-overdue",
@@ -28,16 +30,17 @@ export const AUDIT_STATUS_PILL = {
     DRAFT: "rc-status-pill au-status-pill-draft",
     REQUESTED: "rc-status-pill au-status-pill-requested",
     IN_PROGRESS: "rc-status-pill au-status-pill-in-progress",
-    SUBMITTED: "rc-status-pill au-status-pill-processed",
-    PENDING_PROCESS: "rc-status-pill au-status-pill-processed",
+    SUBMITTED: "rc-status-pill au-status-pill-submitted",
+    PENDING_PROCESS: "rc-status-pill au-status-pill-submitted",
     PROCESSED: "rc-status-pill au-status-pill-processed",
     CONFIRMED: "rc-status-pill au-status-pill-processed",
+    APPROVED: "rc-status-pill au-status-pill-confirmed",
     CANCELLED: "rc-status-pill au-status-pill-cancelled",
     REJECTED: "rc-status-pill au-status-pill-rejected",
     OVERDUE: "rc-status-pill au-status-pill-overdue",
 };
 
-const DONE_STATUSES = new Set(["SUBMITTED", "PENDING_PROCESS", "PROCESSED", "CONFIRMED", "CANCELLED", "REJECTED"]);
+const OVERDUE_ELIGIBLE_STATUSES = new Set(["REQUESTED", "IN_PROGRESS", "SUBMITTED", "PENDING_PROCESS"]);
 
 export function formatNumber(value) {
     if (value === null || value === undefined || value === "") return "0";
@@ -68,11 +71,32 @@ export function getAuditEndDate(audit) {
 export function getDisplayStatus(audit) {
     const status = audit?.docstatus || audit?.status || "";
     const end = toInputDate(getAuditEndDate(audit));
-    if (end && !DONE_STATUSES.has(status)) {
+    if (end && OVERDUE_ELIGIBLE_STATUSES.has(status)) {
         const today = toInputDate(new Date());
         if (end < today) return "OVERDUE";
     }
     return status;
+}
+
+export function getAuditWorkflowStatus(audit, details = audit?.details || []) {
+    const raw = getDisplayStatus(audit);
+    if (raw === "OVERDUE") return "OVERDUE";
+    if (raw === "PENDING_PROCESS") return "SUBMITTED";
+    if (raw === "CONFIRMED") return "APPROVED";
+    if (raw === "PROCESSED") {
+        return hasPendingAdjustment(audit?.id, details) ? "APPROVED" : "PROCESSED";
+    }
+    return raw;
+}
+
+export function getAuditRowTone(status, pendingAdjustment = false) {
+    if (pendingAdjustment) return "au-row-pending-adjustment";
+    if (status === "DRAFT") return "au-row-draft";
+    if (status === "REQUESTED" || status === "IN_PROGRESS") return "au-row-active";
+    if (status === "SUBMITTED") return "au-row-review";
+    if (status === "PROCESSED" || status === "APPROVED") return status === "PROCESSED" ? "au-row-processed" : "";
+    if (status === "OVERDUE" || status === "REJECTED") return "au-row-danger";
+    return "";
 }
 
 export function getSuggestion(diff) {
@@ -83,11 +107,34 @@ export function getSuggestion(diff) {
     return "Khớp sổ sách";
 }
 
+export function getAuditDetailKey(row) {
+    return row?.id
+        ? String(row.id)
+        : `${row?.itemId || "item"}-${row?.batchId || "batch"}-${row?.locationId || "loc"}`;
+}
+
+export function getAdjustmentFlagKey(auditId, row, type) {
+    return `audit_adj_${type}_detail_${auditId}_${getAuditDetailKey(row)}`;
+}
+
+export function isAdjustmentProcessed(auditId, row) {
+    if (!auditId || !row || typeof localStorage === "undefined") return false;
+    if (row.adjustmentCreated || row.processed || row.isProcessed) return true;
+    const diff = toNumber(row.diffquantity, 0);
+    const type = diff > 0 ? "receipt" : diff < 0 ? "issue" : null;
+    if (!type) return true;
+    return localStorage.getItem(getAdjustmentFlagKey(auditId, row, type)) === "1";
+}
+
+export function hasPendingAdjustment(auditId, details = []) {
+    return details.some((row) => toNumber(row.diffquantity, 0) !== 0 && !isAdjustmentProcessed(auditId, row));
+}
+
 export function normalizeBatchRow(batch, idx = 0) {
     const batchCode = batch.batchCode ?? batch.batchcode ?? batch.nameBatch ?? "";
     const locationId = batch.locationId ?? batch.locationid ?? batch.location?.id ?? batch.warehouseLocationId ?? null;
     const locationcode = batch.locationcode ?? batch.locationCode ?? batch.location?.locationcode ?? batch.locationname ?? batch.locationName ?? "";
-    const bookquantity = toNumber(batch.quantityRemaining ?? batch.remainingQuantity ?? batch.quantity ?? batch.qty ?? 0);
+    const bookquantity = toNumber(batch.bookquantity ?? batch.systemQty ?? batch.quantityRemaining ?? batch.remainingQuantity ?? batch.quantity ?? batch.qty ?? 0);
 
     return {
         _id: `${(batch.id ?? batch.batchId ?? batchCode) || "batch"}-${locationId ?? "loc"}-${idx}`,

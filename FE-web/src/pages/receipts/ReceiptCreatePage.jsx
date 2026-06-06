@@ -419,6 +419,7 @@ export default function ReceiptCreatePage() {
 
     useEffect(() => {
         const auditId = searchParams.get("auditId");
+        const auditDetailId = searchParams.get("auditDetailId");
         if (!auditId || prefilledFromAudit) return;
         const fillFromAudit = async () => {
             try {
@@ -431,10 +432,13 @@ export default function ReceiptCreatePage() {
                 });
                 const rowsFromAudit = (data.details || [])
                     .filter((d) => Number(d.diffquantity) > 0)
+                    .filter((d) => !auditDetailId || String(d.id) === String(auditDetailId))
                     .map((d) => {
                         const diff = Number(d.diffquantity || 0);
                         const entries = d.locationEntries || [];
-                        const selectedLocations = entries.length > 0 ? buildAllocations(entries, diff) : [];
+                        const selectedLocations = d.locationId
+                            ? [{ locationId: d.locationId, locationcode: d.locationcode || d.locationname || "", allocQty: diff }]
+                            : entries.length > 0 ? buildAllocations(entries, diff) : [];
                         return {
                             ...newRow(),
                             itemId: d.itemId,
@@ -443,7 +447,7 @@ export default function ReceiptCreatePage() {
                             unitof: d.unitof,
                             quantity: String(diff),
                             price: unitCostByItem[String(d.itemId)] || "",
-                            nameBatch: "L",
+                            nameBatch: d.batchCode || "L",
                             selectedLocations,
                         };
                     });
@@ -453,7 +457,7 @@ export default function ReceiptCreatePage() {
                 setForm((prev) => ({
                     ...prev,
                     docType: "ADJUSTMENT",
-                    description: prev.description || `Điều chỉnh từ kiểm kê ${data.docno}`,
+                    description: prev.description || `Nguồn tạo từ phiếu kiểm kê ${data.docno}`,
                 }));
                 setPrefilledFromAudit(true);
             } catch {
@@ -556,6 +560,7 @@ export default function ReceiptCreatePage() {
         );
         setSaving(true);
         const adjAuditId = searchParams.get("auditId");
+        const adjAuditDetailId = searchParams.get("auditDetailId");
         try {
             const result = await createReceipt({
                 docno: form.docno.trim(),
@@ -576,6 +581,10 @@ export default function ReceiptCreatePage() {
                 // Lưu ID phiếu để AuditDetailPage kiểm tra status sau này
                 if (adjAuditId && form.docType === "ADJUSTMENT" && result?.data?.id) {
                     localStorage.setItem(`audit_adj_receipt_id_${adjAuditId}`, String(result.data.id));
+                    if (adjAuditDetailId) {
+                        localStorage.setItem(`audit_adj_receipt_detail_${adjAuditId}_${adjAuditDetailId}`, "1");
+                        localStorage.setItem(`audit_adj_receipt_detail_doc_${adjAuditId}_${adjAuditDetailId}`, String(result.data.id));
+                    }
                 }
                 setTimeout(() => navigate("/receipts"), 1200);
             } else {

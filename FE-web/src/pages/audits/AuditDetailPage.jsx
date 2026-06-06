@@ -12,8 +12,9 @@ import {
     formatNumber,
     getAuditEndDate,
     getAuditStartDate,
-    getDisplayStatus,
+    getAuditWorkflowStatus,
     getSuggestion,
+    isAdjustmentProcessed,
     normalizeAuditDetails,
     toInputDate,
     toNumber,
@@ -31,6 +32,8 @@ function SuggestionBadge({ diff }) {
     const cls = diff > 0 ? "au-suggestion-plus" : diff < 0 ? "au-suggestion-minus" : "au-suggestion-zero";
     return <span className={`au-suggestion ${cls}`}>{suggestion}</span>;
 }
+
+const APPROVED_STATUSES = new Set(["CONFIRMED", "PROCESSED"]);
 
 export default function AuditDetailPage() {
     const { id } = useParams();
@@ -74,7 +77,20 @@ export default function AuditDetailPage() {
         }, { book: 0, actual: 0, diff: 0 });
     }, [audit]);
 
-    const canConfirm = !isStaff && ["DRAFT", "SUBMITTED", "PENDING_PROCESS"].includes(audit?.docstatus);
+    const detailRows = useMemo(() => (audit?.details || []).map((row) => {
+        const actual = row.actualquantity === "" || row.actualquantity === null || row.actualquantity === undefined
+            ? null
+            : toNumber(row.actualquantity);
+        const diff = row.diffquantity ?? (actual === null ? null : actual - toNumber(row.bookquantity));
+        return { ...row, _actualForDisplay: actual, _diffForDisplay: diff };
+    }), [audit]);
+
+    const canCreateAdjustment = !isStaff && APPROVED_STATUSES.has(audit?.docstatus);
+    const showSuggestionColumn = detailRows.some((row) =>
+        toNumber(row._diffForDisplay, 0) !== 0 && !isAdjustmentProcessed(id, { ...row, diffquantity: row._diffForDisplay })
+    );
+
+    const canConfirm = !isStaff && ["SUBMITTED", "PENDING_PROCESS"].includes(audit?.docstatus);
     const canReject = !isStaff && ["SUBMITTED", "PENDING_PROCESS"].includes(audit?.docstatus);
     const canCancel = !isStaff && audit?.docstatus === "DRAFT";
 
@@ -135,7 +151,15 @@ export default function AuditDetailPage() {
         }
     };
 
-    const displayStatus = getDisplayStatus(audit);
+    const displayStatus = getAuditWorkflowStatus(audit, detailRows.map((row) => ({ ...row, diffquantity: row._diffForDisplay })));
+
+    const openAdjustment = (row) => {
+        const diff = toNumber(row._diffForDisplay, 0);
+        if (!diff) return;
+        const type = diff > 0 ? "receipts" : "issues";
+        const queryType = diff > 0 ? "receipt" : "issue";
+        navigate(`/${type}/create?docType=ADJUSTMENT&auditId=${audit.id}&auditDetailId=${encodeURIComponent(row.id || "")}&adjustmentType=${queryType}`);
+    };
 
     return (
         <>
@@ -236,6 +260,14 @@ export default function AuditDetailPage() {
                                         {totals.diff > 0 ? `+${formatNumber(totals.diff)}` : formatNumber(totals.diff)}
                                     </span>
                                 </div>
+                                {canCreateAdjustment && (
+                                    <div className="au-summary-item">
+                                        <span className="au-summary-label">Xử lý chênh lệch</span>
+                                    <span className={`au-summary-value ${showSuggestionColumn ? "au-val-minus" : "au-val-plus"}`}>
+                                        {showSuggestionColumn ? "Còn tồn đọng" : "Đã xử lý hết"}
+                                    </span>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="rc-detail-table-wrap">
@@ -251,15 +283,14 @@ export default function AuditDetailPage() {
                                             <th style={{ width: "9%", textAlign: "right" }}>SL hệ thống</th>
                                             <th style={{ width: "9%", textAlign: "right" }}>SL thực tế</th>
                                             <th style={{ width: "9%", textAlign: "right" }}>Chênh lệch</th>
-                                            <th style={{ width: "13%" }}>Đề xuất xử lý</th>
+                                            {showSuggestionColumn && <th style={{ width: "13%" }}>Đề xuất xử lý</th>}
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {audit.details.map((row, idx) => {
-                                            const actual = row.actualquantity === "" || row.actualquantity === null || row.actualquantity === undefined
-                                                ? null
-                                                : toNumber(row.actualquantity);
-                                            const diff = row.diffquantity ?? (actual === null ? null : actual - toNumber(row.bookquantity));
+                                        {detailRows.map((row, idx) => {
+                                            const actual = row._actualForDisplay;
+                                            const diff = row._diffForDisplay;
+                                            const processed = isAdjustmentProcessed(id, { ...row, diffquantity: diff });
                                             return (
                                                 <tr key={row._id || idx}>
                                                     <td className="rc-td-stt">{idx + 1}</td>
@@ -271,12 +302,30 @@ export default function AuditDetailPage() {
                                                     <td className="rc-td-num au-book-qty">{formatNumber(row.bookquantity)}</td>
                                                     <td className="rc-td-num">{actual === null ? "—" : formatNumber(actual)}</td>
                                                     <DiffCell diff={diff} />
-                                                    <td><SuggestionBadge diff={diff} /></td>
+                                                    {showSuggestionColumn && (
+                                                        <td>
+                                                            {toNumber(diff, 0) === 0 ? (
+                                                                <SuggestionBadge diff={diff} />
+                                                            ) : processed ? (
+                                                                <span className="au-suggestion au-suggestion-zero">Đã xử lý</span>
+                                                            ) : canCreateAdjustment ? (
+                                                                <button
+                                                                    type="button"
+                                                                    className={diff > 0 ? "sp-btn-outline au-adjust-action au-adjust-in" : "sp-btn-outline au-adjust-action au-adjust-out"}
+                                                                    onClick={() => openAdjustment(row)}
+                                                                >
+                                                                    {diff > 0 ? "Tạo phiếu nhập" : "Tạo phiếu xuất"}
+                                                                </button>
+                                                            ) : (
+                                                                <SuggestionBadge diff={diff} />
+                                                            )}
+                                                        </td>
+                                                    )}
                                                 </tr>
                                             );
                                         })}
                                         {audit.details.length === 0 && (
-                                            <tr><td colSpan={10} className="sp-status-row">Không có dữ liệu chi tiết.</td></tr>
+                                            <tr><td colSpan={showSuggestionColumn ? 10 : 9} className="sp-status-row">Không có dữ liệu chi tiết.</td></tr>
                                         )}
                                         {audit.details.length > 0 && (
                                             <tr className="au-total-row">
@@ -284,7 +333,7 @@ export default function AuditDetailPage() {
                                                 <td className="rc-td-num">{formatNumber(totals.book)}</td>
                                                 <td className="rc-td-num">{formatNumber(totals.actual)}</td>
                                                 <td className="rc-td-num">{totals.diff > 0 ? `+${formatNumber(totals.diff)}` : formatNumber(totals.diff)}</td>
-                                                <td></td>
+                                                {showSuggestionColumn && <td></td>}
                                             </tr>
                                         )}
                                     </tbody>
@@ -303,7 +352,7 @@ export default function AuditDetailPage() {
                                 )}
                                 {canConfirm && (
                                     <button className="sp-btn-primary" onClick={handleConfirm} disabled={actionLoading}>
-                                        {actionLoading ? "Đang xử lý..." : "Xác nhận kiểm kê"}
+                                        {actionLoading ? "Đang xử lý..." : "Duyệt"}
                                     </button>
                                 )}
                             </div>

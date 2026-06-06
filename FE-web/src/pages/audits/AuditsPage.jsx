@@ -7,17 +7,18 @@ import { getAllAudits, getAssignedAuditsPending, getAssignedAuditsDone } from ".
 import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
-import { AUDIT_STATUS_BADGE, AUDIT_STATUS_LABELS, getAuditEndDate, getAuditStartDate, getDisplayStatus } from "./auditRowUtils";
+import { AUDIT_STATUS_BADGE, AUDIT_STATUS_LABELS, getAuditEndDate, getAuditRowTone, getAuditStartDate, getAuditWorkflowStatus, hasPendingAdjustment, toNumber } from "./auditRowUtils";
 
-const TABS = ["Tất cả", "Nháp", "Đã giao", "Đang kiểm kê", "Chờ duyệt", "Có chênh lệch", "Đã xử lý", "Quá hạn"];
-const STAFF_TABS = ["Tất cả", "Đã giao", "Đang kiểm kê", "Chờ duyệt", "Có chênh lệch", "Đã xử lý", "Quá hạn"];
+const TABS = ["Tất cả", "Nháp", "Chờ kiểm kê", "Đang kiểm kê", "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Đã xử lý chênh lệch", "Quá hạn"];
+const STAFF_TABS = ["Tất cả", "Chờ kiểm kê", "Đang kiểm kê", "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Đã xử lý chênh lệch", "Quá hạn"];
 const TAB_STATUS = {
     "Nháp": "DRAFT",
-    "Đã giao": "REQUESTED",
+    "Chờ kiểm kê": "REQUESTED",
     "Đang kiểm kê": "IN_PROGRESS",
     "Chờ duyệt": "SUBMITTED",
-    "Có chênh lệch": "PENDING_PROCESS",
-    "Đã xử lý": "PROCESSED",
+    "Đã duyệt": "APPROVED",
+    "Đã từ chối": "REJECTED",
+    "Đã xử lý chênh lệch": "PROCESSED",
     "Quá hạn": "OVERDUE",
 };
 const ROWS_OPTIONS = [10, 15, 20, 50];
@@ -74,6 +75,17 @@ export default function AuditsPage() {
     const [selected, setSelected] = useState(new Set());
     const navigate = useNavigate();
 
+    const getDetailRowsForStatus = useCallback((audit) => (
+        (audit.details || []).map((d) => ({
+            ...d,
+            diffquantity: d.diffquantity ?? (d.actualquantity == null ? 0 : toNumber(d.actualquantity) - toNumber(d.bookquantity)),
+        }))
+    ), []);
+
+    const getStatusForAudit = useCallback((audit) => (
+        getAuditWorkflowStatus(audit, getDetailRowsForStatus(audit))
+    ), [getDetailRowsForStatus]);
+
     const fetchAudits = useCallback(async () => {
         setLoading(true);
         setError(null);
@@ -101,13 +113,28 @@ export default function AuditsPage() {
 
     useEffect(() => { fetchAudits(); }, [fetchAudits]);
 
+    const visibleTabs = useMemo(() => {
+        const counts = {};
+        audits.forEach((audit) => {
+            const status = getStatusForAudit(audit);
+            counts[status] = (counts[status] || 0) + 1;
+        });
+        return (isStaff ? STAFF_TABS : TABS).filter((tab) => tab === "Tất cả" || (counts[TAB_STATUS[tab]] || 0) > 0);
+    }, [audits, getStatusForAudit, isStaff]);
+
+    useEffect(() => {
+        if (!visibleTabs.includes(activeTab)) {
+            setActiveTab("Tất cả");
+            setPage(1);
+        }
+    }, [activeTab, visibleTabs]);
+
     const filtered = useMemo(() => {
         let list = audits;
         if (activeTab !== "Tất cả") {
             const st = TAB_STATUS[activeTab];
             list = list.filter((r) => {
-                const displayStatus = getDisplayStatus(r);
-                return displayStatus === st;
+                return getStatusForAudit(r) === st;
             });
         }
         if (search.trim()) {
@@ -119,7 +146,7 @@ export default function AuditsPage() {
             );
         }
         return list;
-    }, [audits, activeTab, search]);
+    }, [audits, activeTab, search, getStatusForAudit]);
 
     const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
     const safeP = Math.min(page, totalPages);
@@ -196,7 +223,7 @@ export default function AuditsPage() {
 
                 {/* Tabs */}
                 <div className="rc-tabs">
-                    {(isStaff ? STAFF_TABS : TABS).map((tab) => (
+                    {visibleTabs.map((tab) => (
                         <div
                             key={tab}
                             className={`rc-tab${activeTab === tab ? " rc-tab-active" : ""}`}
@@ -236,10 +263,15 @@ export default function AuditsPage() {
                             {!loading && !error && pageData.length === 0 && (
                                 <tr><td colSpan={8} className="sp-status-row">{isStaff ? "Không có yêu cầu kiểm kê nào." : "Không có phiếu kiểm kê nào."}</td></tr>
                             )}
-                            {!loading && !error && pageData.map((r) => (
+                            {!loading && !error && pageData.map((r) => {
+                                const detailRows = getDetailRowsForStatus(r);
+                                const pendingAdjustment = ["CONFIRMED", "PROCESSED"].includes(r.docstatus) && hasPendingAdjustment(r.id, detailRows);
+                                const rowDisplayStatus = getStatusForAudit(r);
+                                const rowTone = getAuditRowTone(rowDisplayStatus, pendingAdjustment);
+                                return (
                                 <tr
                                     key={r.id}
-                                    className={`sp-row-clickable${selected.has(r.id) ? " sp-row-selected" : ""}`}
+                                    className={`sp-row-clickable${selected.has(r.id) ? " sp-row-selected" : ""}${rowTone ? ` ${rowTone}` : ""}`}
                                     onClick={() => navigate(isStaff ? `/audits/requests?id=${r.id}` : `/audits/${r.id}`)}
                                 >
                                     <td className="sp-td-cb" onClick={(e) => { e.stopPropagation(); toggleOne(r.id); }}>
@@ -255,14 +287,9 @@ export default function AuditsPage() {
                                     <td style={{ width: 160 }}>{r.createdByFullname || r.createdByName || "—"}</td>
                                     <td style={{ width: 160 }}>{r.approverFullname || r.approverUsername || "—"}</td>
                                     <td>
-                                        {(() => {
-                                            const displayStatus = getDisplayStatus(r);
-                                            return (
-                                                <span className={AUDIT_STATUS_BADGE[displayStatus] || "rc-badge"}>
-                                                    {AUDIT_STATUS_LABELS[displayStatus] || displayStatus}
-                                                </span>
-                                            );
-                                        })()}
+                                        <span className={AUDIT_STATUS_BADGE[rowDisplayStatus] || "rc-badge"}>
+                                            {AUDIT_STATUS_LABELS[rowDisplayStatus] || rowDisplayStatus}
+                                        </span>
                                         {r.docstatus === "REJECTED" && r.rejectReason && (
                                             <div style={{ fontSize: "0.78rem", color: "#bf360c", marginTop: 3, maxWidth: 200, whiteSpace: "normal" }}>
                                                 Lý do: {r.rejectReason}
@@ -273,7 +300,8 @@ export default function AuditsPage() {
                                         <button className="sp-edit-btn" title="Xem chi tiết"><IconEye /></button>
                                     </td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>

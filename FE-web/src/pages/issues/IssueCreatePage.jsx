@@ -371,28 +371,30 @@ export default function IssueCreatePage() {
     // ── Audit prefill ──
     useEffect(() => {
         const auditId = searchParams.get("auditId");
+        const auditDetailId = searchParams.get("auditDetailId");
         if (!auditId || prefilledFromAudit) return;
         const fillFromAudit = async () => {
             try {
                 const [data, batchList] = await Promise.all([getAuditById(auditId), getAllBatches()]);
-                const batchByItem = {};
+                const batchById = {};
                 (batchList || []).forEach((b) => {
-                    const key = String(b.itemId);
-                    if (!batchByItem[key] && Number(b.quantityRemaining) > 0) batchByItem[key] = b;
+                    batchById[String(b.id)] = b;
                 });
                 const rowsFromAudit = (data.details || [])
                     .filter((d) => Number(d.diffquantity) < 0)
+                    .filter((d) => !auditDetailId || String(d.id) === String(auditDetailId))
                     .map((d) => {
                         const diff = Math.abs(Number(d.diffquantity || 0));
-                        const batch = batchByItem[String(d.itemId)];
-                        const batchEntries = batch ? [{
+                        const batch = batchById[String(d.batchId)] || {};
+                        const batchEntries = d.batchId ? [{
                             _id: ++_rowKey,
-                            batchId: batch.id,
-                            batchCode: batch.batchCode || "",
-                            locationId: "",
-                            locationcode: "",
-                            remainingStock: Number(batch.quantityRemaining) || diff,
+                            batchId: d.batchId,
+                            batchCode: d.batchCode || batch.batchCode || "",
+                            locationId: d.locationId || "",
+                            locationcode: d.locationcode || d.locationname || "",
+                            remainingStock: Number(d.bookquantity ?? batch.quantityRemaining) || diff,
                             quantity: String(diff),
+                            unitCost: batch.unitCost || "",
                         }] : [];
                         return {
                             ...newRow(),
@@ -411,7 +413,7 @@ export default function IssueCreatePage() {
                 setForm((prev) => ({
                     ...prev,
                     docType: "ADJUSTMENT",
-                    description: prev.description || `Điều chỉnh từ kiểm kê ${data.docno}`,
+                    description: prev.description || `Nguồn tạo từ phiếu kiểm kê ${data.docno}`,
                 }));
                 setPrefilledFromAudit(true);
             } catch {
@@ -648,6 +650,7 @@ export default function IssueCreatePage() {
 
         setSaving(true);
         const adjAuditId = searchParams.get("auditId");
+        const adjAuditDetailId = searchParams.get("auditDetailId");
         try {
             const result = await createIssue({
                 docno: form.docno.trim(),
@@ -663,6 +666,10 @@ export default function IssueCreatePage() {
                 const newId = result?.data?.id;
                 if (adjAuditId && form.docType === "ADJUSTMENT" && newId) {
                     localStorage.setItem(`audit_adj_issue_id_${adjAuditId}`, String(newId));
+                    if (adjAuditDetailId) {
+                        localStorage.setItem(`audit_adj_issue_detail_${adjAuditId}_${adjAuditDetailId}`, "1");
+                        localStorage.setItem(`audit_adj_issue_detail_doc_${adjAuditId}_${adjAuditDetailId}`, String(newId));
+                    }
                 }
                 setTimeout(() => navigate(newId ? `/issues/${newId}` : "/issues"), 1200);
             } else {

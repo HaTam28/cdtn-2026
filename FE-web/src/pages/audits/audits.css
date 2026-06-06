@@ -8,9 +8,9 @@
 }
 
 .au-badge-requested {
-    background: #fff9c4;
-    color: #f57f17;
-    border: 1px solid #ffd54f;
+    background: #e3f2fd;
+    color: #1565c0;
+    border: 1px solid #90caf9;
 }
 
 .au-badge-submitted {
@@ -69,9 +69,9 @@
 }
 
 .au-status-pill-requested {
-    background: #fff9c4;
-    color: #f57f17;
-    border: 1.5px solid #ffd54f;
+    background: #e3f2fd;
+    color: #1565c0;
+    border: 1.5px solid #90caf9;
 }
 
 .au-status-pill-submitted {
@@ -333,4 +333,48 @@
 .au-request-row:hover {
     background: #f7fbf9;
     border-color: #a5d6a7;
+}
+
+.au-adjust-action {
+    padding: 4px 10px;
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+.au-adjust-in {
+    border-color: #1565c0;
+    color: #1565c0;
+}
+
+.au-adjust-out {
+    border-color: #b71c1c;
+    color: #b71c1c;
+}
+
+.sp-table tbody tr.au-row-pending-adjustment {
+    background: #fff8d6;
+}
+
+.sp-table tbody tr.au-row-pending-adjustment:hover {
+    background: #fff3b0;
+}
+
+.sp-table tbody tr.au-row-draft {
+    background: #f7f9fa;
+}
+
+.sp-table tbody tr.au-row-active {
+    background: #f3f9ff;
+}
+
+.sp-table tbody tr.au-row-review {
+    background: #fff7ed;
+}
+
+.sp-table tbody tr.au-row-processed {
+    background: #f1fbf4;
+}
+
+.sp-table tbody tr.au-row-danger {
+    background: #fff1f1;
 }
