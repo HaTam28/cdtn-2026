@@ -5,8 +5,7 @@ import java.math.BigDecimal;
 import lombok.Data;
 
 @Data
-public class InventoryAuditDetailResponse {
-    private Long id;
+public class InventoryAuditStockRowResponse {
     private Long itemId;
     private String itemcode;
     private String itemname;
@@ -17,8 +16,4 @@ public class InventoryAuditDetailResponse {
     private String locationcode;
     private String locationname;
     private BigDecimal bookquantity;
-    private BigDecimal actualquantity;
-    private BigDecimal diffquantity;
-    private String processingSuggestion;
-    private String description;
 }

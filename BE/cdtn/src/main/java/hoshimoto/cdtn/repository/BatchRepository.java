@@ -20,6 +20,13 @@ public interface BatchRepository extends JpaRepository<Batch, Long> {
     @Query("SELECT b FROM Batch b WHERE b.item.id = :itemId AND b.receiptDetail.goodsReceipt.docstatus = hoshimoto.cdtn.entity.Enum.DocStatus.CONFIRMED")
     List<Batch> findConfirmedByItemId(@Param("itemId") Long itemId);
 
+    @Query("SELECT b FROM Batch b WHERE b.item.id = :itemId " +
+           "AND (:locationId IS NULL OR b.receiptDetail.location.id = :locationId) " +
+           "AND b.receiptDetail.goodsReceipt.docstatus = hoshimoto.cdtn.entity.Enum.DocStatus.CONFIRMED " +
+           "AND COALESCE(b.quantityRemaining, 0) > 0 " +
+           "ORDER BY b.receiptDetail.location.locationcode ASC, b.batchCode ASC")
+    List<Batch> findConfirmedStockRows(@Param("itemId") Long itemId, @Param("locationId") Long locationId);
+
     @Query("SELECT b FROM Batch b WHERE b.item.id = :itemId AND b.receiptDetail.goodsReceipt.id = :receiptId")
     Optional<Batch> findByItemIdAndReceiptId(@Param("itemId") Long itemId, @Param("receiptId") Long receiptId);
 }

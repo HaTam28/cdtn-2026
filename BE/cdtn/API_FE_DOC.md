@@ -250,8 +250,8 @@ If you want, I can implement the controller + import pipeline and tests next. Re
 - Customer: nếu `iscustomer=false` thì phải có `issupplier=true`, và ngược lại.
 - User: `role` chỉ nhận `ADMIN`, `MANAGER` hoặc `STAFF`. Quy tắc tạo: **ADMIN** có thể tạo `MANAGER` hoặc `STAFF` (không tạo được `ADMIN`); **MANAGER** chỉ tạo được `STAFF`.
 - Phiếu nhập/xuất/kiểm kê: chỉ `DRAFT` mới được sửa hoặc hủy khi chưa gửi/đã xác nhận; không thể sửa sau khi `CONFIRMED` hoặc `CANCELLED`.
-- Quy trình kiểm kê (mới): Manager **gán** phiếu cho `STAFF` → `REQUESTED`. Staff cập nhật lần đầu → `IN_PROGRESS`. Staff **gửi** → `SUBMITTED` (không chênh lệch) hoặc `PENDING_PROCESS` (có chênh lệch). Manager `confirm` → **`CONFIRMED`** (không chênh lệch) hoặc **`PROCESSED`** (có chênh lệch, đã cập nhật `InventoryBalance`); Manager `reject` → `REJECTED`; `cancel` → chỉ DRAFT.
-- Trạng thái phiếu kiểm kê (`docstatus`): `DRAFT` → `REQUESTED` → `IN_PROGRESS` → `SUBMITTED` / `PENDING_PROCESS` → `CONFIRMED` / `PROCESSED` / `REJECTED` / `CANCELLED`.
+- Quy trình kiểm kê (mới): Manager **gán** phiếu cho `STAFF` → `REQUESTED`. Staff cập nhật lần đầu → `IN_PROGRESS`. Staff **gửi** → `SUBMITTED` (không chênh lệch) hoặc `PENDING_PROCESS` (có chênh lệch). Manager `confirm` → **`CONFIRMED`** (không chênh lệch) hoặc **`PROCESSED`** (có chênh lệch, đã cập nhật `InventoryBalance`); Manager `reject` → `REJECTED`; `cancel` → chỉ DRAFT. Nếu `today > endDate` và phiếu chưa hoàn tất, BE trả `OVERDUE`.
+- Trạng thái phiếu kiểm kê (`docstatus`): `DRAFT` → `REQUESTED` → `IN_PROGRESS` → `SUBMITTED` / `PENDING_PROCESS` → `CONFIRMED` / `PROCESSED` / `REJECTED` / `CANCELLED`; các trạng thái chưa hoàn tất có thể chuyển sang `OVERDUE`.
 
 ### Ngày giờ
 
@@ -1419,12 +1419,14 @@ Manager tạo yêu cầu kiểm kê cho Staff (khuyến nghị):
   REQUESTED (manager gán) ──(staff cập nhật)──► IN_PROGRESS
   IN_PROGRESS ──(staff submit)──► SUBMITTED / PENDING_PROCESS
   SUBMITTED / PENDING_PROCESS ──(manager confirm)──► CONFIRMED / PROCESSED
+  DRAFT / REQUESTED / IN_PROGRESS / SUBMITTED / PENDING_PROCESS ──(quá endDate)──► OVERDUE
   DRAFT ──(manager lưu nháp)──► CANCELLED
 ```
 
 > **Ghi chú quan trọng:** Manager **không** thực hiện "tự kiểm" bằng cách gửi `actualquantity` khi tạo phiếu. BE sẽ chặn hành vi này. Quy trình chuẩn: manager gán yêu cầu cho staff → staff thực hiện kiểm kê và `submit` → manager `confirm`/`reject`.
 > **Quan trọng:** Khi `confirm`, nếu có `diffquantity ≠ 0` thì trạng thái là **`PROCESSED`** (đã xử lý chênh lệch); nếu toàn bộ diff = 0 thì là **`CONFIRMED`**. Cả hai trường hợp đều đã áp dụng chênh lệch vào `InventoryBalance` tổng kho.  
 > Khi `confirm`, chỉ `InventoryBalance` (tổng kho) được cập nhật — **không** cập nhật `ItemLocation` (tồn theo vị trí). Nếu cần điều chỉnh tồn theo vị trí sau kiểm kê, FE tạo phiếu nhập/xuất thông thường (xem mục 9.4).
+> Từ bản kiểm kê theo lô: chi tiết phiếu lưu snapshot theo `itemId + batchId + locationId + bookquantity`; Staff mở phiếu dùng snapshot này, không lấy tồn realtime.
 
 ---
 
@@ -1434,6 +1436,7 @@ Manager tạo yêu cầu kiểm kê cho Staff (khuyến nghị):
 |--------|----------|-------|-------|
 | GET | `/api/inventory-audits` | Danh sách tất cả phiếu kiểm kê | ADMIN, MANAGER, STAFF |
 | GET | `/api/inventory-audits/{id}` | Chi tiết phiếu kiểm kê | ADMIN, MANAGER, STAFF |
+| GET | `/api/inventory-audits/stock-rows?itemId=&locationId=` | Lấy tồn theo từng mã lô/vị trí để tạo phiếu | ADMIN, MANAGER, STAFF |
 | POST | `/api/inventory-audits` | Tạo phiếu kiểm kê | ADMIN, MANAGER |
 | PUT | `/api/inventory-audits/{id}` | Sửa phiếu DRAFT (chỉ DRAFT, phải có actualquantity) | ADMIN, MANAGER, STAFF |
 | POST | `/api/inventory-audits/{id}/confirm` | Xác nhận → cập nhật InventoryBalance | ADMIN, MANAGER |
@@ -1447,6 +1450,39 @@ Manager tạo yêu cầu kiểm kê cho Staff (khuyến nghị):
 
 ---
 
+### 9.0 Lấy dữ liệu kiểm kê theo mã lô
+
+**Endpoint:** `GET /api/inventory-audits/stock-rows?itemId={id}&locationId={id}`
+
+`locationId` là optional. BE trả từng dòng tồn theo **vật tư + mã lô + vị trí**, không gộp nhiều lô thành một dòng.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Lấy dữ liệu kiểm kê theo mã lô thành công",
+  "data": [
+    {
+      "itemId": 5,
+      "itemcode": "SP001",
+      "itemname": "Sản phẩm A",
+      "unitof": "Cái",
+      "batchId": 123,
+      "batchCode": "SP001-20260415",
+      "locationId": 3,
+      "locationcode": "A1-01",
+      "locationname": "Kệ A1, tầng 1",
+      "bookquantity": 100
+    }
+  ]
+}
+```
+
+FE dùng các dòng này để render bảng tạo phiếu và gửi lại trong `details[]`. `bookquantity` trong phiếu kiểm kê là snapshot tại thời điểm tạo phiếu.
+
+---
+
 ### 9.1 Tạo phiếu kiểm kê
 
 **Endpoint:** `POST /api/inventory-audits`
@@ -1455,18 +1491,20 @@ Có hai chế độ tạo phiếu:
 
 #### Chế độ 1 – Manager gán cho STAFF (`sendToStaff = true`)
 
-FE **chỉ gửi `itemId`**, KHÔNG cần `actualquantity`. BE tự lấy `bookquantity` từ `InventoryBalance`.
+FE gửi từng dòng snapshot theo `itemId`, `batchId`, `locationId`. Không gửi `actualquantity`. BE tự lấy lại `bookquantity` từ `batch.quantityRemaining` tại thời điểm tạo phiếu.
 
 ```json
 {
   "docno": "PKK-01",
   "docDate": "2026-05-05",
+  "startDate": "2026-05-05",
+  "endDate": "2026-05-07",
   "description": "Kiểm kê kho tháng 5",
   "assignedUserId": 12,
   "sendToStaff": true,
   "details": [
-    { "itemId": 5, "description": "Khu vực A" },
-    { "itemId": 6 }
+    { "itemId": 5, "batchId": 123, "locationId": 3, "description": "Khu vực A" },
+    { "itemId": 5, "batchId": 124, "locationId": 4 }
   ]
 }
 ```
@@ -1480,10 +1518,12 @@ FE **chỉ gửi `itemId`**, KHÔNG cần `actualquantity`. BE tự lấy `bookq
 ```json
 {
   "docDate": "2026-05-05",
+  "startDate": "2026-05-05",
+  "endDate": "2026-05-05",
   "description": "Kiểm kê nhanh",
   "details": [
-    { "itemId": 5, "actualquantity": 95, "description": "Đếm thực tế" },
-    { "itemId": 6, "actualquantity": 30 }
+    { "itemId": 5, "batchId": 123, "locationId": 3, "actualquantity": 95, "description": "Đếm thực tế" },
+    { "itemId": 5, "batchId": 124, "locationId": 4, "actualquantity": 30 }
   ]
 }
 ```
@@ -1496,10 +1536,15 @@ FE **chỉ gửi `itemId`**, KHÔNG cần `actualquantity`. BE tự lấy `bookq
 |--------|----------|-------|
 | `docno` | ❌ | BE tự sinh `PKK-01`, `PKK-02`, ... nếu không gửi |
 | `docDate` | ❌ | Ngày kiểm kê (yyyy-MM-dd) |
+| `startDate` | ❌ | Ngày bắt đầu kiểm kê (yyyy-MM-dd) |
+| `endDate` | ❌ | Ngày kết thúc kiểm kê; nếu gửi phải `>= startDate` |
 | `description` | ❌ | Ghi chú phiếu |
 | `assignedUserId` | ❌ | ID nhân viên được giao |
 | `sendToStaff` | ❌ | `true` → gán Staff, `false`/null → Manager tự nhập |
 | `details[].itemId` | ✅ | ID hàng hóa |
+| `details[].batchId` | Khuyến nghị ✅ | ID mã lô cần kiểm kê |
+| `details[].locationId` | Khuyến nghị ✅ | ID vị trí của lô |
+| `details[].bookquantity` | ❌ | Chỉ dùng fallback nếu không gửi `batchId`; với `batchId`, BE tự snapshot từ batch |
 | `details[].actualquantity` | ✅ nếu không gán Staff | Số đếm thực tế |
 | `details[].description` | ❌ | Ghi chú dòng |
 
@@ -1513,6 +1558,8 @@ FE **chỉ gửi `itemId`**, KHÔNG cần `actualquantity`. BE tự lấy `bookq
     "id": 1,
     "docno": "PKK-01",
     "docDate": "2026-05-05",
+    "startDate": "2026-05-05",
+    "endDate": "2026-05-07",
     "description": "Kiểm kê kho tháng 5",
     "docstatus": "REQUESTED",
     "createdAt": "2026-05-05T09:00:00",
@@ -1530,6 +1577,9 @@ FE **chỉ gửi `itemId`**, KHÔNG cần `actualquantity`. BE tự lấy `bookq
     "modifiedAt": null,
     "modifiedBy": null,
     "rejectReason": null,
+    "totalBookquantity": 100,
+    "totalActualquantity": 0,
+    "totalDiffquantity": 0,
     "details": [
       {
         "id": 1,
@@ -1537,9 +1587,15 @@ FE **chỉ gửi `itemId`**, KHÔNG cần `actualquantity`. BE tự lấy `bookq
         "itemcode": "SP001",
         "itemname": "Sản phẩm A",
         "unitof": "Cái",
+        "batchId": 123,
+        "batchCode": "SP001-20260415",
+        "locationId": 3,
+        "locationcode": "A1-01",
+        "locationname": "Kệ A1, tầng 1",
         "bookquantity": 100,
         "actualquantity": null,
         "diffquantity": null,
+        "processingSuggestion": "Khớp sổ sách",
         "description": "Khu vực A"
       }
     ]
@@ -1560,18 +1616,37 @@ FE **chỉ gửi `itemId`**, KHÔNG cần `actualquantity`. BE tự lấy `bookq
 
 Khi STAFF cập nhật lần đầu, `REQUESTED` tự động chuyển sang `IN_PROGRESS`.
 
-`actualquantity` là **bắt buộc** cho mọi dòng.
+`actualquantity` là **bắt buộc** cho mọi dòng. FE nên gửi `details[].id` lấy từ response chi tiết phiếu; nếu không gửi `id`, phải gửi đủ `itemId + batchId + locationId` để BE khớp với snapshot.
 
 ```json
 {
   "details": [
-    { "itemId": 5, "actualquantity": 95, "description": "Đếm thực tế" },
-    { "itemId": 6, "actualquantity": 30 }
+    {
+      "id": 1,
+      "itemId": 5,
+      "batchId": 123,
+      "locationId": 3,
+      "actualquantity": 95,
+      "description": "Đếm thực tế"
+    },
+    {
+      "id": 2,
+      "itemId": 5,
+      "batchId": 124,
+      "locationId": 4,
+      "actualquantity": 30
+    }
   ]
 }
 ```
 
 BE tính: `diffquantity = actualquantity - bookquantity` và trả về trong response.
+
+Validation chính:
+- Không được thiếu dòng kiểm kê so với snapshot đã tạo.
+- `actualquantity` không được âm.
+- `batchId` phải tồn tại, thuộc đúng `itemId`, đúng `locationId`.
+- FE gửi `diffquantity` thì BE vẫn tự tính lại, không dùng chênh lệch từ FE làm nguồn tin cậy.
 
 ---
 
@@ -1591,6 +1666,9 @@ BE tự động gửi thông báo `APPROVAL_REQUIRED` đến Manager/người t�
 **Lỗi có thể trả về:**
 - `"Chưa nhập số lượng thực tế cho hàng hóa 'SP001'"`
 - `"Phiếu kiểm kê không có dòng chi tiết nào"`
+- `"Không được thiếu dòng kiểm kê"`
+- `"Mã lô không thuộc đúng hàng hóa"`
+- `"Mã lô không thuộc đúng vị trí"`
 
 ---
 
@@ -1618,6 +1696,7 @@ BE tự động gửi thông báo `APPROVAL_REQUIRED` đến Manager/người t�
 > - Chỉ `InventoryBalance` (tổng kho) được cập nhật khi confirm. `ItemLocation` (tồn theo vị trí) **KHÔNG thay đổi**.  
 > - Nếu phiếu trả về `PROCESSED` (có chênh lệch), FE nên hiển thị gợi ý tạo phiếu nhập/xuất điều chỉnh (xem bên dưới).  
 > - FE nên hiển thị bảng `diffquantity` trước khi confirm: `diff < 0` → đỏ (thiếu), `diff > 0` → xanh (thừa), `diff = 0` → xám.
+> - Response detail có `processingSuggestion`: `Khớp sổ sách`, `Đề xuất phiếu nhập`, hoặc `Đề xuất phiếu xuất`.
 
 **Lỗi có thể trả về:**
 - `"Chỉ có thể xác nhận phiếu ở trạng thái DRAFT, SUBMITTED hoặc PENDING_PROCESS"`
@@ -1688,6 +1767,9 @@ Sau khi phiếu kiểm kê được confirm (`CONFIRMED` hoặc `PROCESSED`):
 - Nút **"Tạo phiếu nhập/xuất điều chỉnh"** → điền sẵn:
   - `description`: `"Điều chỉnh từ kiểm kê {docno}"`
   - `details[].quantity`: `Math.abs(diffquantity)`
+  - `details[].itemId`: lấy từ dòng kiểm kê
+  - `details[].batchId`: lấy từ dòng kiểm kê
+  - `details[].locationId`: lấy từ dòng kiểm kê
 
 **FE: localStorage flow để ẩn nút sau khi đã tạo điều chỉnh**
 
@@ -1882,7 +1964,7 @@ Ghi chú:
 1. **Token JWT:** Gửi kèm mọi request dạng `Authorization: Bearer <token>`. Token hết hạn → 401 → FE chuyển về trang đăng nhập. Nhận 403 dù đã đăng nhập → **xóa token cũ và đăng nhập lại** để lấy token mới chứa `role` (token cũ không có `role` claim sẽ bị từ chối bởi `@PreAuthorize`). `role` trong JWT có giá trị `ADMIN`/`MANAGER`/`STAFF` (không cần tiền tố `ROLE_`).
 2. **Validate trước khi gửi:** Kiểm tra các trường bắt buộc (xem mục 1) để tránh round-trip không cần thiết.
 3. **`locationId` khi nhập/xuất:** Chỉ gửi `locationId` lấy từ API `available-locations` hoặc `suggest-split`. Không tự tạo giá trị.
-4. **Kiểm kê:** Manager chỉ gửi danh sách `itemId`; `bookquantity` do BE trả về. STAFF cập nhật `actualquantity`, BE tính `diffquantity`.
+4. **Kiểm kê:** Manager lấy dòng tồn bằng `GET /api/inventory-audits/stock-rows`, sau đó gửi từng dòng `itemId + batchId + locationId`. BE snapshot `bookquantity`; STAFF chỉ cập nhật `actualquantity`, BE tính `diffquantity`.
 5. **`batchCode`:** FE không gửi; BE tự sinh và trả về trong response.
 6. **Phiếu CONFIRMED / CANCELLED:** Không gọi PUT để sửa; BE sẽ trả lỗi.
 7. **Xử lý lỗi:** Luôn kiểm tra `success === false` → hiển thị `message` cho người dùng, không tiếp tục thao tác.
@@ -1913,6 +1995,7 @@ Ghi chú:
    - `PENDING_PROCESS` → "Có chênh lệch" (badge cam đậm) — chỉ phiếu kiểm kê
    - `CONFIRMED` → "Đã xác nhận" (badge xanh)
    - `PROCESSED` → "Đã xử lý chênh lệch" (badge xanh đậm) — chỉ phiếu kiểm kê, `InventoryBalance` đã được cập nhật
+   - `OVERDUE` → "Quá hạn" (badge đỏ) — chỉ phiếu kiểm kê quá `endDate` và chưa hoàn tất
    - `CANCELLED` → "Đã hủy" (badge đỏ)
    - `REJECTED` → "Bị từ chối" (badge đỏ đậm) — hiển thị kèm `rejectReason`
 

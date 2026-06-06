@@ -11,10 +11,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import hoshimoto.cdtn.dto.ApiResponse;
 import hoshimoto.cdtn.dto.InventoryAuditResponse;
+import hoshimoto.cdtn.dto.InventoryAuditStockRowResponse;
 import hoshimoto.cdtn.dto.request.InventoryAuditRequest;
 import hoshimoto.cdtn.dto.request.RejectRequest;
 import hoshimoto.cdtn.service.InventoryAuditService;
@@ -44,6 +46,15 @@ public class InventoryAuditController {
     }
 
     /** Tạo phiếu kiểm kê nháp */
+    @GetMapping("/stock-rows")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'STAFF')")
+    public ResponseEntity<ApiResponse<List<InventoryAuditStockRowResponse>>> getStockRows(
+            @RequestParam Long itemId,
+            @RequestParam(required = false) Long locationId) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Lấy dữ liệu kiểm kê theo mã lô thành công",
+                inventoryAuditService.getStockRows(itemId, locationId)));
+    }
+
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<ApiResponse<InventoryAuditResponse>> create(
