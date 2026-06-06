@@ -31,9 +31,9 @@ const STATUS_BADGE = {
     REJECTED: "rc-badge au-badge-rejected",
 };
 // Place CONFIRMED before PROCESSED; PROCESSED is the final completed status
-const TABS = ["Tất cả", "Nháp", "Chờ kiểm kê", "Đang kiểm kê", "Chờ duyệt", "Chờ xử lý", "Đã xác nhận", "Đã xử lý", "Đã hủy", "Đã từ chối"];
-const STAFF_TABS = ["Tất cả", "Chờ kiểm kê", "Đang kiểm kê", "Chờ duyệt", "Chờ xử lý", "Đã xác nhận", "Đã xử lý", "Đã hủy", "Đã từ chối"];
-const TAB_STATUS = { "Nháp": "DRAFT", "Chờ kiểm kê": "REQUESTED", "Đang kiểm kê": "IN_PROGRESS", "Chờ duyệt": "SUBMITTED", "Chờ xử lý": "PENDING_PROCESS", "Đã xử lý": "PROCESSED", "Đã xác nhận": "CONFIRMED", "Đã hủy": "CANCELLED", "Đã từ chối": "REJECTED" };
+const TABS = ["Tất cả", "Nháp", "Chờ kiểm kê", "Chờ duyệt", "Đã xử lý", "Đã từ chối"];
+const STAFF_TABS = ["Tất cả", "Chờ kiểm kê", "Chờ duyệt", "Đã xử lý", "Đã từ chối"];
+const TAB_STATUS = { "Nháp": "DRAFT", "Chờ kiểm kê": "REQUESTED", "Chờ duyệt": "SUBMITTED", "Đã xử lý": "PROCESSED", "Đã từ chối": "REJECTED" };
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
 function formatDate(str) {
