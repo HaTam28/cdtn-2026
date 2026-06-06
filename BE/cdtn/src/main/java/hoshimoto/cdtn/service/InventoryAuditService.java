@@ -63,14 +63,15 @@ public class InventoryAuditService {
     }
 
     public List<InventoryAuditStockRowResponse> getStockRows(Long itemId, Long locationId) {
-        Long nonNullItemId = Objects.requireNonNull(itemId, "itemId khong duoc de trong");
-        itemRepository.findById(nonNullItemId)
-                .orElseThrow(() -> new RuntimeException("Khong tim thay hang hoa id: " + itemId));
+        if (itemId != null) {
+            itemRepository.findById(itemId)
+                    .orElseThrow(() -> new RuntimeException("Khong tim thay hang hoa id: " + itemId));
+        }
         if (locationId != null) {
             locationRepository.findById(locationId)
                     .orElseThrow(() -> new RuntimeException("Khong tim thay vi tri id: " + locationId));
         }
-        return batchRepository.findConfirmedStockRows(nonNullItemId, locationId)
+        return batchRepository.findConfirmedStockRows(itemId, locationId)
                 .stream()
                 .map(this::toStockRowResponse)
                 .collect(Collectors.toList());

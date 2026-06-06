@@ -49,7 +49,7 @@ public class InventoryAuditController {
     @GetMapping("/stock-rows")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'STAFF')")
     public ResponseEntity<ApiResponse<List<InventoryAuditStockRowResponse>>> getStockRows(
-            @RequestParam Long itemId,
+            @RequestParam(required = false) Long itemId,
             @RequestParam(required = false) Long locationId) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Lấy dữ liệu kiểm kê theo mã lô thành công",
                 inventoryAuditService.getStockRows(itemId, locationId)));

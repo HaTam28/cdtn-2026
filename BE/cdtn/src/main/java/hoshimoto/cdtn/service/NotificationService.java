@@ -4,9 +4,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import hoshimoto.cdtn.dto.NotificationResponse;
@@ -20,6 +23,8 @@ import hoshimoto.cdtn.repository.UserRepository;
 
 @Service
 public class NotificationService {
+
+    private static final Logger logger = LoggerFactory.getLogger(NotificationService.class);
 
     @Autowired private NotificationRepository notificationRepository;
     @Autowired private UserRepository userRepository;
@@ -65,18 +70,27 @@ public class NotificationService {
         firebaseNotificationService.syncReadAll(optUser.get().getId(), saved);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void notifyManagers(NotificationType type, NotificationTargetType targetType, Long targetId, String docno, String title, String message) {
         List<User> managers = userRepository.findByRole(Role.MANAGER);
         for (User manager : managers) {
-            createNotification(manager, type, targetType, targetId, docno, title, message);
+            tryCreateNotification(manager, type, targetType, targetId, docno, title, message);
         }
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void notifyUser(User user, NotificationType type, NotificationTargetType targetType, Long targetId, String docno, String title, String message) {
         if (user == null) return;
-        createNotification(user, type, targetType, targetId, docno, title, message);
+        tryCreateNotification(user, type, targetType, targetId, docno, title, message);
+    }
+
+    private void tryCreateNotification(User user, NotificationType type, NotificationTargetType targetType, Long targetId, String docno, String title, String message) {
+        try {
+            createNotification(user, type, targetType, targetId, docno, title, message);
+        } catch (Exception ex) {
+            logger.warn("Failed to create notification for user {}, targetType={}, targetId={}",
+                    user != null ? user.getId() : null, targetType, targetId, ex);
+        }
     }
 
     private void createNotification(User user, NotificationType type, NotificationTargetType targetType, Long targetId, String docno, String title, String message) {

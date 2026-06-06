@@ -1436,7 +1436,7 @@ Manager tạo yêu cầu kiểm kê cho Staff (khuyến nghị):
 |--------|----------|-------|-------|
 | GET | `/api/inventory-audits` | Danh sách tất cả phiếu kiểm kê | ADMIN, MANAGER, STAFF |
 | GET | `/api/inventory-audits/{id}` | Chi tiết phiếu kiểm kê | ADMIN, MANAGER, STAFF |
-| GET | `/api/inventory-audits/stock-rows?itemId=&locationId=` | Lấy tồn theo từng mã lô/vị trí để tạo phiếu | ADMIN, MANAGER, STAFF |
+| GET | `/api/inventory-audits/stock-rows?itemId=&locationId=` | Lấy tồn theo từng mã lô/vị trí để tạo phiếu; `itemId`, `locationId` đều optional | ADMIN, MANAGER, STAFF |
 | POST | `/api/inventory-audits` | Tạo phiếu kiểm kê | ADMIN, MANAGER |
 | PUT | `/api/inventory-audits/{id}` | Sửa phiếu DRAFT (chỉ DRAFT, phải có actualquantity) | ADMIN, MANAGER, STAFF |
 | POST | `/api/inventory-audits/{id}/confirm` | Xác nhận → cập nhật InventoryBalance | ADMIN, MANAGER |
@@ -1454,7 +1454,7 @@ Manager tạo yêu cầu kiểm kê cho Staff (khuyến nghị):
 
 **Endpoint:** `GET /api/inventory-audits/stock-rows?itemId={id}&locationId={id}`
 
-`locationId` là optional. BE trả từng dòng tồn theo **vật tư + mã lô + vị trí**, không gộp nhiều lô thành một dòng.
+`itemId` và `locationId` đều optional. Nếu không gửi `itemId`, BE trả tất cả dòng tồn theo **vật tư + mã lô + vị trí**, không gộp nhiều lô thành một dòng.
 
 **Response:**
 
