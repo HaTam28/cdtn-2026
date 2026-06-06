@@ -55,6 +55,12 @@
     border: 1px solid #ff8a65;
 }
 
+.au-badge-overdue {
+    background: #ffebee;
+    color: #b71c1c;
+    border: 1px solid #ef9a9a;
+}
+
 /* ── Audit status pills (detail page) ────────────────── */
 .au-status-pill-draft {
     background: #eceff1;
@@ -108,6 +114,12 @@
     background: #fbe9e7;
     color: #bf360c;
     border: 1.5px solid #ff8a65;
+}
+
+.au-status-pill-overdue {
+    background: #ffebee;
+    color: #b71c1c;
+    border: 1.5px solid #ef9a9a;
 }
 
 /* ── Diff quantity badges ─────────────────────────────── */
@@ -254,4 +266,71 @@
 .au-status-chip-active .au-status-count {
     background: rgba(255, 255, 255, 0.22);
     color: #ffffff;
+}
+
+.au-header-wrap {
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.au-table-note {
+    margin: 8px 0 6px;
+    color: #4c6152;
+    font-size: 0.84rem;
+}
+
+.au-total-row {
+    background: #f6fbf8;
+    border-top: 2px solid #c6dfd0;
+    font-weight: 700;
+    color: #1E3A2F;
+}
+
+.au-total-row td {
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+.au-suggestion {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 6px;
+    padding: 3px 9px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.au-suggestion-zero {
+    background: #e8f5e9;
+    color: #1b5e20;
+}
+
+.au-suggestion-plus {
+    background: #e3f2fd;
+    color: #1565c0;
+}
+
+.au-suggestion-minus {
+    background: #ffebee;
+    color: #b71c1c;
+}
+
+.au-request-row {
+    display: grid;
+    grid-template-columns: minmax(120px, 1fr) minmax(180px, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid #d6e6db;
+    border-radius: 8px;
+    margin-top: 8px;
+    cursor: pointer;
+    color: #1E3A2F;
+    background: #fff;
+}
+
+.au-request-row:hover {
+    background: #f7fbf9;
+    border-color: #a5d6a7;
 }

@@ -7,33 +7,19 @@ import { getAllAudits, getAssignedAuditsPending, getAssignedAuditsDone } from ".
 import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
+import { AUDIT_STATUS_BADGE, AUDIT_STATUS_LABELS, getAuditEndDate, getAuditStartDate, getDisplayStatus } from "./auditRowUtils";
 
-const STATUS_LABELS = {
-    DRAFT: "Nháp",
-    REQUESTED: "Chờ kiểm kê",
-    IN_PROGRESS: "Đang kiểm kê",
-    SUBMITTED: "Chờ duyệt",
-    PENDING_PROCESS: "Chờ xử lý",
-    PROCESSED: "Đã xử lý",
-    CONFIRMED: "Đã xác nhận",
-    CANCELLED: "Đã hủy",
-    REJECTED: "Đã từ chối",
+const TABS = ["Tất cả", "Nháp", "Đã giao", "Đang kiểm kê", "Chờ duyệt", "Có chênh lệch", "Đã xử lý", "Quá hạn"];
+const STAFF_TABS = ["Tất cả", "Đã giao", "Đang kiểm kê", "Chờ duyệt", "Có chênh lệch", "Đã xử lý", "Quá hạn"];
+const TAB_STATUS = {
+    "Nháp": "DRAFT",
+    "Đã giao": "REQUESTED",
+    "Đang kiểm kê": "IN_PROGRESS",
+    "Chờ duyệt": "SUBMITTED",
+    "Có chênh lệch": "PENDING_PROCESS",
+    "Đã xử lý": "PROCESSED",
+    "Quá hạn": "OVERDUE",
 };
-const STATUS_BADGE = {
-    DRAFT: "rc-badge au-badge-draft",
-    REQUESTED: "rc-badge au-badge-requested",
-    IN_PROGRESS: "rc-badge au-badge-in-progress",
-    SUBMITTED: "rc-badge au-badge-submitted",
-    PENDING_PROCESS: "rc-badge au-badge-pending-process",
-    PROCESSED: "rc-badge au-badge-processed",
-    CONFIRMED: "rc-badge au-badge-confirmed",
-    CANCELLED: "rc-badge au-badge-cancelled",
-    REJECTED: "rc-badge au-badge-rejected",
-};
-// Place CONFIRMED before PROCESSED; PROCESSED is the final completed status
-const TABS = ["Tất cả", "Nháp", "Chờ kiểm kê", "Chờ duyệt", "Đã xử lý", "Đã từ chối"];
-const STAFF_TABS = ["Tất cả", "Chờ kiểm kê", "Chờ duyệt", "Đã xử lý", "Đã từ chối"];
-const TAB_STATUS = { "Nháp": "DRAFT", "Chờ kiểm kê": "REQUESTED", "Chờ duyệt": "SUBMITTED", "Đã xử lý": "PROCESSED", "Đã từ chối": "REJECTED" };
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
 function formatDate(str) {
@@ -119,7 +105,10 @@ export default function AuditsPage() {
         let list = audits;
         if (activeTab !== "Tất cả") {
             const st = TAB_STATUS[activeTab];
-            list = list.filter((r) => r.docstatus === st);
+            list = list.filter((r) => {
+                const displayStatus = getDisplayStatus(r);
+                return displayStatus === st;
+            });
         }
         if (search.trim()) {
             const q = search.trim().toLowerCase();
@@ -227,7 +216,8 @@ export default function AuditsPage() {
                                     <input type="checkbox" checked={allChecked} onChange={toggleAll} />
                                 </th>
                                 <th >Số phiếu <IconSort /></th>
-                                <th>Ngày kiểm kê <IconSort /></th>
+                                <th>Ngày bắt đầu <IconSort /></th>
+                                <th>Ngày kết thúc <IconSort /></th>
                                 {/* <th style={{ textAlign: "center" }}>Số mặt hàng</th>
                                 <th>Diễn giải</th> */}
                                 <th style={{ width: "15%" }}>Người lập <IconSort /></th>
@@ -238,13 +228,13 @@ export default function AuditsPage() {
                         </thead>
                         <tbody>
                             {loading && (
-                                <tr><td colSpan={7} className="sp-status-row">Đang tải dữ liệu...</td></tr>
+                                <tr><td colSpan={8} className="sp-status-row">Đang tải dữ liệu...</td></tr>
                             )}
                             {!loading && error && (
-                                <tr><td colSpan={7} className="sp-status-row sp-status-error">{error}</td></tr>
+                                <tr><td colSpan={8} className="sp-status-row sp-status-error">{error}</td></tr>
                             )}
                             {!loading && !error && pageData.length === 0 && (
-                                <tr><td colSpan={7} className="sp-status-row">{isStaff ? "Không có yêu cầu kiểm kê nào." : "Không có phiếu kiểm kê nào."}</td></tr>
+                                <tr><td colSpan={8} className="sp-status-row">{isStaff ? "Không có yêu cầu kiểm kê nào." : "Không có phiếu kiểm kê nào."}</td></tr>
                             )}
                             {!loading && !error && pageData.map((r) => (
                                 <tr
@@ -256,7 +246,8 @@ export default function AuditsPage() {
                                         <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleOne(r.id)} onClick={(e) => e.stopPropagation()} />
                                     </td>
                                     <td className="sp-td-id">{r.docno}</td>
-                                    <td>{formatDate(r.docDate)}</td>
+                                    <td>{formatDate(getAuditStartDate(r))}</td>
+                                    <td>{formatDate(getAuditEndDate(r))}</td>
                                     {/* <td style={{ textAlign: "center", fontWeight: 600, color: "#1E3A2F" }}>
                                         {r.details ? r.details.length : "—"}
                                     </td> */}
@@ -264,9 +255,14 @@ export default function AuditsPage() {
                                     <td style={{ width: 160 }}>{r.createdByFullname || r.createdByName || "—"}</td>
                                     <td style={{ width: 160 }}>{r.approverFullname || r.approverUsername || "—"}</td>
                                     <td>
-                                        <span className={STATUS_BADGE[r.docstatus] || "rc-badge"}>
-                                            {STATUS_LABELS[r.docstatus] || r.docstatus}
-                                        </span>
+                                        {(() => {
+                                            const displayStatus = getDisplayStatus(r);
+                                            return (
+                                                <span className={AUDIT_STATUS_BADGE[displayStatus] || "rc-badge"}>
+                                                    {AUDIT_STATUS_LABELS[displayStatus] || displayStatus}
+                                                </span>
+                                            );
+                                        })()}
                                         {r.docstatus === "REJECTED" && r.rejectReason && (
                                             <div style={{ fontSize: "0.78rem", color: "#bf360c", marginTop: 3, maxWidth: 200, whiteSpace: "normal" }}>
                                                 Lý do: {r.rejectReason}
