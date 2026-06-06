@@ -36,6 +36,8 @@ import hoshimoto.cdtn.repository.BatchRepository;
 import hoshimoto.cdtn.repository.CustomerRepository;
 import hoshimoto.cdtn.repository.GoodsIssueDetailRepository;
 import hoshimoto.cdtn.repository.GoodsIssueRepository;
+import hoshimoto.cdtn.repository.GoodsReceiptDetailRepository;
+import hoshimoto.cdtn.repository.InventoryAuditDetailRepository;
 import hoshimoto.cdtn.repository.InventoryAuditRepository;
 import hoshimoto.cdtn.repository.InventoryBalanceRepository;
 import hoshimoto.cdtn.repository.ItemLocationRepository;
@@ -50,6 +52,8 @@ public class GoodsIssueService {
     private GoodsIssueRepository issueRepository;
     @Autowired
     private GoodsIssueDetailRepository detailRepository;
+    @Autowired
+    private GoodsReceiptDetailRepository receiptDetailRepository;
     @Autowired
     private ItemRepository itemRepository;
     @Autowired
@@ -66,6 +70,8 @@ public class GoodsIssueService {
     private UserRepository userRepository;
     @Autowired
     private InventoryAuditRepository inventoryAuditRepository;
+    @Autowired
+    private InventoryAuditDetailRepository inventoryAuditDetailRepository;
     @Autowired
     private NotificationService notificationService;
 
@@ -97,6 +103,7 @@ public class GoodsIssueService {
         issue = issueRepository.save(issue);
         notifyManagersIfStaffCreated(issue);
 
+        validateAdjustmentDetails(issue, request.getDetails());
         saveDetails(issue, request.getDetails());
         return toResponse(issue);
     }
@@ -114,6 +121,7 @@ public class GoodsIssueService {
         issue = issueRepository.save(issue);
 
         detailRepository.deleteByGoodsIssueId(id);
+        validateAdjustmentDetails(issue, request.getDetails());
         saveDetails(issue, request.getDetails());
         return toResponse(issue);
     }
@@ -378,30 +386,30 @@ public class GoodsIssueService {
         }
         issue.setDocDate(request.getDocDate());
         issue.setDescription(request.getDescription());
-        if (request.getCustomerId() != null) {
+        if (request.getInventoryAuditId() != null) {
+            issue.setInventoryAuditId(request.getInventoryAuditId());
+            var audit = inventoryAuditRepository.findById(request.getInventoryAuditId())
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy phiếu kiểm kê id: " + request.getInventoryAuditId()));
+            audit.setAdjustmentCreated(true);
+            if (request.getAdjustmentFlags() != null) {
+                audit.setAdjustmentFlags(request.getAdjustmentFlags());
+            }
+            inventoryAuditRepository.save(audit);
+            // ADJUSTMENT is always enforced when linked to an inventory audit
+            issue.setDoctype("ADJUSTMENT");
+            issue.setCustomer(null);
+            issue.setTaxcode(null);
+        } else if (request.getDoctype() != null && !request.getDoctype().isBlank()) {
+            issue.setDoctype(request.getDoctype().trim().toUpperCase());
+        } else if (issue.getDoctype() == null) {
+            issue.setDoctype("NORMAL");
+        }
+        if (!isAdjustment(issue) && request.getCustomerId() != null) {
             Customer customer = customerRepository.findById(request.getCustomerId())
                     .orElseThrow(
                             () -> new RuntimeException("Không tìm thấy khách hàng id: " + request.getCustomerId()));
             issue.setCustomer(customer);
             issue.setTaxcode(customer.getTaxcode());
-        }
-        if (request.getInventoryAuditId() != null) {
-            issue.setInventoryAuditId(request.getInventoryAuditId());
-            var optAudit = inventoryAuditRepository.findById(request.getInventoryAuditId());
-            if (optAudit.isPresent()) {
-                var audit = optAudit.get();
-                audit.setAdjustmentCreated(true);
-                if (request.getAdjustmentFlags() != null) {
-                    audit.setAdjustmentFlags(request.getAdjustmentFlags());
-                }
-                inventoryAuditRepository.save(audit);
-            }
-            // ADJUSTMENT is always enforced when linked to an inventory audit
-            issue.setDoctype("ADJUSTMENT");
-        } else if (request.getDoctype() != null && !request.getDoctype().isBlank()) {
-            issue.setDoctype(request.getDoctype().trim().toUpperCase());
-        } else if (issue.getDoctype() == null) {
-            issue.setDoctype("NORMAL");
         }
         // Gán người tạo từ JWT token (chỉ set khi tạo mới, không ghi đè khi update)
         if (issue.getUser() == null) {
@@ -489,6 +497,7 @@ public class GoodsIssueService {
             detail.setQuantity(req.getQuantity());
             detail.setUnitprice(req.getUnitprice() != null ? req.getUnitprice() : BigDecimal.ZERO);
             detail.setAmount(detail.getQuantity().multiply(detail.getUnitprice()));
+            detail.setInventoryAuditDetailId(req.getInventoryAuditDetailId());
 
             // Xử lý lô hàng (batchId)
             if (req.getBatchId() != null) {
@@ -530,6 +539,65 @@ public class GoodsIssueService {
 
             detailRepository.save(detail);
         }
+    }
+
+    private void validateAdjustmentDetails(GoodsIssue issue, List<GoodsIssueDetailRequest> detailRequests) {
+        if (!isAdjustment(issue)) {
+            return;
+        }
+        if (detailRequests == null || detailRequests.isEmpty()) {
+            throw new RuntimeException("Phiếu xuất điều chỉnh không có dòng chi tiết nào");
+        }
+
+        java.util.Set<Long> auditDetailIds = new java.util.HashSet<>();
+
+        for (GoodsIssueDetailRequest req : detailRequests) {
+            if (req.getLocationId() == null) {
+                throw new RuntimeException("Phiếu xuất điều chỉnh phải có vị trí");
+            }
+            if (req.getBatchId() == null) {
+                throw new RuntimeException("Phiếu xuất điều chỉnh phải có mã lô");
+            }
+            if (req.getInventoryAuditDetailId() == null) {
+                throw new RuntimeException("Phiếu xuất điều chỉnh phải liên kết chi tiết phiếu kiểm kê");
+            }
+            if (!auditDetailIds.add(req.getInventoryAuditDetailId())) {
+                throw new RuntimeException("Chi tiết phiếu kiểm kê bị trùng trong phiếu điều chỉnh");
+            }
+
+            var auditDetail = inventoryAuditDetailRepository.findById(req.getInventoryAuditDetailId())
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy chi tiết phiếu kiểm kê id: " + req.getInventoryAuditDetailId()));
+            if (auditDetail.getInventoryAudit() == null
+                    || !auditDetail.getInventoryAudit().getId().equals(issue.getInventoryAuditId())) {
+                throw new RuntimeException("Chi tiết phiếu kiểm kê không thuộc phiếu kiểm kê đã chọn");
+            }
+            if (auditDetail.getItem() != null && !auditDetail.getItem().getId().equals(req.getItemId())) {
+                throw new RuntimeException("Vật tư không khớp với chi tiết phiếu kiểm kê");
+            }
+            if (auditDetail.getBatch() != null && !auditDetail.getBatch().getId().equals(req.getBatchId())) {
+                throw new RuntimeException("Mã lô không khớp với chi tiết phiếu kiểm kê");
+            }
+
+            Batch batch = batchRepository.findById(req.getBatchId())
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy lô hàng id: " + req.getBatchId()));
+            if (batch.getReceiptDetail() != null
+                    && batch.getReceiptDetail().getLocation() != null
+                    && !batch.getReceiptDetail().getLocation().getId().equals(req.getLocationId())) {
+                throw new RuntimeException("Vị trí không khớp với mã lô");
+            }
+
+            boolean usedByIssue = detailRepository.existsActiveAdjustmentByAuditDetailId(
+                    req.getInventoryAuditDetailId(), issue.getId());
+            boolean usedByReceipt = receiptDetailRepository.existsActiveAdjustmentByAuditDetailId(
+                    req.getInventoryAuditDetailId(), null);
+            if (usedByIssue || usedByReceipt) {
+                throw new RuntimeException("Chi tiết phiếu kiểm kê đã được tạo phiếu điều chỉnh");
+            }
+        }
+    }
+
+    private boolean isAdjustment(GoodsIssue issue) {
+        return issue.getInventoryAuditId() != null || "ADJUSTMENT".equalsIgnoreCase(issue.getDoctype());
     }
 
     private GoodsIssue findOrThrow(Long id) {
@@ -599,6 +667,7 @@ public class GoodsIssueService {
             dr.setQuantity(d.getQuantity());
             dr.setUnitprice(d.getUnitprice());
             dr.setAmount(d.getAmount());
+            dr.setInventoryAuditDetailId(d.getInventoryAuditDetailId());
             if (d.getLocation() != null) {
                 dr.setLocationId(d.getLocation().getId());
                 dr.setLocationcode(d.getLocation().getLocationcode());

@@ -18,7 +18,9 @@ public class GlobalExceptionHandler {
         Throwable rootCause = ex.getRootCause();
         String cause = (rootCause != null && rootCause.getMessage() != null) ? rootCause.getMessage() : "";
 
-        if (cause.contains("users_username_key")) {
+        if (cause.contains("chk_inventoryaudit_docstatus") || cause.contains("violates check constraint")) {
+            message = "Trang thai khong hop le voi rang buoc du lieu hien tai";
+        } else if (cause.contains("users_username_key")) {
             message = "Tên đăng nhập đã tồn tại";
         } else if (cause.contains("users_email_key") || cause.contains("email")) {
             message = "Email đã tồn tại";

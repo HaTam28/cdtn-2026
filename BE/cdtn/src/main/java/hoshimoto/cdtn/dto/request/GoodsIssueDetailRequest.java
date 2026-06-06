@@ -23,4 +23,7 @@ public class GoodsIssueDetailRequest {
     private BigDecimal quantity;
 
     private BigDecimal unitprice;
+
+    /** Optional: source inventory audit detail when this is an adjustment issue. */
+    private Long inventoryAuditDetailId;
 }

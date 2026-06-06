@@ -19,4 +19,5 @@ public class GoodsReceiptDetailResponse {
     private String locationname;
     private Long batchId;
     private String batchCode;
+    private Long inventoryAuditDetailId;
 }

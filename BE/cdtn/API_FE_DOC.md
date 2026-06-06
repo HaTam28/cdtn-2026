@@ -224,8 +224,8 @@ If you want, I can implement the controller + import pipeline and tests next. Re
 | Item | `itemcode`, `itemname`, `unitof`, `itemtype`, `isActive` |
 | Location | `locationcode`, `locationname`, `isActive` |
 | User | `usercode`, `fullname`, `username`, `password` (khi tạo mới), `role`, `isActive` |
-| GoodsReceipt | `doctype`, mỗi detail cần `itemId`, `quantity` ( `docno` do BE tự sinh nếu không gửi ) |
-| GoodsIssue | mỗi detail cần `itemId`, `quantity` và **một trong** `batchId` hoặc `locationId` ( `docno` do BE tự sinh nếu không gửi ) |
+| GoodsReceipt | `doctype`, mỗi detail cần `itemId`, `quantity` (nếu là `ADJUSTMENT` từ kiểm kê: thêm `inventoryAuditId` ở header và `inventoryAuditDetailId` ở từng detail) |
+| GoodsIssue | mỗi detail cần `itemId`, `quantity` và **một trong** `batchId` hoặc `locationId` (nếu là `ADJUSTMENT` từ kiểm kê: thêm `inventoryAuditId` ở header và `inventoryAuditDetailId` ở từng detail) |
 | InventoryAudit | mỗi detail cần `itemId` (số thực tế chỉ bắt buộc khi STAFF cập nhật) ( `docno` do BE tự sinh nếu không gửi ) |
 | Batch | `itemId`, `receiptDetailId`, `unitCost`, `quantity` |
 
@@ -1012,9 +1012,14 @@ Response (200) example:
 |--------|----------|-------|
 | `invoiceNumber` | ❌ | Số hóa đơn / chứng từ bán hàng từ nhà cung cấp (tách riêng với `docno`). |
 | `doctype` | ✅ | Loại phiếu nhập. Giá trị gợi ý: `NORMAL`, `ADJUSTMENT`. |
+| `inventoryAuditId` | ❌ / ✅ khi điều chỉnh | ID phiếu kiểm kê nguồn. Khi gửi trường này, BE tự set `doctype = ADJUSTMENT`. |
+| `details[].batchId` | ❌ / ✅ khi điều chỉnh | ID mã lô đã auto-fill từ dòng kiểm kê. Phiếu nhập điều chỉnh phải dùng batch này, BE không sinh mã lô mới. |
+| `details[].inventoryAuditDetailId` | ❌ / ✅ khi điều chỉnh | ID dòng chi tiết kiểm kê nguồn, dùng để truy vết và chặn tạo trùng điều chỉnh. |
 
 > `locationId` có thể để `null` khi tạo DRAFT; phải gán trước khi confirm.
 > `batchId` / `batchCode` trong response chỉ xuất hiện sau khi phiếu được **CONFIRMED** — BE tự động tạo lô khi xác nhận, FE **không cần** gọi `POST /api/batches` trong luồng nhập kho thông thường.
+>
+> **Phiếu nhập điều chỉnh từ kiểm kê:** FE không cần gửi `invoiceNumber`, `customerId`, thông tin hóa đơn/đối tượng. Nếu FE gửi thừa, BE sẽ không lưu các trường này. Mỗi dòng bắt buộc có `batchId`, `locationId`, `quantity > 0`, `inventoryAuditDetailId`; `batchId` phải là mã lô auto-fill từ dòng kiểm kê. Khi confirm, BE cộng số lượng vào batch hiện có, **không sinh batchCode mới**. BE kiểm tra sức chứa ngay khi lưu DRAFT/cập nhật và kiểm tra lại khi confirm. Nếu không đủ chỗ, BE trả `"Vị trí không đủ sức chứa."`.
 >
 > **LƯU Ý VỀ LÔ HÀNG (BATCH):**
 > - **Tự động tạo khi confirm:** Khi phiếu nhập được xác nhận, BE tự sinh batch theo từng dòng chi tiết gắn vị trí. Nếu cùng 1 mã hàng được nhập ở nhiều vị trí khác nhau, mỗi vị trí sẽ có `batchCode` riêng.
@@ -1060,7 +1065,8 @@ Response (200) example:
         "locationcode": "A1-01",
         "locationname": "Kệ A1, tầng 1",
         "batchId": null,
-        "batchCode": null
+        "batchCode": null,
+        "inventoryAuditDetailId": null
       }
     ]
   }
@@ -1104,6 +1110,12 @@ BE thực hiện:
 - `"Phiếu nhập không có dòng chi tiết nào"`
 - `"Dòng chi tiết với mã hàng 'X' chưa được gán vị trí"`
 - `"Vị trí 'A1-01' không đủ sức chứa. Còn trống: 20, cần nhập: 100"`
+- `"Vị trí không đủ sức chứa."`
+- `"Phiếu nhập điều chỉnh phải liên kết chi tiết phiếu kiểm kê"`
+- `"Phiếu nhập điều chỉnh phải có mã lô"`
+- `"Mã lô không khớp với chi tiết phiếu kiểm kê"`
+- `"Vị trí không khớp với mã lô"`
+- `"Chi tiết phiếu kiểm kê đã được tạo phiếu điều chỉnh"`
 
 ### 7.4 API hỗ trợ chọn vị trí
 
@@ -1256,6 +1268,8 @@ Response (200) example:
 > `batchId` tùy chọn. Nếu gửi, BE validate và tự xác định `locationId` từ lô. Nếu cần ghi đè vị trí, gửi thêm `locationId`.
 
 > **`doctype`** (optional): FE có thể gửi `"NORMAL"` cho xuất thường. Nếu không gửi, mặc định là `"NORMAL"`. Khi request có `inventoryAuditId`, BE **luôn ghi đè** thành `"ADJUSTMENT"` bất kể FE gửi gì.
+>
+> **Phiếu xuất điều chỉnh từ kiểm kê:** FE không cần gửi `customerId`/đối tượng. Nếu FE gửi thừa, BE sẽ không lưu. Header bắt buộc có `inventoryAuditId`; từng dòng bắt buộc có `inventoryAuditDetailId`, `itemId`, `batchId`, `locationId`, `quantity > 0`. BE không kiểm tra sức chứa cho phiếu xuất điều chỉnh, chỉ kiểm tra lô/vị trí/tồn kho hợp lệ và chặn trùng dòng kiểm kê.
 
 **Validation mã lô (BE thực hiện khi lưu DRAFT):**
 | # | Kiểm tra | Lỗi trả về |
@@ -1264,6 +1278,9 @@ Response (200) example:
 | 2 | Lô thuộc đúng mặt hàng (`itemId`) | `"Lô '{batchCode}' không thuộc mặt hàng '{itemCode}'"` |
 | 3 | Không trùng `batchId` trong cùng phiếu | `"Phiếu xuất có mã lô bị trùng lặp. Mỗi mã lô chỉ được chọn một lần."` |
 | 4 | Số lượng ≤ `quantityRemaining` của lô | `"Số lượng xuất ({qty}) vượt quá tồn khả dụng của lô '{batchCode}' (còn lại: {remaining})"` |
+| 5 | Phiếu xuất điều chỉnh có `inventoryAuditDetailId` đúng audit/header | `"Chi tiết phiếu kiểm kê không thuộc phiếu kiểm kê đã chọn"` |
+| 6 | Lô và vị trí khớp với dòng kiểm kê/stock hiện có | `"Mã lô không khớp với chi tiết phiếu kiểm kê"` / `"Vị trí không khớp với mã lô"` |
+| 7 | Dòng kiểm kê chưa được tạo phiếu điều chỉnh khác | `"Chi tiết phiếu kiểm kê đã được tạo phiếu điều chỉnh"` |
 
 **Response (ví dụ):**
 ```json
@@ -1294,7 +1311,8 @@ Response (200) example:
         "locationcode": "A1-01",
         "locationname": "Kệ A1, tầng 1",
         "batchId": 1,
-        "batchCode": "SP001-20260415"
+        "batchCode": "SP001-20260415",
+        "inventoryAuditDetailId": null
       },
       {
         "id": 13,
@@ -1309,7 +1327,8 @@ Response (200) example:
         "locationcode": "B1-02",
         "locationname": "Kệ B1, tầng 2",
         "batchId": 2,
-        "batchCode": "SP001-20260501"
+        "batchCode": "SP001-20260501",
+        "inventoryAuditDetailId": null
       }
     ]
   }
@@ -1351,6 +1370,8 @@ BE thực hiện:
 - `"Tồn kho tại vị trí 'A1-01' không đủ số lượng để xuất (cần 50, hiện có 20)"`
 - `"Tồn kho tổng của 'SP001' không đủ số lượng để xuất"`
 - `"Số lượng của lô 'LITEM00120260506' không đủ để xuất (cần 50, còn lại 30)"`
+- `"Phiếu xuất điều chỉnh phải liên kết chi tiết phiếu kiểm kê"`
+- `"Chi tiết phiếu kiểm kê đã được tạo phiếu điều chỉnh"`
 
 ### 8.4 API hỗ trợ chọn vị trí
 
@@ -1706,7 +1727,8 @@ BE tự động gửi thông báo `APPROVAL_REQUIRED` đến Manager/người t�
  
 **Ghi chú về phiếu điều chỉnh (Adjustment vouchers)**
 
-- Khi FE muốn tạo phiếu điều chỉnh từ kết quả kiểm kê (`InventoryAudit`), FE tạo một `GoodsReceipt` với `inventoryAuditId` (liên kết tới `InventoryAudit`) — backend sẽ hiểu đây là một `ADJUSTMENT` voucher.
+- Khi FE muốn tạo phiếu điều chỉnh từ kết quả kiểm kê (`InventoryAudit`), FE tạo một `GoodsReceipt` hoặc `GoodsIssue` với `inventoryAuditId` (liên kết tới `InventoryAudit`) — backend sẽ hiểu đây là một `ADJUSTMENT` voucher.
+- Từng dòng điều chỉnh phải gửi thêm `inventoryAuditDetailId` để BE lưu liên kết tới dòng kiểm kê nguồn và chặn tạo trùng.
 - FE có thể gửi thêm trường `adjustmentFlags` trong payload `GoodsReceiptRequest` là một mảng boolean (JSON array). BE sẽ lưu mảng này vào `InventoryAudit.adjustmentFlags` và trả lại trong `InventoryAuditResponse.adjustmentFlags` để FE hiển thị/giải mã.
 - Lưu ý: `adjustmentFlags` chỉ được sử dụng/áp dụng cho phiếu điều chỉnh liên kết tới `InventoryAudit` và không ảnh hưởng đến phiếu nhập/xuất bình thường.
 
@@ -1770,6 +1792,55 @@ Sau khi phiếu kiểm kê được confirm (`CONFIRMED` hoặc `PROCESSED`):
   - `details[].itemId`: lấy từ dòng kiểm kê
   - `details[].batchId`: lấy từ dòng kiểm kê
   - `details[].locationId`: lấy từ dòng kiểm kê
+  - `details[].inventoryAuditDetailId`: lấy từ `id` của dòng kiểm kê
+
+**Payload mẫu - phiếu nhập điều chỉnh (`diffquantity > 0`):**
+```json
+{
+  "docDate": "2026-06-06",
+  "description": "Điều chỉnh từ kiểm kê KK-2026-001",
+  "inventoryAuditId": 10,
+  "adjustmentFlags": [true, false, true],
+  "details": [
+    {
+      "itemId": 5,
+      "batchId": 22,
+      "locationId": 3,
+      "quantity": 100,
+      "unitprice": 50000,
+      "inventoryAuditDetailId": 101
+    }
+  ]
+}
+```
+
+**Payload mẫu - phiếu xuất điều chỉnh (`diffquantity < 0`):**
+```json
+{
+  "docDate": "2026-06-06",
+  "description": "Điều chỉnh từ kiểm kê KK-2026-001",
+  "inventoryAuditId": 10,
+  "adjustmentFlags": [true, false, true],
+  "details": [
+    {
+      "itemId": 5,
+      "batchId": 22,
+      "locationId": 3,
+      "quantity": 40,
+      "unitprice": 50000,
+      "inventoryAuditDetailId": 102
+    }
+  ]
+}
+```
+
+**Validation BE cho điều chỉnh từ kiểm kê:**
+- Header có `inventoryAuditId` thì BE tự set `doctype = ADJUSTMENT`.
+- BE lưu `inventoryAuditId` ở phiếu và `inventoryAuditDetailId` ở từng dòng detail; response `GoodsReceiptDetailResponse`/`GoodsIssueDetailResponse` cũng trả lại `inventoryAuditDetailId`.
+- Không gửi/không lưu thông tin mua bán: `customerId`, `taxcode`, `invoiceNumber` và các field hóa đơn liên quan.
+- Phiếu nhập điều chỉnh: FE gửi `batchId` auto-fill từ dòng kiểm kê; BE kiểm tra batch khớp dòng kiểm kê/vị trí và khi confirm cộng số lượng vào batch hiện có, không sinh `batchCode` mới. BE kiểm tra sức chứa vị trí lúc tạo/cập nhật DRAFT và lúc confirm; lỗi chuẩn là `"Vị trí không đủ sức chứa."`.
+- Phiếu xuất điều chỉnh: BE không kiểm tra sức chứa; BE kiểm tra tồn kho đủ, mã lô tồn tại, vị trí tồn tại, lô khớp vị trí và số lượng hợp lệ.
+- Nếu cùng `inventoryAuditDetailId` đã được dùng ở một phiếu nhập/xuất điều chỉnh còn hiệu lực (`DRAFT`/`CONFIRMED`...), BE trả `"Chi tiết phiếu kiểm kê đã được tạo phiếu điều chỉnh"`.
 
 **FE: localStorage flow để ẩn nút sau khi đã tạo điều chỉnh**
 
@@ -1803,10 +1874,10 @@ const hideAdjustButton = serverHidden || clientHidden;
 
 Ghi chú:
 - `adjustmentFlags` (nếu FE gửi) được lưu trên `InventoryAudit.adjustmentFlags` và trả lại trong `InventoryAuditResponse`.
-- BE cũng trả `inventoryAuditId` trong response của `GoodsReceipt`/`GoodsIssue` khi phiếu được tạo kèm liên kết audit; FE có thể kiểm tra response để xác nhận liên kết và set localStorage ngay khi nhận `201`/`200` từ server.
+- BE cũng trả `inventoryAuditId` trong response của `GoodsReceipt`/`GoodsIssue` và `inventoryAuditDetailId` trong từng dòng detail khi phiếu được tạo kèm liên kết audit; FE có thể kiểm tra response để xác nhận liên kết và set localStorage ngay khi nhận `201`/`200` từ server.
 - FE vẫn phải cho người dùng chọn `locationId` cho từng dòng khi tạo phiếu điều chỉnh.
 
-> **Lưu ý:** Phiếu điều chỉnh này là phiếu nhập/xuất hoàn toàn độc lập trong BE — không có liên kết tự động với phiếu kiểm kê. FE chịu trách nhiệm ghi `description` rõ ràng để tra soát.
+> **Lưu ý:** Phiếu điều chỉnh vẫn là phiếu nhập/xuất độc lập về nghiệp vụ duyệt kho, nhưng BE đã lưu liên kết `inventoryAuditId` + `inventoryAuditDetailId` để truy vết nguồn kiểm kê và tránh tạo trùng.
 
 ---
 
