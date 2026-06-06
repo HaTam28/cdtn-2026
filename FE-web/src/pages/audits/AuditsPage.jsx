@@ -9,7 +9,7 @@ import { getAllIssues } from "../../api/issueApi";
 import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
-import { AUDIT_STATUS_BADGE, AUDIT_STATUS_LABELS, getAuditEndDate, getAuditRowTone, getAuditStartDate, getAuditWorkflowStatus, toNumber } from "./auditRowUtils";
+import { AUDIT_STATUS_BADGE, AUDIT_STATUS_LABELS, formatDisplayDate, getAuditEndDate, getAuditRowTone, getAuditStartDate, getAuditWorkflowStatus, toNumber } from "./auditRowUtils";
 
 const TABS = ["Tất cả", "Nháp", "Chờ kiểm kê", , "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Quá hạn"];
 const STAFF_TABS = ["Tất cả", "Chờ kiểm kê", , "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Quá hạn"];
@@ -40,13 +40,6 @@ function getDocAuditId(doc) {
 
 function getDetailAuditId(detail) {
     return detail?.inventoryAuditDetailId ?? detail?.inventoryauditdetailid ?? null;
-}
-
-function formatDate(str) {
-    if (!str) return "";
-    const d = new Date(str);
-    if (isNaN(d)) return str;
-    return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 }
 
 function IconPlus() {
@@ -331,8 +324,8 @@ export default function AuditsPage() {
                                             <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleOne(r.id)} onClick={(e) => e.stopPropagation()} />
                                         </td>
                                         <td className="sp-td-id">{r.docno}</td>
-                                        <td>{formatDate(getAuditStartDate(r))}</td>
-                                        <td>{formatDate(getAuditEndDate(r))}</td>
+                                        <td>{formatDisplayDate(getAuditStartDate(r))}</td>
+                                        <td>{formatDisplayDate(getAuditEndDate(r))}</td>
                                         {/* <td style={{ textAlign: "center", fontWeight: 600, color: "#1E3A2F" }}>
                                         {r.details ? r.details.length : "—"}
                                     </td> */}

@@ -10,23 +10,16 @@ import {
     AUDIT_STATUS_BADGE,
     AUDIT_STATUS_LABELS,
     auditDetailPayload,
+    formatDisplayDate,
     formatNumber,
     getAuditEndDate,
     getAuditStartDate,
     getAuditWorkflowStatus,
     normalizeAuditDetails,
-    toInputDate,
     toNumber,
 } from "./auditRowUtils";
 
 const STATUS_FILTERS = ["ALL", "REQUESTED", "IN_PROGRESS", "SUBMITTED", "APPROVED", "PROCESSED", "OVERDUE", "REJECTED"];
-
-function formatDate(str) {
-    const input = toInputDate(str);
-    if (!input) return "";
-    const [y, m, d] = input.split("-");
-    return `${d}/${m}/${y}`;
-}
 
 function DiffCell({ diff }) {
     if (diff === null || diff === undefined) return <td className="rc-td-num">—</td>;
@@ -241,7 +234,7 @@ export default function AuditTasksPage() {
                                     onClick={() => navigate(`/audits/requests?id=${audit.id}`)}
                                 >
                                     <strong>{audit.docno}</strong>
-                                    <span>{formatDate(getAuditStartDate(audit))} - {formatDate(getAuditEndDate(audit))}</span>
+                                    <span>{formatDisplayDate(getAuditStartDate(audit))} - {formatDisplayDate(getAuditEndDate(audit))}</span>
                                     <span className={AUDIT_STATUS_BADGE[displayStatus] || "rc-badge"}>
                                         {AUDIT_STATUS_LABELS[displayStatus] || displayStatus}
                                     </span>
@@ -262,9 +255,9 @@ export default function AuditTasksPage() {
                             <label className="rc-form-label">Số phiếu</label>
                             <input className="rc-form-input" style={{ minWidth: 170 }} value={active.docno || ""} readOnly />
                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Ngày bắt đầu</label>
-                            <input type="date" className="rc-form-input" style={{ minWidth: 150 }} value={toInputDate(getAuditStartDate(active))} readOnly />
+                            <input className="rc-form-input" style={{ minWidth: 150 }} value={formatDisplayDate(getAuditStartDate(active))} readOnly />
                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Ngày kết thúc</label>
-                            <input type="date" className="rc-form-input" style={{ minWidth: 150 }} value={toInputDate(getAuditEndDate(active))} readOnly />
+                            <input className="rc-form-input" style={{ minWidth: 150 }} value={formatDisplayDate(getAuditEndDate(active))} readOnly />
                             <span style={{ marginLeft: "auto" }}>
                                 {(() => {
                                     const displayStatus = getAuditWorkflowStatus(active);

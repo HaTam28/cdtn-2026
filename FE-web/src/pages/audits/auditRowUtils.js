@@ -60,6 +60,14 @@ export function toInputDate(value) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+export function formatDisplayDate(value) {
+    const input = toInputDate(value);
+    if (!input) return "";
+    const [year, month, day] = input.split("-");
+    if (!year || !month || !day) return String(value);
+    return `${day}/${month}/${year}`;
+}
+
 export function getAuditStartDate(audit) {
     return audit?.startDate || audit?.auditStartDate || audit?.fromDate || audit?.docDate || "";
 }

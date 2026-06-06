@@ -11,13 +11,13 @@ import notify from "../../utils/notify";
 import {
     AUDIT_STATUS_LABELS,
     AUDIT_STATUS_PILL,
+    formatDisplayDate,
     formatNumber,
     getAuditEndDate,
     getAuditStartDate,
     getAuditWorkflowStatus,
     getSuggestion,
     normalizeAuditDetails,
-    toInputDate,
     toNumber,
 } from "./auditRowUtils";
 
@@ -350,9 +350,9 @@ export default function AuditDetailPage() {
                         <div className="rc-form-card">
                             <div className="rc-header-row au-header-wrap">
                                 <label className="rc-form-label">Ngày bắt đầu</label>
-                                <input type="date" className="rc-form-input" style={{ minWidth: 150 }} value={toInputDate(getAuditStartDate(audit))} readOnly />
+                                <input className="rc-form-input" style={{ minWidth: 150 }} value={formatDisplayDate(getAuditStartDate(audit))} readOnly />
                                 <label className="rc-form-label" style={{ marginLeft: 16 }}>Ngày kết thúc</label>
-                                <input type="date" className="rc-form-input" style={{ minWidth: 150 }} value={toInputDate(getAuditEndDate(audit))} readOnly />
+                                <input className="rc-form-input" style={{ minWidth: 150 }} value={formatDisplayDate(getAuditEndDate(audit))} readOnly />
                                 <label className="rc-form-label" style={{ marginLeft: 16 }}>Số</label>
                                 <input className="rc-form-input" style={{ minWidth: 180 }} value={audit.docno || ""} readOnly />
                                 <span style={{ marginLeft: "auto" }}>
