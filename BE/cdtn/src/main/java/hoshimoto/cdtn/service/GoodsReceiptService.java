@@ -310,15 +310,16 @@ public class GoodsReceiptService {
 
             // Lấy danh sách hàng đang chứa tại vị trí này
             List<ItemLocation> itemsAtLoc = itemLocationRepository.findByLocationIdAndIsActiveTrue(loc.getId());
-            List<LocationItemStock> stockList = itemsAtLoc.stream().map(il -> new LocationItemStock(
+                List<LocationItemStock> stockList = itemsAtLoc.stream().map(il -> new LocationItemStock(
                     il.getItem().getId(),
                     il.getItem().getItemcode(),
                     il.getItem().getItemname(),
                     il.getItem().getUnitof(),
                     il.getQuantity(),
                     batchRepository.findAllByReceiptDetailLocationIdAndItemId(loc.getId(), il.getItem().getId())
-                            .stream()
-                            .map(Batch::getBatchCode).collect(Collectors.toList())))
+                        .stream()
+                        .map(Batch::getBatchCode).collect(Collectors.toList()),
+                    java.util.Collections.<LocationDetailResponse.BatchStock>emptyList()))
                     .collect(Collectors.toList());
 
                 List<String> itemCodes = itemsAtLoc.stream()

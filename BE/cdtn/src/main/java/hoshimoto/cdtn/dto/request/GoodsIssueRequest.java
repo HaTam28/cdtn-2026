@@ -11,6 +11,8 @@ public class GoodsIssueRequest {
 
     private String docno;
 
+    private String doctype;
+
     private LocalDate docDate;
 
     private String description;

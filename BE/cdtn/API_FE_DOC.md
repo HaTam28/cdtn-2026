@@ -225,7 +225,7 @@ If you want, I can implement the controller + import pipeline and tests next. Re
 | Location | `locationcode`, `locationname`, `isActive` |
 | User | `usercode`, `fullname`, `username`, `password` (khi tạo mới), `role`, `isActive` |
 | GoodsReceipt | `doctype`, mỗi detail cần `itemId`, `quantity` ( `docno` do BE tự sinh nếu không gửi ) |
-| GoodsIssue | mỗi detail cần `itemId`, `quantity`, `locationId` ( `docno` do BE tự sinh nếu không gửi ) |
+| GoodsIssue | mỗi detail cần `itemId`, `quantity` và **một trong** `batchId` hoặc `locationId` ( `docno` do BE tự sinh nếu không gửi ) |
 | InventoryAudit | mỗi detail cần `itemId` (số thực tế chỉ bắt buộc khi STAFF cập nhật) ( `docno` do BE tự sinh nếu không gửi ) |
 | Batch | `itemId`, `receiptDetailId`, `unitCost`, `quantity` |
 
@@ -1224,6 +1224,8 @@ Response (200) example:
 
 ### 8.1 Tạo / Cập nhật phiếu xuất (DRAFT)
 
+> **Luồng mã lô mới:** Mỗi mã lô được chọn ở FE = **một dòng chi tiết riêng** trong `details[]`. Vị trí (`locationId`) có thể bỏ trống — BE tự xác định từ lô đã chọn (`batch.receiptDetail.location`). Nếu FE gửi `locationId`, giá trị đó được ưu tiên.
+
 **Request body:**
 ```json
 {
@@ -1235,9 +1237,14 @@ Response (200) example:
   "details": [
     {
       "itemId": 5,
-      "locationId": 3,
       "batchId": 1,
       "quantity": 20,
+      "unitprice": 55000
+    },
+    {
+      "itemId": 5,
+      "batchId": 2,
+      "quantity": 30,
       "unitprice": 55000
     }
   ]
@@ -1246,12 +1253,68 @@ Response (200) example:
 
 > `docno` có thể bỏ trống để BE tự sinh theo dạng `PX-01`, `PX-02`, ...
 
-> `locationId` bắt buộc trước khi confirm; FE nên chọn từ `available-locations`.
-> `batchId` tùy chọn; nếu FE gửi, BE sẽ tự động trừ `quantityRemaining` của lô khi xác nhận.
+> `batchId` tùy chọn. Nếu gửi, BE validate và tự xác định `locationId` từ lô. Nếu cần ghi đè vị trí, gửi thêm `locationId`.
 
-**Response:** cấu trúc tương tự GoodsReceipt, với `docstatus: "DRAFT"`.
+> **`doctype`** (optional): FE có thể gửi `"NORMAL"` cho xuất thường. Nếu không gửi, mặc định là `"NORMAL"`. Khi request có `inventoryAuditId`, BE **luôn ghi đè** thành `"ADJUSTMENT"` bất kể FE gửi gì.
 
-**Note on `doctype`:** When an export is generated automatically from an `InventoryAudit` (adjustment flow), the backend will set `doctype = "ADJUSTMENT"`. FE creating manual drafts can optionally set `doctype`, but when the export is produced by the audit workflow, BE enforces `ADJUSTMENT`.
+**Validation mã lô (BE thực hiện khi lưu DRAFT):**
+| # | Kiểm tra | Lỗi trả về |
+|---|----------|-----------|
+| 1 | Lô tồn tại trong hệ thống | `"Không tìm thấy lô hàng id: {id}"` |
+| 2 | Lô thuộc đúng mặt hàng (`itemId`) | `"Lô '{batchCode}' không thuộc mặt hàng '{itemCode}'"` |
+| 3 | Không trùng `batchId` trong cùng phiếu | `"Phiếu xuất có mã lô bị trùng lặp. Mỗi mã lô chỉ được chọn một lần."` |
+| 4 | Số lượng ≤ `quantityRemaining` của lô | `"Số lượng xuất ({qty}) vượt quá tồn khả dụng của lô '{batchCode}' (còn lại: {remaining})"` |
+
+**Response (ví dụ):**
+```json
+{
+  "success": true,
+  "message": "Tạo phiếu xuất thành công",
+  "data": {
+    "id": 5,
+    "docno": "PX-05",
+    "docDate": "2026-05-05",
+    "description": "Xuất hàng đơn đặt hàng #123",
+    "docstatus": "DRAFT",
+    "doctype": "NORMAL",
+    "customerId": 3,
+    "customerName": "Công ty ABC",
+    "createdByUsername": "staff01",
+    "details": [
+      {
+        "id": 12,
+        "itemId": 5,
+        "itemcode": "SP001",
+        "itemname": "Sản phẩm A",
+        "unitof": "Cái",
+        "quantity": 20,
+        "unitprice": 55000,
+        "amount": 1100000,
+        "locationId": 3,
+        "locationcode": "A1-01",
+        "locationname": "Kệ A1, tầng 1",
+        "batchId": 1,
+        "batchCode": "SP001-20260415"
+      },
+      {
+        "id": 13,
+        "itemId": 5,
+        "itemcode": "SP001",
+        "itemname": "Sản phẩm A",
+        "unitof": "Cái",
+        "quantity": 30,
+        "unitprice": 55000,
+        "amount": 1650000,
+        "locationId": 4,
+        "locationcode": "B1-02",
+        "locationname": "Kệ B1, tầng 2",
+        "batchId": 2,
+        "batchCode": "SP001-20260501"
+      }
+    ]
+  }
+}
+```
 
 ### 8.2 Xác nhận phiếu xuất
 
@@ -1268,19 +1331,19 @@ BE thực hiện:
 
 ### 8.2.1 Luồng end-to-end (chi tiết từng bước)
 
-1. FE: Gọi `POST /api/goods-issues` với body (có thể để `docno` trống). BE trả về phiếu `DRAFT`.
-2. FE: Gọi `GET /api/goods-issues/available-locations?itemId=` hoặc `suggest-split` để chọn `locationId` / `batchId` cho từng dòng.
-3. FE: Người dùng gán `locationId`/`batchId` cho các dòng; FE cập nhật bằng `PUT /api/goods-issues/{id}`.
+1. FE: Gọi `GET /api/goods-issues/available-locations?itemId=` để lấy danh sách vị trí có hàng kèm `batchCodes` tại mỗi vị trí.
+2. FE: Người dùng chọn các mã lô cần xuất và nhập số lượng cho từng lô → mỗi lô = một dòng trong `details[]`.
+3. FE: Gọi `POST /api/goods-issues` với `details[]` (mỗi phần tử có `itemId`, `batchId`, `quantity`). BE validate ngay lúc lưu DRAFT và tự xác định `locationId` từ lô.
 4. FE: Khi sẵn sàng, gọi `POST /api/goods-issues/{id}/confirm` để xác nhận.
 5. BE (trong `confirm`):
   - Kiểm tra tất cả dòng có `locationId` (nếu thiếu, trả lỗi và dừng).
   - Kiểm tra `ItemLocation` tại vị trí đó có đủ `quantity`; nếu không đủ, trả lỗi.
   - Trừ `quantity` ở `ItemLocation` và set `isActive=false` khi còn 0.
   - Trừ `quantity` tại `InventoryBalance` (tồn tổng) và cập nhật `lastUpdated`.
-  - Nếu dòng có `batchId`: kiểm tra `quantityRemaining` của lô và trừ tương ứng.
-  - Đặt `docstatus = CONFIRMED`, lưu `modifiedBy`/`approver` nếu có, và trả về phiếu đã cập nhật.
+  - Nếu dòng có `batchId`: kiểm tra `quantityRemaining` của lô và trừ tương ứng — **xử lý theo từng lô riêng biệt**.
+  - Đặt `docstatus = CONFIRMED` và trả về phiếu đã cập nhật.
 6. BE: Nếu phiếu được tạo từ `InventoryAudit` (có `inventoryAuditId`), BE tự động gán `doctype = ADJUSTMENT`.
-7. FE: Sau confirm, gọi `GET /api/goods-issues/{id}` để lấy lại phiếu — response sẽ có `docstatus = CONFIRMED`, `doctype`, và lộ trình thay đổi tồn.
+7. FE: Sau confirm, gọi `GET /api/goods-issues/{id}` để lấy lại phiếu — response sẽ có `docstatus = CONFIRMED`, từng dòng `details` với `batchId`/`batchCode` tương ứng.
 
 **Lỗi có thể trả về:**
 - `"Phiếu xuất không có dòng chi tiết nào"`
@@ -1303,12 +1366,33 @@ BE thực hiện:
     "usedCapacity": 40,
     "remainingCapacity": 60,
     "type": "HAS_STOCK",
+    "itemCodes": ["SP001"],
     "items": [
-      { "itemId": 5, "itemcode": "SP001", "itemname": "Sản phẩm A", "unitof": "Cái", "quantity": 40, "batchCodes": ["SP001-20260415"] }
+      {
+        "itemId": 5,
+        "itemcode": "SP001",
+        "itemname": "Sản phẩm A",
+        "unitof": "Cái",
+        "quantity": 40,
+        "batchCodes": ["SP001-20260415"],
+        "batches": [
+          {
+            "batchId": 123,
+            "batchCode": "SP001-20260415",
+            "quantityRemaining": 40,
+            "locationId": 3,
+            "locationcode": "A1-01"
+          }
+        ]
+      }
     ]
   }
 ]
 ```
+
+> `itemCodes` — danh sách mã vật tư (unique) có mặt tại vị trí, dùng cho UI lọc nhanh.
+> `items` trả chi tiết tồn từng mã hàng kèm `batchCodes` và `batches`.
+> `batches` cung cấp `batchId`, `batchCode`, `quantityRemaining` theo từng lô để FE chọn đúng mã lô và nhập số lượng.
 
 **`GET /suggest-split?itemId={id}&quantity={qty}`** — Phân bổ tự động khi xuất nhiều vị trí; ưu tiên vị trí tồn nhiều nhất.
 

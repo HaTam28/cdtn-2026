@@ -45,6 +45,7 @@ public class LocationDetailResponse {
         private String unitof;
         private BigDecimal quantity;
         private List<String> batchCodes;
+        private List<BatchStock> batches;
 
         @JsonProperty("itemCode")
         public String getItemCode() {
@@ -60,5 +61,16 @@ public class LocationDetailResponse {
         public String getUnit() {
             return this.unitof;
         }
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class BatchStock {
+        private Long batchId;
+        private String batchCode;
+        private BigDecimal quantityRemaining;
+        private Long locationId;
+        private String locationcode;
     }
 }

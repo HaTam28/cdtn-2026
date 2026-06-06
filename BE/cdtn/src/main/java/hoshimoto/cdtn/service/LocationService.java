@@ -60,7 +60,13 @@ public class LocationService {
                     il.getItem().getItemname(),
                     il.getItem().getUnitof(),
                     batch.getQuantity(),
-                    List.of(batch.getBatchCode()))))
+                    java.util.Collections.singletonList(batch.getBatchCode()),
+                    java.util.Collections.singletonList(new LocationDetailResponse.BatchStock(
+                        batch.getId(),
+                        batch.getBatchCode(),
+                        batch.getQuantityRemaining(),
+                        loc.getId(),
+                        loc.getLocationcode())))))
             .collect(Collectors.toList());
 
         // Danh sách mã vật tư (unique) có mặt tại vị trí để FE hiển thị nhanh bên ngoài

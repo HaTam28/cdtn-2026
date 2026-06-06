@@ -265,16 +265,30 @@ public class GoodsIssueService {
 
             // Lấy tất cả hàng tại vị trí này để thống kê
             List<ItemLocation> itemsAtLoc = itemLocationRepository.findByLocationIdAndIsActiveTrue(loc.getId());
-            List<LocationItemStock> stockList = itemsAtLoc.stream().map(sil -> new LocationItemStock(
+                List<LocationItemStock> stockList = itemsAtLoc.stream().map(sil -> {
+                List<Batch> batches = batchRepository.findAllByReceiptDetailLocationIdAndItemId(
+                    loc.getId(), sil.getItem().getId());
+                List<String> batchCodes = batches.stream()
+                    .map(Batch::getBatchCode)
+                    .collect(Collectors.toList());
+                List<LocationDetailResponse.BatchStock> batchDetails = batches.stream()
+                    .map(batch -> new LocationDetailResponse.BatchStock(
+                        batch.getId(),
+                        batch.getBatchCode(),
+                        batch.getQuantityRemaining(),
+                        loc.getId(),
+                        loc.getLocationcode()))
+                    .collect(Collectors.toList());
+                LocationItemStock stock = new LocationItemStock(
                     sil.getItem().getId(),
                     sil.getItem().getItemcode(),
                     sil.getItem().getItemname(),
                     sil.getItem().getUnitof(),
                     sil.getQuantity(),
-                    batchRepository.findAllByReceiptDetailLocationIdAndItemId(loc.getId(), sil.getItem().getId())
-                            .stream()
-                            .map(Batch::getBatchCode).collect(Collectors.toList())))
-                    .collect(Collectors.toList());
+                    batchCodes,
+                    batchDetails);
+                return stock;
+                }).collect(Collectors.toList());
 
                 List<String> itemCodes = itemsAtLoc.stream()
                     .map(sil -> sil.getItem().getItemcode())
@@ -382,10 +396,11 @@ public class GoodsIssueService {
                 }
                 inventoryAuditRepository.save(audit);
             }
-            // mark document type as ADJUSTMENT when linked to an inventory audit
+            // ADJUSTMENT is always enforced when linked to an inventory audit
             issue.setDoctype("ADJUSTMENT");
-        }
-        else if (issue.getDoctype() == null) {
+        } else if (request.getDoctype() != null && !request.getDoctype().isBlank()) {
+            issue.setDoctype(request.getDoctype().trim().toUpperCase());
+        } else if (issue.getDoctype() == null) {
             issue.setDoctype("NORMAL");
         }
         // Gán người tạo từ JWT token (chỉ set khi tạo mới, không ghi đè khi update)
@@ -450,6 +465,17 @@ public class GoodsIssueService {
     private void saveDetails(GoodsIssue issue, List<GoodsIssueDetailRequest> detailRequests) {
         if (detailRequests == null)
             return;
+
+        // Validate: không cho phép trùng batchId trong cùng một phiếu
+        List<Long> batchIds = detailRequests.stream()
+                .map(GoodsIssueDetailRequest::getBatchId)
+                .filter(id -> id != null)
+                .collect(Collectors.toList());
+        long distinctBatchCount = batchIds.stream().distinct().count();
+        if (distinctBatchCount < batchIds.size()) {
+            throw new RuntimeException("Phiếu xuất có mã lô bị trùng lặp. Mỗi mã lô chỉ được chọn một lần.");
+        }
+
         for (GoodsIssueDetailRequest req : detailRequests) {
             Item item = itemRepository.findById(req.getItemId())
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy hàng hóa id: " + req.getItemId()));
@@ -464,16 +490,42 @@ public class GoodsIssueService {
             detail.setUnitprice(req.getUnitprice() != null ? req.getUnitprice() : BigDecimal.ZERO);
             detail.setAmount(detail.getQuantity().multiply(detail.getUnitprice()));
 
+            // Xử lý lô hàng (batchId)
+            if (req.getBatchId() != null) {
+                Batch batch = batchRepository.findById(req.getBatchId())
+                        .orElseThrow(() -> new RuntimeException(
+                                "Không tìm thấy lô hàng id: " + req.getBatchId()));
+
+                // Validate lô thuộc đúng vật phẩm
+                if (!batch.getItem().getId().equals(item.getId())) {
+                    throw new RuntimeException(
+                            "Lô '" + batch.getBatchCode() + "' không thuộc mặt hàng '"
+                                    + item.getItemcode() + "'");
+                }
+
+                // Validate số lượng không vượt quá tồn khả dụng của lô
+                if (batch.getQuantityRemaining() == null
+                        || req.getQuantity().compareTo(batch.getQuantityRemaining()) > 0) {
+                    throw new RuntimeException(
+                            "Số lượng xuất (" + req.getQuantity() + ") vượt quá tồn khả dụng của lô '"
+                                    + batch.getBatchCode() + "' (còn lại: "
+                                    + (batch.getQuantityRemaining() != null ? batch.getQuantityRemaining() : 0) + ")");
+                }
+
+                detail.setBatch(batch);
+
+                // Tự động xác định vị trí từ lô nếu FE không gửi locationId
+                if (req.getLocationId() == null && batch.getReceiptDetail() != null
+                        && batch.getReceiptDetail().getLocation() != null) {
+                    detail.setLocation(batch.getReceiptDetail().getLocation());
+                }
+            }
+
+            // locationId FE gửi luôn được ưu tiên (ghi đè auto-derive nếu có)
             if (req.getLocationId() != null) {
                 Location location = locationRepository.findById(req.getLocationId())
                         .orElseThrow(() -> new RuntimeException("Không tìm thấy vị trí id: " + req.getLocationId()));
                 detail.setLocation(location);
-            }
-
-            if (req.getBatchId() != null) {
-                Batch batch = batchRepository.findById(req.getBatchId())
-                        .orElseThrow(() -> new RuntimeException("Không tìm thấy lô hàng id: " + req.getBatchId()));
-                detail.setBatch(batch);
             }
 
             detailRepository.save(detail);
