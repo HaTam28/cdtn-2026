@@ -4,6 +4,8 @@ import "../../styles/shared.css";
 import "../receipts/receipts.css";
 import "./audits.css";
 import { getAuditById, confirmAudit, cancelAudit, rejectAudit } from "../../api/auditApi";
+import { getAllReceipts } from "../../api/receiptApi";
+import { getAllIssues } from "../../api/issueApi";
 import TopbarRight from "../../components/TopbarRight";
 import notify from "../../utils/notify";
 import {
@@ -14,7 +16,6 @@ import {
     getAuditStartDate,
     getAuditWorkflowStatus,
     getSuggestion,
-    isAdjustmentProcessed,
     normalizeAuditDetails,
     toInputDate,
     toNumber,
@@ -34,6 +35,108 @@ function SuggestionBadge({ diff }) {
 }
 
 const APPROVED_STATUSES = new Set(["CONFIRMED", "PROCESSED"]);
+const ADJUSTMENT_APPROVED_STATUS = "CONFIRMED";
+const ADJUSTMENT_FINAL_OPEN_STATUSES = new Set(["DRAFT", "REQUESTED", "IN_PROGRESS", "SUBMITTED", "PENDING_PROCESS"]);
+const ADJUSTMENT_FAILED_STATUSES = new Set(["CANCELLED", "REJECTED"]);
+
+function getDocType(doc) {
+    return String(doc?.docType || doc?.doctype || "").toUpperCase();
+}
+
+function getDocAuditId(doc) {
+    return doc?.inventoryAuditId ?? doc?.inventoryauditid ?? doc?.auditId ?? doc?.inventoryAudit?.id ?? null;
+}
+
+function isSameId(a, b) {
+    if (a === null || a === undefined || b === null || b === undefined || a === "" || b === "") return false;
+    return String(a) === String(b);
+}
+
+function sameNumber(a, b) {
+    return Math.abs(toNumber(a) - toNumber(b)) < 0.0001;
+}
+
+function docMatchesAudit(doc, auditId) {
+    return getDocType(doc) === "ADJUSTMENT" && isSameId(getDocAuditId(doc), auditId);
+}
+
+function docDetailsMatchRow(doc, row, diff) {
+    const details = doc?.details || [];
+    if (details.length === 0) return false;
+    if (row.id && details.some((detail) => isSameId(detail.inventoryAuditDetailId ?? detail.inventoryauditdetailid, row.id))) {
+        return true;
+    }
+    const targetQty = Math.abs(toNumber(diff));
+    const totalQty = details.reduce((sum, detail) => sum + toNumber(detail.quantity ?? detail.qty), 0);
+    const hasSameItem = details.some((detail) => isSameId(detail.itemId ?? detail.itemid, row.itemId));
+    const hasSameLocation = details.some((detail) => isSameId(detail.locationId ?? detail.locationid, row.locationId));
+    const hasSameBatch = !row.batchId || details.some((detail) => (
+        isSameId(detail.batchId ?? detail.batchid, row.batchId)
+        || String(detail.batchCode || detail.batchcode || "") === String(row.batchCode || "")
+    ));
+
+    return hasSameItem && hasSameLocation && hasSameBatch && sameNumber(totalQty, targetQty);
+}
+
+function getStoredAdjustmentDocId(auditId, row, type) {
+    if (typeof localStorage === "undefined" || !auditId || !row?.id) return null;
+    return localStorage.getItem(`audit_adj_${type}_detail_doc_${auditId}_${row.id}`);
+}
+
+function findAdjustmentDocForRow({ auditId, row, diff, adjustmentDocs }) {
+    const type = diff > 0 ? "receipt" : "issue";
+    const docs = diff > 0 ? adjustmentDocs.receipts : adjustmentDocs.issues;
+    const storedDocId = getStoredAdjustmentDocId(auditId, row, type);
+
+    if (storedDocId) {
+        const byStoredId = docs.find((doc) => isSameId(doc.id, storedDocId));
+        if (byStoredId) return byStoredId;
+    }
+
+    return docs.find((doc) => (
+        docMatchesAudit(doc, auditId) && docDetailsMatchRow(doc, row, diff)
+    )) || null;
+}
+
+function getAdjustmentState({ auditId, row, diff, adjustmentDocs }) {
+    if (toNumber(diff, 0) === 0) return { state: "NO_DIFF", doc: null };
+
+    const doc = findAdjustmentDocForRow({ auditId, row, diff, adjustmentDocs });
+    if (!doc) {
+        const type = diff > 0 ? "receipt" : "issue";
+        const storedDocId = getStoredAdjustmentDocId(auditId, row, type);
+        return storedDocId
+            ? { state: "PENDING", doc: { id: storedDocId, docstatus: "DRAFT" } }
+            : { state: "NOT_CREATED", doc: null };
+    }
+
+    if (doc.docstatus === ADJUSTMENT_APPROVED_STATUS) return { state: "APPROVED", doc };
+    if (ADJUSTMENT_FAILED_STATUSES.has(doc.docstatus)) return { state: "FAILED", doc };
+    if (ADJUSTMENT_FINAL_OPEN_STATUSES.has(doc.docstatus)) return { state: "PENDING", doc };
+    return { state: "PENDING", doc };
+}
+
+function getAdjustmentSummary(states) {
+    if (states.length === 0) return { label: "Không có chênh lệch", tone: "plus" };
+    const created = states.filter((item) => item.state !== "NOT_CREATED");
+    const approvedCount = states.filter((item) => item.state === "APPROVED").length;
+    const hasOpen = states.some((item) => item.state === "PENDING");
+    const hasMissingOrFailed = states.some((item) => item.state === "NOT_CREATED" || item.state === "FAILED");
+
+    if (created.length === 0) return { label: "Chưa xử lý", tone: "minus" };
+    if (approvedCount === states.length) return { label: "Đã xử lý chênh lệch", tone: "plus" };
+    if (hasOpen && !hasMissingOrFailed) return { label: "Đang xử lý", tone: "warning" };
+    return { label: "Còn tồn đọng", tone: "minus" };
+}
+
+function getAuditApproverName(audit) {
+    if (!audit) return "—";
+    const status = audit.docstatus;
+    const actor = audit.approverFullname || audit.approverUsername || audit.actionByFullname || audit.actionByUsername;
+    if (["APPROVED", "CONFIRMED", "PROCESSED"].includes(status)) return actor || "—";
+    if (status === "REJECTED") return actor || audit.modifiedBy || "—";
+    return "—";
+}
 
 export default function AuditDetailPage() {
     const { id } = useParams();
@@ -47,13 +150,22 @@ export default function AuditDetailPage() {
     const [actionLoading, setActionLoading] = useState(false);
     const [rejectModal, setRejectModal] = useState(false);
     const [rejectReason, setRejectReason] = useState("");
+    const [adjustmentDocs, setAdjustmentDocs] = useState({ receipts: [], issues: [] });
 
     const fetchAudit = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            const data = await getAuditById(id);
+            const [data, receipts, issues] = await Promise.all([
+                getAuditById(id),
+                getAllReceipts().catch(() => []),
+                getAllIssues().catch(() => []),
+            ]);
             setAudit({ ...data, details: normalizeAuditDetails(data.details) });
+            setAdjustmentDocs({
+                receipts: (receipts || []).filter((doc) => getDocType(doc) === "ADJUSTMENT"),
+                issues: (issues || []).filter((doc) => getDocType(doc) === "ADJUSTMENT"),
+            });
         } catch {
             setError("Không thể tải chi tiết phiếu kiểm kê.");
         } finally {
@@ -86,9 +198,26 @@ export default function AuditDetailPage() {
     }), [audit]);
 
     const canCreateAdjustment = !isStaff && APPROVED_STATUSES.has(audit?.docstatus);
-    const showSuggestionColumn = detailRows.some((row) =>
-        toNumber(row._diffForDisplay, 0) !== 0 && !isAdjustmentProcessed(id, { ...row, diffquantity: row._diffForDisplay })
-    );
+    const adjustmentStates = useMemo(() => (
+        detailRows
+            .filter((row) => toNumber(row._diffForDisplay, 0) !== 0)
+            .map((row) => ({
+                rowId: row.id || row._id,
+                ...getAdjustmentState({
+                    auditId: id,
+                    row,
+                    diff: row._diffForDisplay,
+                    adjustmentDocs,
+                }),
+            }))
+    ), [adjustmentDocs, detailRows, id]);
+    const adjustmentStateByRow = useMemo(() => {
+        const map = new Map();
+        adjustmentStates.forEach((item) => map.set(String(item.rowId), item));
+        return map;
+    }, [adjustmentStates]);
+    const adjustmentSummary = useMemo(() => getAdjustmentSummary(adjustmentStates), [adjustmentStates]);
+    const showSuggestionColumn = adjustmentStates.some((item) => item.state !== "APPROVED");
 
     const canConfirm = !isStaff && ["SUBMITTED", "PENDING_PROCESS"].includes(audit?.docstatus);
     const canReject = !isStaff && ["SUBMITTED", "PENDING_PROCESS"].includes(audit?.docstatus);
@@ -156,9 +285,18 @@ export default function AuditDetailPage() {
     const openAdjustment = (row) => {
         const diff = toNumber(row._diffForDisplay, 0);
         if (!diff) return;
+        const adjustmentState = adjustmentStateByRow.get(String(row.id || row._id));
+        if (adjustmentState && !["NOT_CREATED", "FAILED"].includes(adjustmentState.state)) return;
         const type = diff > 0 ? "receipts" : "issues";
         const queryType = diff > 0 ? "receipt" : "issue";
         navigate(`/${type}/create?docType=ADJUSTMENT&auditId=${audit.id}&auditDetailId=${encodeURIComponent(row.id || "")}&adjustmentType=${queryType}`);
+    };
+
+    const openAdjustmentDoc = (row, adjustmentState) => {
+        const diff = toNumber(row._diffForDisplay, 0);
+        const docId = adjustmentState?.doc?.id;
+        if (!docId || !diff) return;
+        navigate(`/${diff > 0 ? "receipts" : "issues"}/${docId}`);
     };
 
     return (
@@ -229,6 +367,8 @@ export default function AuditDetailPage() {
                                 <input className="rc-form-input" style={{ minWidth: 190 }} value={audit.createdByFullname || audit.createdByUsername || ""} readOnly />
                                 <label className="rc-form-label" style={{ marginLeft: 16 }}>Nhân viên kiểm kê</label>
                                 <input className="rc-form-input" style={{ minWidth: 190 }} value={audit.assignedToFullname || audit.assignedToUsername || audit.assignedUserFullname || audit.assignedUsername || ""} readOnly />
+                                <label className="rc-form-label" style={{ marginLeft: 16 }}>Người duyệt</label>
+                                <input className="rc-form-input" style={{ minWidth: 190 }} value={getAuditApproverName(audit)} readOnly />
                             </div>
 
                             {audit.description && (
@@ -263,9 +403,9 @@ export default function AuditDetailPage() {
                                 {canCreateAdjustment && (
                                     <div className="au-summary-item">
                                         <span className="au-summary-label">Xử lý chênh lệch</span>
-                                    <span className={`au-summary-value ${showSuggestionColumn ? "au-val-minus" : "au-val-plus"}`}>
-                                        {showSuggestionColumn ? "Còn tồn đọng" : "Đã xử lý hết"}
-                                    </span>
+                                        <span className={`au-summary-value au-val-${adjustmentSummary.tone}`}>
+                                            {adjustmentSummary.label}
+                                        </span>
                                     </div>
                                 )}
                             </div>
@@ -290,7 +430,7 @@ export default function AuditDetailPage() {
                                         {detailRows.map((row, idx) => {
                                             const actual = row._actualForDisplay;
                                             const diff = row._diffForDisplay;
-                                            const processed = isAdjustmentProcessed(id, { ...row, diffquantity: diff });
+                                            const adjustmentState = adjustmentStateByRow.get(String(row.id || row._id));
                                             return (
                                                 <tr key={row._id || idx}>
                                                     <td className="rc-td-stt">{idx + 1}</td>
@@ -306,8 +446,26 @@ export default function AuditDetailPage() {
                                                         <td>
                                                             {toNumber(diff, 0) === 0 ? (
                                                                 <SuggestionBadge diff={diff} />
-                                                            ) : processed ? (
+                                                            ) : adjustmentState?.state === "APPROVED" ? (
                                                                 <span className="au-suggestion au-suggestion-zero">Đã xử lý</span>
+                                                            ) : adjustmentState?.state === "PENDING" ? (
+                                                                <button
+                                                                    type="button"
+                                                                    className="au-suggestion au-suggestion-pending au-suggestion-link"
+                                                                    onClick={() => openAdjustmentDoc(row, adjustmentState)}
+                                                                    title="Mở phiếu điều chỉnh đang chờ duyệt"
+                                                                >
+                                                                    Đang chờ duyệt phiếu điều chỉnh
+                                                                </button>
+                                                            ) : adjustmentState?.state === "FAILED" ? (
+                                                                <button
+                                                                    type="button"
+                                                                    className={diff > 0 ? "sp-btn-outline au-adjust-action au-adjust-in" : "sp-btn-outline au-adjust-action au-adjust-out"}
+                                                                    onClick={() => openAdjustment(row)}
+                                                                    title="Phiếu điều chỉnh trước đó bị từ chối/hủy. Có thể tạo lại phiếu mới."
+                                                                >
+                                                                    {diff > 0 ? "Tạo lại phiếu nhập" : "Tạo lại phiếu xuất"}
+                                                                </button>
                                                             ) : canCreateAdjustment ? (
                                                                 <button
                                                                     type="button"

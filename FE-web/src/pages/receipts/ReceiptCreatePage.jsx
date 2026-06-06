@@ -20,6 +20,9 @@ const newRow = () => ({
     quantity: "",
     price: "",
     nameBatch: "",
+    batchId: "",
+    sourceBatchCode: "",
+    inventoryAuditDetailId: "",
     selectedLocations: [], // [{locationId, locationcode, allocQty}]
 });
 
@@ -338,6 +341,7 @@ export default function ReceiptCreatePage() {
     const [prefilledFromAudit, setPrefilledFromAudit] = useState(false);
     const [prefilledFromClone, setPrefilledFromClone] = useState(false);
     const [prefilledFromOverview, setPrefilledFromOverview] = useState(false);
+    const [auditSource, setAuditSource] = useState(null);
     const loadData = useCallback(async () => {
         setLoadingData(true);
         try {
@@ -448,17 +452,22 @@ export default function ReceiptCreatePage() {
                             quantity: String(diff),
                             price: unitCostByItem[String(d.itemId)] || "",
                             nameBatch: d.batchCode || "L",
+                            batchId: d.batchId || "",
+                            sourceBatchCode: d.batchCode || "",
+                            inventoryAuditDetailId: d.id,
                             selectedLocations,
                         };
                     });
                 if (rowsFromAudit.length > 0) {
                     setRows(rowsFromAudit);
+                    validateAdjustmentCapacity(rowsFromAudit);
                 }
                 setForm((prev) => ({
                     ...prev,
                     docType: "ADJUSTMENT",
                     description: prev.description || `Nguồn tạo từ phiếu kiểm kê ${data.docno}`,
                 }));
+                setAuditSource({ id: data.id, docno: data.docno });
                 setPrefilledFromAudit(true);
             } catch {
                 setPrefilledFromAudit(true);
@@ -469,6 +478,7 @@ export default function ReceiptCreatePage() {
 
     const user = JSON.parse(localStorage.getItem("user") || "{}");
     const isManager = user?.role && user.role !== "STAFF";
+    const isAdjustment = form.docType === "ADJUSTMENT";
 
     const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3500); };
 
@@ -493,6 +503,8 @@ export default function ReceiptCreatePage() {
                 next[idx].unitof = found?.unitof || "";
                 // Default batch name per requirement: 'L'
                 next[idx].nameBatch = "L";
+                next[idx].batchId = "";
+                next[idx].sourceBatchCode = "";
                 next[idx].selectedLocations = [];
             }
             return next;
@@ -536,12 +548,51 @@ export default function ReceiptCreatePage() {
 
     const totalAmount = rows.reduce((sum, r) => sum + (Number(r.quantity) || 0) * (Number(r.price) || 0), 0);
 
+    const validateAdjustmentCapacity = async (targetRows = rows) => {
+        const allocationsByItem = new Map();
+        targetRows.forEach((row) => {
+            (row.selectedLocations || []).forEach((loc) => {
+                const key = String(row.itemId);
+                const list = allocationsByItem.get(key) || [];
+                list.push({
+                    locationId: loc.locationId,
+                    locationcode: loc.locationcode,
+                    quantity: Number(loc.allocQty) || 0,
+                });
+                allocationsByItem.set(key, list);
+            });
+        });
+
+        for (const [itemId, allocations] of allocationsByItem.entries()) {
+            const locations = await getAvailableLocations(itemId);
+            const availableByLocation = new Map((locations || []).map((loc) => [String(loc.locationId), loc]));
+            const totalsByLocation = new Map();
+            allocations.forEach((loc) => {
+                const key = String(loc.locationId);
+                const current = totalsByLocation.get(key) || { ...loc, quantity: 0 };
+                current.quantity += loc.quantity;
+                totalsByLocation.set(key, current);
+            });
+
+            for (const loc of totalsByLocation.values()) {
+                const available = availableByLocation.get(String(loc.locationId));
+                const remaining = available?.remainingCapacity;
+                if (remaining !== null && remaining !== undefined && Number(remaining) < loc.quantity) {
+                    const code = loc.locationcode || available?.locationcode || loc.locationId;
+                    showToast("error", `Vị trí ${code} không còn đủ sức chứa để nhập thêm ${formatMoney(loc.quantity)} sản phẩm.`);
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+
     const handleSave = async () => {
         if (!form.date) { showToast("error", "Vui lòng chọn ngày."); return; }
         if (!form.docno.trim()) { showToast("error", "Vui lòng nhập số chứng từ."); return; }
-        if (!form.customerId) { showToast("error", "Vui lòng chọn đối tượng."); return; }
-        if (!invoice.date) { showToast("error", "Vui lòng chọn ngày hóa đơn."); return; }
-        if (!invoice.number || !String(invoice.number).trim()) { showToast("error", "Vui lòng nhập số hóa đơn."); return; }
+        if (!isAdjustment && !form.customerId) { showToast("error", "Vui lòng chọn đối tượng."); return; }
+        if (!isAdjustment && !invoice.date) { showToast("error", "Vui lòng chọn ngày hóa đơn."); return; }
+        if (!isAdjustment && (!invoice.number || !String(invoice.number).trim())) { showToast("error", "Vui lòng nhập số hóa đơn."); return; }
         if (rows.length === 0) { showToast("error", "Vui lòng thêm ít nhất một dòng vật tư."); return; }
         for (let i = 0; i < rows.length; i++) {
             const r = rows[i];
@@ -549,33 +600,41 @@ export default function ReceiptCreatePage() {
             if (!r.quantity || Number(r.quantity) <= 0) { showToast("error", `Dòng ${i + 1}: Số lượng không hợp lệ.`); return; }
             if (!r.price || Number(r.price) <= 0) { showToast("error", `Dòng ${i + 1}: Đơn giá phải lớn hơn 0.`); return; }
             if (r.selectedLocations.length === 0) { showToast("error", `Dòng ${i + 1}: Vui lòng chọn vị trí lưu trữ.`); return; }
+            if (isAdjustment && !r.batchId) { showToast("error", `Dòng ${i + 1}: Thiếu mã lô điều chỉnh từ kiểm kê.`); return; }
+            if (isAdjustment && !r.inventoryAuditDetailId) { showToast("error", `Dòng ${i + 1}: Thiếu liên kết chi tiết kiểm kê.`); return; }
         }
+        if (isAdjustment && !(await validateAdjustmentCapacity())) return;
         const details = rows.flatMap((r) =>
             r.selectedLocations.map((loc) => ({
                 itemId: Number(r.itemId),
                 locationId: Number(loc.locationId),
                 quantity: Number(loc.allocQty),
                 unitprice: Number(r.price),
+                ...(isAdjustment && r.batchId ? { batchId: Number(r.batchId) } : {}),
+                ...(isAdjustment && r.inventoryAuditDetailId ? { inventoryAuditDetailId: Number(r.inventoryAuditDetailId) } : {}),
             }))
         );
         setSaving(true);
         const adjAuditId = searchParams.get("auditId");
         const adjAuditDetailId = searchParams.get("auditDetailId");
         try {
-            const result = await createReceipt({
+            const payload = {
                 docno: form.docno.trim(),
                 docDate: form.date,
                 description: form.description.trim(),
-                customerId: Number(form.customerId),
-                docType: form.docType,
+                doctype: form.docType,
                 docstatus: isManager ? "CONFIRMED" : "DRAFT",
-                invoiceDate: invoice.date || undefined,
-                taxcode: invoice.taxcode || undefined,
-                invoiceNumber: invoice.number || undefined,
-                supplierId: invoice.supplierId ? Number(invoice.supplierId) : undefined,
                 ...(adjAuditId ? { inventoryAuditId: Number(adjAuditId) } : {}),
                 details,
-            });
+            };
+            if (!isAdjustment) {
+                payload.customerId = Number(form.customerId);
+                payload.invoiceDate = invoice.date || undefined;
+                payload.taxcode = invoice.taxcode || undefined;
+                payload.invoiceNumber = invoice.number || undefined;
+                payload.supplierId = invoice.supplierId ? Number(invoice.supplierId) : undefined;
+            }
+            const result = await createReceipt(payload);
             if (result?.success) {
                 showToast("success", "Tạo phiếu nhập kho thành công!");
                 // Lưu ID phiếu để AuditDetailPage kiểm tra status sau này
@@ -628,24 +687,34 @@ export default function ReceiptCreatePage() {
                                 <option value="NORMAL">Thông thường</option>
                                 <option value="ADJUSTMENT">Điều chỉnh</option>
                             </select>
+                            {isAdjustment && auditSource?.docno && (
+                                <>
+                                    <label className="rc-form-label" style={{ marginLeft: 16 }}>Phiếu kiểm kê</label>
+                                    <input className="rc-form-input" style={{ minWidth: 160 }} value={auditSource.docno} readOnly />
+                                </>
+                            )}
                         </div>
 
                         {/* ── Đối tượng ── */}
-                        <div className="rc-form-row">
-                            <label className="rc-form-label">Đối tượng<span className="rc-required">*</span></label>
-                            <select className="rc-form-select rc-form-full" value={form.customerId} onChange={(e) => handleCustomerChange(e.target.value)} disabled={loadingData}>
-                                <option value="">Chọn đối tượng</option>
-                                {customers.map((c) => (
-                                    <option key={c.id} value={c.id}>{c.customercode ? `${c.customercode}: ` : ""}{c.customername}</option>
-                                ))}
-                            </select>
-                        </div>
+                        {!isAdjustment && (
+                            <div className="rc-form-row">
+                                <label className="rc-form-label">Đối tượng<span className="rc-required">*</span></label>
+                                <select className="rc-form-select rc-form-full" value={form.customerId} onChange={(e) => handleCustomerChange(e.target.value)} disabled={loadingData}>
+                                    <option value="">Chọn đối tượng</option>
+                                    {customers.map((c) => (
+                                        <option key={c.id} value={c.id}>{c.customercode ? `${c.customercode}: ` : ""}{c.customername}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
 
                         {/* ── Địa chỉ ── */}
-                        <div className="rc-form-row">
-                            <label className="rc-form-label">Địa chỉ</label>
-                            <input className="rc-form-input rc-form-full" placeholder="Nhập địa chỉ" value={form.address} onChange={(e) => handleFormChange("address", e.target.value)} />
-                        </div>
+                        {!isAdjustment && (
+                            <div className="rc-form-row">
+                                <label className="rc-form-label">Địa chỉ</label>
+                                <input className="rc-form-input rc-form-full" placeholder="Nhập địa chỉ" value={form.address} onChange={(e) => handleFormChange("address", e.target.value)} />
+                            </div>
+                        )}
 
                         {/* ── Diễn giải ── */}
                         <div className="rc-form-row">
@@ -690,7 +759,7 @@ export default function ReceiptCreatePage() {
                                                     <input
                                                         className="rc-td-input rc-batch-code-preview"
                                                         readOnly
-                                                        value={buildBatchCode(row.nameBatch, form.date, row.itemcode)}
+                                                        value={isAdjustment ? (row.sourceBatchCode || row.nameBatch || "—") : buildBatchCode(row.nameBatch, form.date, row.itemcode)}
                                                         placeholder="Auto"
                                                     />
                                                 </td>
@@ -744,34 +813,38 @@ export default function ReceiptCreatePage() {
                             </table>
                         </div>
 
-                        {/* ── Invoice section ── */}
-                        <div className="rc-section-hd">Chi tiết</div>
-                        <div className="rc-section-sub">Thông tin hóa đơn</div>
-                        <div className="rc-form-2col">
-                            <div className="rc-form-field">
-                                <label className="rc-form-label">Ngày HD<span className="rc-required">*</span></label>
-                                <input type="date" className="rc-form-input" value={invoice.date} onChange={(e) => handleInvoiceChange("date", e.target.value)} />
-                            </div>
-                            <div className="rc-form-field">
-                                <label className="rc-form-label">MST</label>
-                                <input className="rc-form-input" placeholder="Nhập mã số thuế" value={invoice.taxcode} onChange={(e) => handleInvoiceChange("taxcode", e.target.value)} />
-                            </div>
-                        </div>
-                        <div className="rc-form-2col">
-                            <div className="rc-form-field">
-                                <label className="rc-form-label">Số hóa đơn<span className="rc-required">*</span></label>
-                                <input className="rc-form-input" placeholder="Nhập số hóa đơn" value={invoice.number} onChange={(e) => handleInvoiceChange("number", e.target.value)} />
-                            </div>
-                            <div className="rc-form-field">
-                                <label className="rc-form-label">Tên NCC</label>
-                                <select className="rc-form-select" value={invoice.supplierId} onChange={(e) => handleInvoiceChange("supplierId", e.target.value)}>
-                                    <option value="">Chọn tên nhà cung cấp</option>
-                                    {customers.filter((c) => c.issupplier).map((c) => (
-                                        <option key={c.id} value={c.id}>{c.customername}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
+                        {!isAdjustment && (
+                            <>
+                                {/* ── Invoice section ── */}
+                                <div className="rc-section-hd">Chi tiết</div>
+                                <div className="rc-section-sub">Thông tin hóa đơn</div>
+                                <div className="rc-form-2col">
+                                    <div className="rc-form-field">
+                                        <label className="rc-form-label">Ngày HD<span className="rc-required">*</span></label>
+                                        <input type="date" className="rc-form-input" value={invoice.date} onChange={(e) => handleInvoiceChange("date", e.target.value)} />
+                                    </div>
+                                    <div className="rc-form-field">
+                                        <label className="rc-form-label">MST</label>
+                                        <input className="rc-form-input" placeholder="Nhập mã số thuế" value={invoice.taxcode} onChange={(e) => handleInvoiceChange("taxcode", e.target.value)} />
+                                    </div>
+                                </div>
+                                <div className="rc-form-2col">
+                                    <div className="rc-form-field">
+                                        <label className="rc-form-label">Số hóa đơn<span className="rc-required">*</span></label>
+                                        <input className="rc-form-input" placeholder="Nhập số hóa đơn" value={invoice.number} onChange={(e) => handleInvoiceChange("number", e.target.value)} />
+                                    </div>
+                                    <div className="rc-form-field">
+                                        <label className="rc-form-label">Tên NCC</label>
+                                        <select className="rc-form-select" value={invoice.supplierId} onChange={(e) => handleInvoiceChange("supplierId", e.target.value)}>
+                                            <option value="">Chọn tên nhà cung cấp</option>
+                                            {customers.filter((c) => c.issupplier).map((c) => (
+                                                <option key={c.id} value={c.id}>{c.customername}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                            </>
+                        )}
 
                         {/* ── Actions ── */}
                         <div className="rc-form-actions">

@@ -4,24 +4,43 @@ import "../../styles/shared.css";
 import "../receipts/receipts.css";
 import "./audits.css";
 import { getAllAudits, getAssignedAuditsPending, getAssignedAuditsDone } from "../../api/auditApi";
+import { getAllReceipts } from "../../api/receiptApi";
+import { getAllIssues } from "../../api/issueApi";
 import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
-import { AUDIT_STATUS_BADGE, AUDIT_STATUS_LABELS, getAuditEndDate, getAuditRowTone, getAuditStartDate, getAuditWorkflowStatus, hasPendingAdjustment, toNumber } from "./auditRowUtils";
+import { AUDIT_STATUS_BADGE, AUDIT_STATUS_LABELS, getAuditEndDate, getAuditRowTone, getAuditStartDate, getAuditWorkflowStatus, toNumber } from "./auditRowUtils";
 
-const TABS = ["Tất cả", "Nháp", "Chờ kiểm kê", "Đang kiểm kê", "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Đã xử lý chênh lệch", "Quá hạn"];
-const STAFF_TABS = ["Tất cả", "Chờ kiểm kê", "Đang kiểm kê", "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Đã xử lý chênh lệch", "Quá hạn"];
+const TABS = ["Tất cả", "Nháp", "Chờ kiểm kê", , "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Quá hạn"];
+const STAFF_TABS = ["Tất cả", "Chờ kiểm kê", , "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Quá hạn"];
 const TAB_STATUS = {
     "Nháp": "DRAFT",
     "Chờ kiểm kê": "REQUESTED",
-    "Đang kiểm kê": "IN_PROGRESS",
     "Chờ duyệt": "SUBMITTED",
     "Đã duyệt": "APPROVED",
     "Đã từ chối": "REJECTED",
-    "Đã xử lý chênh lệch": "PROCESSED",
     "Quá hạn": "OVERDUE",
 };
 const ROWS_OPTIONS = [10, 15, 20, 50];
+const ADJUSTMENT_PENDING_STATUSES = new Set(["DRAFT", "REQUESTED", "IN_PROGRESS", "SUBMITTED", "PENDING_PROCESS"]);
+const ADJUSTMENT_FAILED_STATUSES = new Set(["CANCELLED", "REJECTED"]);
+
+function getDocType(doc) {
+    return String(doc?.docType || doc?.doctype || "").toUpperCase();
+}
+
+function isSameId(a, b) {
+    if (a === null || a === undefined || b === null || b === undefined || a === "" || b === "") return false;
+    return String(a) === String(b);
+}
+
+function getDocAuditId(doc) {
+    return doc?.inventoryAuditId ?? doc?.inventoryauditid ?? doc?.auditId ?? doc?.inventoryAudit?.id ?? null;
+}
+
+function getDetailAuditId(detail) {
+    return detail?.inventoryAuditDetailId ?? detail?.inventoryauditdetailid ?? null;
+}
 
 function formatDate(str) {
     if (!str) return "";
@@ -73,6 +92,7 @@ export default function AuditsPage() {
     const [page, setPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(15);
     const [selected, setSelected] = useState(new Set());
+    const [adjustmentDocs, setAdjustmentDocs] = useState([]);
     const navigate = useNavigate();
 
     const getDetailRowsForStatus = useCallback((audit) => (
@@ -86,10 +106,46 @@ export default function AuditsPage() {
         getAuditWorkflowStatus(audit, getDetailRowsForStatus(audit))
     ), [getDetailRowsForStatus]);
 
+    const hasAdjustmentInProgress = useCallback((audit, detailRows) => {
+        if (!["CONFIRMED", "PROCESSED"].includes(audit?.docstatus)) return false;
+        const diffRows = (detailRows || []).filter((row) => toNumber(row.diffquantity, 0) !== 0);
+        if (diffRows.length === 0) return false;
+
+        const docs = adjustmentDocs.filter((doc) => isSameId(getDocAuditId(doc), audit.id));
+        if (docs.length === 0) return false;
+
+        const docsHaveDetailLinks = docs.some((doc) =>
+            (doc.details || []).some((detail) => getDetailAuditId(detail))
+        );
+
+        if (!docsHaveDetailLinks) {
+            return docs.some((doc) => ADJUSTMENT_PENDING_STATUSES.has(doc.docstatus));
+        }
+
+        const states = diffRows.map((row) => {
+            const doc = docs.find((candidate) =>
+                (candidate.details || []).some((detail) => isSameId(getDetailAuditId(detail), row.id))
+            );
+            if (!doc) return "NOT_CREATED";
+            if (doc.docstatus === "CONFIRMED") return "APPROVED";
+            if (ADJUSTMENT_FAILED_STATUSES.has(doc.docstatus)) return "FAILED";
+            if (ADJUSTMENT_PENDING_STATUSES.has(doc.docstatus)) return "PENDING";
+            return "PENDING";
+        });
+
+        const hasPending = states.some((state) => state === "PENDING");
+        const hasMissingOrFailed = states.some((state) => state === "NOT_CREATED" || state === "FAILED");
+        return hasPending && !hasMissingOrFailed;
+    }, [adjustmentDocs]);
+
     const fetchAudits = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
+            const adjustmentPromise = Promise.all([
+                getAllReceipts().catch(() => []),
+                getAllIssues().catch(() => []),
+            ]);
             if (isStaff) {
                 const [pending, done] = await Promise.all([
                     getAssignedAuditsPending(),
@@ -104,6 +160,8 @@ export default function AuditsPage() {
                 const data = await getAllAudits();
                 setAudits(data);
             }
+            const [receipts, issues] = await adjustmentPromise;
+            setAdjustmentDocs([...(receipts || []), ...(issues || [])].filter((doc) => getDocType(doc) === "ADJUSTMENT"));
         } catch {
             setError(isStaff ? "Không thể tải danh sách yêu cầu kiểm kê." : "Không thể tải danh sách phiếu kiểm kê.");
         } finally {
@@ -113,14 +171,9 @@ export default function AuditsPage() {
 
     useEffect(() => { fetchAudits(); }, [fetchAudits]);
 
-    const visibleTabs = useMemo(() => {
-        const counts = {};
-        audits.forEach((audit) => {
-            const status = getStatusForAudit(audit);
-            counts[status] = (counts[status] || 0) + 1;
-        });
-        return (isStaff ? STAFF_TABS : TABS).filter((tab) => tab === "Tất cả" || (counts[TAB_STATUS[tab]] || 0) > 0);
-    }, [audits, getStatusForAudit, isStaff]);
+    const visibleTabs = useMemo(() => (
+        isStaff ? STAFF_TABS : TABS
+    ), [isStaff]);
 
     useEffect(() => {
         if (!visibleTabs.includes(activeTab)) {
@@ -265,41 +318,41 @@ export default function AuditsPage() {
                             )}
                             {!loading && !error && pageData.map((r) => {
                                 const detailRows = getDetailRowsForStatus(r);
-                                const pendingAdjustment = ["CONFIRMED", "PROCESSED"].includes(r.docstatus) && hasPendingAdjustment(r.id, detailRows);
+                                const pendingAdjustment = hasAdjustmentInProgress(r, detailRows);
                                 const rowDisplayStatus = getStatusForAudit(r);
                                 const rowTone = getAuditRowTone(rowDisplayStatus, pendingAdjustment);
                                 return (
-                                <tr
-                                    key={r.id}
-                                    className={`sp-row-clickable${selected.has(r.id) ? " sp-row-selected" : ""}${rowTone ? ` ${rowTone}` : ""}`}
-                                    onClick={() => navigate(isStaff ? `/audits/requests?id=${r.id}` : `/audits/${r.id}`)}
-                                >
-                                    <td className="sp-td-cb" onClick={(e) => { e.stopPropagation(); toggleOne(r.id); }}>
-                                        <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleOne(r.id)} onClick={(e) => e.stopPropagation()} />
-                                    </td>
-                                    <td className="sp-td-id">{r.docno}</td>
-                                    <td>{formatDate(getAuditStartDate(r))}</td>
-                                    <td>{formatDate(getAuditEndDate(r))}</td>
-                                    {/* <td style={{ textAlign: "center", fontWeight: 600, color: "#1E3A2F" }}>
+                                    <tr
+                                        key={r.id}
+                                        className={`sp-row-clickable${selected.has(r.id) ? " sp-row-selected" : ""}${rowTone ? ` ${rowTone}` : ""}`}
+                                        onClick={() => navigate(isStaff ? `/audits/requests?id=${r.id}` : `/audits/${r.id}`)}
+                                    >
+                                        <td className="sp-td-cb" onClick={(e) => { e.stopPropagation(); toggleOne(r.id); }}>
+                                            <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleOne(r.id)} onClick={(e) => e.stopPropagation()} />
+                                        </td>
+                                        <td className="sp-td-id">{r.docno}</td>
+                                        <td>{formatDate(getAuditStartDate(r))}</td>
+                                        <td>{formatDate(getAuditEndDate(r))}</td>
+                                        {/* <td style={{ textAlign: "center", fontWeight: 600, color: "#1E3A2F" }}>
                                         {r.details ? r.details.length : "—"}
                                     </td> */}
-                                    {/* <td style={{ color: "#4c6152", fontSize: "0.88rem" }}>{r.description || "—"}</td> */}
-                                    <td style={{ width: 160 }}>{r.createdByFullname || r.createdByName || "—"}</td>
-                                    <td style={{ width: 160 }}>{r.approverFullname || r.approverUsername || "—"}</td>
-                                    <td>
-                                        <span className={AUDIT_STATUS_BADGE[rowDisplayStatus] || "rc-badge"}>
-                                            {AUDIT_STATUS_LABELS[rowDisplayStatus] || rowDisplayStatus}
-                                        </span>
-                                        {r.docstatus === "REJECTED" && r.rejectReason && (
-                                            <div style={{ fontSize: "0.78rem", color: "#bf360c", marginTop: 3, maxWidth: 200, whiteSpace: "normal" }}>
-                                                Lý do: {r.rejectReason}
-                                            </div>
-                                        )}
-                                    </td>
-                                    <td className="sp-td-action" onClick={(e) => { e.stopPropagation(); navigate(isStaff ? `/audits/requests?id=${r.id}` : `/audits/${r.id}`); }}>
-                                        <button className="sp-edit-btn" title="Xem chi tiết"><IconEye /></button>
-                                    </td>
-                                </tr>
+                                        {/* <td style={{ color: "#4c6152", fontSize: "0.88rem" }}>{r.description || "—"}</td> */}
+                                        <td style={{ width: 160 }}>{r.createdByFullname || r.createdByName || "—"}</td>
+                                        <td style={{ width: 160 }}>{r.approverFullname || r.approverUsername || "—"}</td>
+                                        <td>
+                                            <span className={AUDIT_STATUS_BADGE[rowDisplayStatus] || "rc-badge"}>
+                                                {AUDIT_STATUS_LABELS[rowDisplayStatus] || rowDisplayStatus}
+                                            </span>
+                                            {r.docstatus === "REJECTED" && r.rejectReason && (
+                                                <div style={{ fontSize: "0.78rem", color: "#bf360c", marginTop: 3, maxWidth: 200, whiteSpace: "normal" }}>
+                                                    Lý do: {r.rejectReason}
+                                                </div>
+                                            )}
+                                        </td>
+                                        <td className="sp-td-action" onClick={(e) => { e.stopPropagation(); navigate(isStaff ? `/audits/requests?id=${r.id}` : `/audits/${r.id}`); }}>
+                                            <button className="sp-edit-btn" title="Xem chi tiết"><IconEye /></button>
+                                        </td>
+                                    </tr>
                                 );
                             })}
                         </tbody>

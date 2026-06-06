@@ -204,6 +204,10 @@
     color: #b71c1c;
 }
 
+.au-summary-value.au-val-warning {
+    color: #e65100;
+}
+
 /* ── th minwidth for audit table ─────────────────────── */
 .au-th-book {
     text-align: right;
@@ -314,6 +318,22 @@
 .au-suggestion-minus {
     background: #ffebee;
     color: #b71c1c;
+}
+
+.au-suggestion-pending {
+    background: #fff3e0;
+    color: #e65100;
+}
+
+.au-suggestion-link {
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.au-suggestion-link:hover {
+    text-decoration: underline;
+    filter: saturate(1.08);
 }
 
 .au-request-row {

@@ -99,9 +99,7 @@ export default function AuditTasksPage() {
         return counts;
     }, [audits]);
 
-    const visibleStatusFilters = useMemo(() => (
-        STATUS_FILTERS.filter((status) => status === "ALL" || (statusCounts[status] || 0) > 0)
-    ), [statusCounts]);
+    const visibleStatusFilters = useMemo(() => STATUS_FILTERS, []);
 
     useEffect(() => {
         if (!visibleStatusFilters.includes(statusFilter)) {

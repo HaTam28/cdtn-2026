@@ -20,6 +20,7 @@ const newRow = () => ({
     unitof: "",
     quantity: "",       // required total quantity for this item
     price: "",          // unit price
+    inventoryAuditDetailId: "",
     batchEntries: [],   // [{_id, batchId, batchCode, locationId, locationcode, remainingStock, quantity, unitCost}]
 });
 
@@ -285,6 +286,7 @@ export default function IssueCreatePage() {
     const [stockByItem, setStockByItem] = useState({});
     const [prefilledFromAudit, setPrefilledFromAudit] = useState(false);
     const [prefilledFromClone, setPrefilledFromClone] = useState(false);
+    const [auditSource, setAuditSource] = useState(null);
 
     const loadData = useCallback(async () => {
         setLoadingData(true);
@@ -404,6 +406,7 @@ export default function IssueCreatePage() {
                             unitof: d.unitof,
                             quantity: String(diff),
                             price: calcSalePrice(batch?.unitCost),
+                            inventoryAuditDetailId: d.id,
                             batchEntries,
                         };
                     });
@@ -415,6 +418,7 @@ export default function IssueCreatePage() {
                     docType: "ADJUSTMENT",
                     description: prev.description || `Nguồn tạo từ phiếu kiểm kê ${data.docno}`,
                 }));
+                setAuditSource({ id: data.id, docno: data.docno });
                 setPrefilledFromAudit(true);
             } catch {
                 setPrefilledFromAudit(true);
@@ -422,6 +426,8 @@ export default function IssueCreatePage() {
         };
         fillFromAudit();
     }, [searchParams, prefilledFromAudit]);
+
+    const isAdjustment = form.docType === "ADJUSTMENT";
 
     const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3500); };
 
@@ -591,13 +597,14 @@ export default function IssueCreatePage() {
     const handleSave = async () => {
         if (!form.date) { showToast("error", "Vui lòng chọn ngày."); return; }
         if (!form.docno.trim()) { showToast("error", "Vui lòng nhập số chứng từ."); return; }
-        if (!form.customerId) { showToast("error", "Vui lòng chọn đối tượng."); return; }
+        if (!isAdjustment && !form.customerId) { showToast("error", "Vui lòng chọn đối tượng."); return; }
         if (rows.length === 0) { showToast("error", "Vui lòng thêm ít nhất một dòng vật tư."); return; }
 
         for (let i = 0; i < rows.length; i++) {
             const r = rows[i];
             if (!r.itemId) { showToast("error", `Dòng ${i + 1}: Vui lòng chọn mặt hàng.`); return; }
             if (!r.quantity || Number(r.quantity) <= 0) { showToast("error", `Dòng ${i + 1}: Số lượng yêu cầu không hợp lệ.`); return; }
+            if (isAdjustment && !r.inventoryAuditDetailId) { showToast("error", `Dòng ${i + 1}: Thiếu liên kết chi tiết kiểm kê.`); return; }
 
             const requiredQty = Number(r.quantity);
 
@@ -645,6 +652,7 @@ export default function IssueCreatePage() {
                 locationId: e.locationId ? Number(e.locationId) : null,
                 quantity: Number(e.quantity),
                 unitprice: Number(e.unitCost) || Number(r.price) || 0,
+                ...(isAdjustment && r.inventoryAuditDetailId ? { inventoryAuditDetailId: Number(r.inventoryAuditDetailId) } : {}),
             }))
         );
 
@@ -652,15 +660,18 @@ export default function IssueCreatePage() {
         const adjAuditId = searchParams.get("auditId");
         const adjAuditDetailId = searchParams.get("auditDetailId");
         try {
-            const result = await createIssue({
+            const payload = {
                 docno: form.docno.trim(),
                 docDate: form.date,
                 description: form.description.trim(),
-                customerId: Number(form.customerId),
                 doctype: form.docType,
                 ...(adjAuditId ? { inventoryAuditId: Number(adjAuditId) } : {}),
                 details,
-            });
+            };
+            if (!isAdjustment) {
+                payload.customerId = Number(form.customerId);
+            }
+            const result = await createIssue(payload);
             if (result?.success) {
                 showToast("success", "Tạo phiếu xuất kho thành công!");
                 const newId = result?.data?.id;
@@ -727,24 +738,34 @@ export default function IssueCreatePage() {
                                 <option value="NORMAL">Thông thường</option>
                                 <option value="ADJUSTMENT">Điều chỉnh</option>
                             </select>
+                            {isAdjustment && auditSource?.docno && (
+                                <>
+                                    <label className="rc-form-label" style={{ marginLeft: 16 }}>Phiếu kiểm kê</label>
+                                    <input className="rc-form-input" style={{ minWidth: 160 }} value={auditSource.docno} readOnly />
+                                </>
+                            )}
                         </div>
 
                         {/* ── Đối tượng ── */}
-                        <div className="rc-form-row">
-                            <label className="rc-form-label">Đối tượng</label>
-                            <select className="rc-form-select rc-form-full" value={form.customerId} onChange={(e) => handleCustomerChange(e.target.value)} disabled={loadingData}>
-                                <option value="">Chọn đối tượng</option>
-                                {customers.map((c) => (
-                                    <option key={c.id} value={c.id}>{c.customercode ? `${c.customercode}: ` : ""}{c.customername}</option>
-                                ))}
-                            </select>
-                        </div>
+                        {!isAdjustment && (
+                            <div className="rc-form-row">
+                                <label className="rc-form-label">Đối tượng</label>
+                                <select className="rc-form-select rc-form-full" value={form.customerId} onChange={(e) => handleCustomerChange(e.target.value)} disabled={loadingData}>
+                                    <option value="">Chọn đối tượng</option>
+                                    {customers.map((c) => (
+                                        <option key={c.id} value={c.id}>{c.customercode ? `${c.customercode}: ` : ""}{c.customername}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
 
                         {/* ── Địa chỉ ── */}
-                        <div className="rc-form-row">
-                            <label className="rc-form-label">Địa chỉ</label>
-                            <input className="rc-form-input rc-form-full" placeholder="Nhập địa chỉ" value={form.address} onChange={(e) => handleFormChange("address", e.target.value)} />
-                        </div>
+                        {!isAdjustment && (
+                            <div className="rc-form-row">
+                                <label className="rc-form-label">Địa chỉ</label>
+                                <input className="rc-form-input rc-form-full" placeholder="Nhập địa chỉ" value={form.address} onChange={(e) => handleFormChange("address", e.target.value)} />
+                            </div>
+                        )}
 
                         {/* ── Diễn giải ── */}
                         <div className="rc-form-row">
@@ -762,7 +783,7 @@ export default function IssueCreatePage() {
                                         <th style={{ width: "17%" }}>Tên vật tư hàng hóa</th>
                                         <th style={{ width: "6%" }}>ĐVT</th>
                                         <th style={{ width: "8%" }}>SL yêu cầu</th>
-                                        <th style={{ width: "9%" }}>Tồn hiện tại</th>
+                                        {!isAdjustment && <th style={{ width: "9%" }}>Tồn hiện tại</th>}
                                         <th style={{ width: "13%" }}>Đơn giá xuất</th>
                                         <th style={{ width: "10%" }}>Thành tiền</th>
                                         <th style={{ width: "4%" }}></th>
@@ -808,15 +829,17 @@ export default function IssueCreatePage() {
                                                             onChange={(e) => handleRowChange(idx, "quantity", e.target.value)}
                                                         />
                                                     </td>
-                                                    <td className="rc-td-num" style={{ color: Number(row.quantity) > (stockByItem[row.itemId]?.total ?? Number.POSITIVE_INFINITY) ? "#c62828" : "#4c6152" }}>
-                                                        {!row.itemId
-                                                            ? "—"
-                                                            : stockByItem[row.itemId]?.loading
-                                                                ? "Đang tải..."
-                                                                : stockByItem[row.itemId]?.error
-                                                                    ? "Lỗi"
-                                                                    : (stockByItem[row.itemId]?.total ?? 0)}
-                                                    </td>
+                                                    {!isAdjustment && (
+                                                        <td className="rc-td-num" style={{ color: Number(row.quantity) > (stockByItem[row.itemId]?.total ?? Number.POSITIVE_INFINITY) ? "#c62828" : "#4c6152" }}>
+                                                            {!row.itemId
+                                                                ? "—"
+                                                                : stockByItem[row.itemId]?.loading
+                                                                    ? "Đang tải..."
+                                                                    : stockByItem[row.itemId]?.error
+                                                                        ? "Lỗi"
+                                                                        : (stockByItem[row.itemId]?.total ?? 0)}
+                                                        </td>
+                                                    )}
                                                     <td>
                                                         <input
                                                             className="rc-td-input rc-td-num"
@@ -842,7 +865,7 @@ export default function IssueCreatePage() {
 
                                                 {/* ── Batch entries sub-row ── */}
                                                 <tr>
-                                                    <td colSpan={9} style={{ padding: "0 0 10px 32px", background: "#fafcfb" }}>
+                                                    <td colSpan={isAdjustment ? 8 : 9} style={{ padding: "0 0 10px 32px", background: "#fafcfb" }}>
                                                         <div style={{ borderLeft: "3px solid #c6dfd0", paddingLeft: 12, paddingTop: 6 }}>
 
                                                             {/* Batch entries table */}
@@ -951,7 +974,7 @@ export default function IssueCreatePage() {
                                         );
                                     })}
                                     <tr className="rc-add-row" onClick={handleAddRow}>
-                                        <td colSpan={9}>
+                                        <td colSpan={isAdjustment ? 8 : 9}>
                                             <button className="rc-add-row-btn" type="button">
                                                 <IconPlus size={13} /> Thêm mới dữ liệu
                                             </button>
@@ -959,7 +982,7 @@ export default function IssueCreatePage() {
                                     </tr>
                                     {totalAmount > 0 && (
                                         <tr className="rc-total-row">
-                                            <td colSpan={7} style={{ textAlign: "right", paddingRight: 12 }}>Tổng cộng</td>
+                                            <td colSpan={isAdjustment ? 6 : 7} style={{ textAlign: "right", paddingRight: 12 }}>Tổng cộng</td>
                                             <td className="rc-td-num" style={{ textAlign: "right" }}>{formatMoney(totalAmount)}</td>
                                             <td />
                                         </tr>

@@ -83,9 +83,7 @@ export function getAuditWorkflowStatus(audit, details = audit?.details || []) {
     if (raw === "OVERDUE") return "OVERDUE";
     if (raw === "PENDING_PROCESS") return "SUBMITTED";
     if (raw === "CONFIRMED") return "APPROVED";
-    if (raw === "PROCESSED") {
-        return hasPendingAdjustment(audit?.id, details) ? "APPROVED" : "PROCESSED";
-    }
+    if (raw === "PROCESSED") return "APPROVED";
     return raw;
 }
 
