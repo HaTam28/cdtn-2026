@@ -8,6 +8,7 @@ import { getAllCustomers } from "../../api/customerApi";
 import { getAllItems } from "../../api/itemApi";
 import { getAllBatches } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
+import { formatDateForDisplay, normalizeDateDisplayInput, parseDisplayDateToIso } from "../../utils/dateInput";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 let _rowKey = 0;
@@ -176,6 +177,24 @@ function LocationModal({ open, onClose, onConfirm, loading, suggestions, quantit
     const partialLocs = suggestions.filter((s) => s.type === "PARTIAL");
     const totalAllocated = Array.from(selected.values()).reduce((a, b) => a + b, 0);
     const remaining = Math.max(0, qty - totalAllocated);
+    const totalAvailable = suggestions.reduce((sum, s) => sum + (Number(s.remainingCapacity) || 0), 0);
+    const totalShortfall = Math.max(0, qty - totalAvailable);
+    const currentShortfalls = currentLocations
+        .map((loc) => {
+            const found = suggestions.find((s) => String(s.locationId) === String(loc.locationId));
+            if (!found) return null;
+            const requested = Number(loc.allocQty) || 0;
+            const available = Number(found.remainingCapacity) || 0;
+            const shortfall = Math.max(0, requested - available);
+            if (shortfall <= 0) return null;
+            return {
+                code: found.locationcode || loc.locationcode || loc.locationId,
+                requested,
+                available,
+                shortfall,
+            };
+        })
+        .filter(Boolean);
     const pct = qty > 0 ? Math.min(100, Math.round((totalAllocated / qty) * 100)) : 0;
 
     const racks = ["Tất cả dãy", ...Array.from(new Set(
@@ -250,9 +269,19 @@ function LocationModal({ open, onClose, onConfirm, loading, suggestions, quantit
                         <div style={{ background: "#d4edda", borderRadius: 4, height: 8, overflow: "hidden" }}>
                             <div style={{ background: remaining === 0 ? "#2DBE60" : "#f9a825", width: `${pct}%`, height: "100%", borderRadius: 4, transition: "width 0.2s" }} />
                         </div>
-                        {remaining > 0 && qty > 0 && suggestions.length > 0 && !suggestions.some((s) => (Number(s.remainingCapacity) || 0) >= qty) && (
+                        {totalShortfall > 0 && qty > 0 && suggestions.length > 0 && (
                             <div style={{ marginTop: 6, fontSize: "0.8rem", color: "#e65100", display: "flex", alignItems: "center", gap: 4 }}>
-                                <IconWarn /> Số lượng vượt sức chứa 1 vị trí — vui lòng chọn nhiều vị trí để phân bổ đủ.
+                                <IconWarn /> Tổng sức chứa còn trống chỉ {formatMoney(totalAvailable)} — còn thiếu {formatMoney(totalShortfall)}.
+                            </div>
+                        )}
+                        {totalShortfall === 0 && currentShortfalls.map((item) => (
+                            <div key={item.code} style={{ marginTop: 6, fontSize: "0.8rem", color: "#e65100", display: "flex", alignItems: "center", gap: 4 }}>
+                                <IconWarn /> Vị trí {item.code} chỉ còn trống {formatMoney(item.available)}, thiếu {formatMoney(item.shortfall)} so với số lượng cần nhập {formatMoney(item.requested)}. Có thể chọn thêm vị trí khác, mã lô điều chỉnh vẫn giữ nguyên.
+                            </div>
+                        ))}
+                        {totalShortfall === 0 && remaining > 0 && qty > 0 && suggestions.length > 0 && !suggestions.some((s) => (Number(s.remainingCapacity) || 0) >= qty) && (
+                            <div style={{ marginTop: 6, fontSize: "0.8rem", color: "#e65100", display: "flex", alignItems: "center", gap: 4 }}>
+                                <IconWarn /> Không có một vị trí đủ chứa toàn bộ — vui lòng chọn nhiều vị trí để phân bổ đủ.
                             </div>
                         )}
                     </div>
@@ -350,6 +379,10 @@ export default function ReceiptCreatePage() {
     const [form, setForm] = useState({ date: todayStr(), docno: "", customerId: "", address: "", description: "", docType: "NORMAL" });
     const [rows, setRows] = useState([newRow()]);
     const [invoice, setInvoice] = useState({ date: "", taxcode: "", number: "", supplierId: "" });
+    const [dateDisplay, setDateDisplay] = useState({
+        docDate: formatDateForDisplay(todayStr()),
+        invoiceDate: "",
+    });
     const [customers, setCustomers] = useState([]);
     const [items, setItems] = useState([]);
     const [loadingData, setLoadingData] = useState(true);
@@ -420,9 +453,11 @@ export default function ReceiptCreatePage() {
             selectedLocations: [],
         }));
         if (rowsFromClone.length > 0) setRows(rowsFromClone);
+        const cloneDocDate = toDateOnly(clone.docDate);
+        const cloneInvoiceDate = toDateOnly(clone.invoiceDate);
         setForm((prev) => ({
             ...prev,
-            date: toDateOnly(clone.docDate) || prev.date,
+            date: cloneDocDate || prev.date,
             customerId: clone.customerId || "",
             address: clone.address || "",
             description: clone.description || "",
@@ -430,10 +465,15 @@ export default function ReceiptCreatePage() {
         }));
         setInvoice((prev) => ({
             ...prev,
-            date: toDateOnly(clone.invoiceDate),
+            date: cloneInvoiceDate,
             taxcode: clone.taxcode || clone.customerTaxcode || prev.taxcode,
             number: clone.invoiceNo || clone.invoiceNumber || "",
             supplierId: clone.customerId || prev.supplierId,
+        }));
+        setDateDisplay((prev) => ({
+            ...prev,
+            docDate: formatDateForDisplay(cloneDocDate || form.date),
+            invoiceDate: formatDateForDisplay(cloneInvoiceDate),
         }));
         setPrefilledFromClone(true);
         setPrefilledFromAudit(true);
@@ -501,6 +541,11 @@ export default function ReceiptCreatePage() {
     const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3500); };
 
     const handleFormChange = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+    const handleDocDateChange = (value) => {
+        const display = normalizeDateDisplayInput(value);
+        setDateDisplay((prev) => ({ ...prev, docDate: display }));
+        setForm((prev) => ({ ...prev, date: parseDisplayDateToIso(display) }));
+    };
 
     const handleCustomerChange = (customerId) => {
         const found = customers.find((c) => String(c.id) === String(customerId));
@@ -509,6 +554,11 @@ export default function ReceiptCreatePage() {
     };
 
     const handleInvoiceChange = (field, value) => setInvoice((prev) => ({ ...prev, [field]: value }));
+    const handleInvoiceDateChange = (value) => {
+        const display = normalizeDateDisplayInput(value);
+        setDateDisplay((prev) => ({ ...prev, invoiceDate: display }));
+        setInvoice((prev) => ({ ...prev, date: parseDisplayDateToIso(display) }));
+    };
 
     const handleRowChange = (idx, field, value) => {
         setRows((prev) => {
@@ -597,7 +647,8 @@ export default function ReceiptCreatePage() {
                 const remaining = available?.remainingCapacity;
                 if (remaining !== null && remaining !== undefined && Number(remaining) < loc.quantity) {
                     const code = loc.locationcode || available?.locationcode || loc.locationId;
-                    showToast("error", `Vị trí ${code} không còn đủ sức chứa để nhập thêm ${formatMoney(loc.quantity)} sản phẩm.`);
+                    const shortfall = Math.max(0, loc.quantity - Number(remaining || 0));
+                    showToast("error", `Vị trí ${code} chỉ còn trống ${formatMoney(remaining || 0)}, thiếu ${formatMoney(shortfall)} sản phẩm.`);
                     return false;
                 }
             }
@@ -697,7 +748,13 @@ export default function ReceiptCreatePage() {
                         {/* ── Header row ── */}
                         <div className="rc-header-row">
                             <label className="rc-form-label">Ngày<span className="rc-required">*</span></label>
-                            <input type="date" className="rc-form-input" style={{ minWidth: 150 }} value={form.date} onChange={(e) => handleFormChange("date", e.target.value)} />
+                            <input
+                                className="rc-form-input"
+                                style={{ minWidth: 150 }}
+                                placeholder="dd/mm/yyyy"
+                                value={dateDisplay.docDate}
+                                onChange={(e) => handleDocDateChange(e.target.value)}
+                            />
                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Số<span className="rc-required">*</span></label>
                             <input className="rc-form-input" style={{ minWidth: 200 }} placeholder="Nhập số chứng từ" value={form.docno} onChange={(e) => handleFormChange("docno", e.target.value)} />
                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Loại</label>
@@ -839,7 +896,12 @@ export default function ReceiptCreatePage() {
                                 <div className="rc-form-2col">
                                     <div className="rc-form-field">
                                         <label className="rc-form-label">Ngày HD<span className="rc-required">*</span></label>
-                                        <input type="date" className="rc-form-input" value={invoice.date} onChange={(e) => handleInvoiceChange("date", e.target.value)} />
+                                        <input
+                                            className="rc-form-input"
+                                            placeholder="dd/mm/yyyy"
+                                            value={dateDisplay.invoiceDate}
+                                            onChange={(e) => handleInvoiceDateChange(e.target.value)}
+                                        />
                                     </div>
                                     <div className="rc-form-field">
                                         <label className="rc-form-label">MST</label>

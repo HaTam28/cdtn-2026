@@ -55,6 +55,9 @@ export function toNumber(value, fallback = 0) {
 
 export function toInputDate(value) {
     if (!value) return "";
+    const raw = String(value);
+    const dateOnly = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (dateOnly) return `${dateOnly[1]}-${dateOnly[2]}-${dateOnly[3]}`;
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return String(value).slice(0, 10);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;

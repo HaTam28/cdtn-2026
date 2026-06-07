@@ -20,6 +20,9 @@ const STATUS_CLASS = {
 
 function formatDate(str) {
     if (!str) return "";
+    const raw = String(str);
+    const dateOnly = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
     const d = new Date(str);
     if (isNaN(d)) return str;
     return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
@@ -357,7 +360,7 @@ export default function IssueDetailPage() {
                             {/* ── Header ── */}
                             <div className="rc-header-row rc-header-row-wrap">
                                 <label className="rc-form-label">Ngày</label>
-                                <input type="date" className="rc-form-input rc-input-auto" value={formatDateInput(issue.docDate)} readOnly />
+                                <input className="rc-form-input rc-input-auto" value={formatDate(issue.docDate)} readOnly />
                                 <label className="rc-form-label" style={{ marginLeft: 16 }}>Số</label>
                                 <input className="rc-form-input rc-input-auto" value={issue.docno || ""} readOnly />
                                 <label className="rc-form-label" style={{ marginLeft: 16 }}>Loại</label>

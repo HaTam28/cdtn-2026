@@ -9,6 +9,7 @@ import { getAllCustomers } from "../../api/customerApi";
 import { getAllItems } from "../../api/itemApi";
 import { getAllBatches } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
+import { formatDateForDisplay, normalizeDateDisplayInput, parseDisplayDateToIso } from "../../utils/dateInput";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 let _rowKey = 0;
@@ -275,6 +276,7 @@ export default function IssueCreatePage() {
     const [searchParams] = useSearchParams();
 
     const [form, setForm] = useState({ date: todayStr(), docno: "", customerId: "", address: "", description: "", docType: "NORMAL" });
+    const [dateDisplay, setDateDisplay] = useState({ docDate: formatDateForDisplay(todayStr()) });
     const [rows, setRows] = useState([newRow()]);
     const [customers, setCustomers] = useState([]);
     const [items, setItems] = useState([]);
@@ -359,14 +361,16 @@ export default function IssueCreatePage() {
         }));
 
         if (rowsFromClone.length > 0) setRows(rowsFromClone);
+        const cloneDocDate = toDateOnly(clone.docDate);
         setForm((prev) => ({
             ...prev,
-            date: toDateOnly(clone.docDate) || prev.date,
+            date: cloneDocDate || prev.date,
             customerId: clone.customerId || "",
             address: clone.address || "",
             description: clone.description || "",
             docType: clone.docType || prev.docType || "NORMAL",
         }));
+        setDateDisplay({ docDate: formatDateForDisplay(cloneDocDate || form.date) });
         setPrefilledFromClone(true);
         setPrefilledFromAudit(true);
     }, [location.state, prefilledFromClone]);
@@ -434,6 +438,11 @@ export default function IssueCreatePage() {
     const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3500); };
 
     const handleFormChange = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+    const handleDocDateChange = (value) => {
+        const display = normalizeDateDisplayInput(value);
+        setDateDisplay({ docDate: display });
+        setForm((prev) => ({ ...prev, date: parseDisplayDateToIso(display) }));
+    };
 
     const handleCustomerChange = (customerId) => {
         const found = customers.find((c) => String(c.id) === String(customerId));
@@ -628,7 +637,8 @@ export default function IssueCreatePage() {
                     return;
                 }
                 if (Number(e.quantity) > e.remainingStock) {
-                    showToast("error", `Dòng ${i + 1}, lô ${e.batchCode}: Số lượng xuất (${e.quantity}) vượt tồn lô (${e.remainingStock}).`);
+                    const shortfall = Number(e.quantity) - Number(e.remainingStock || 0);
+                    showToast("error", `Dòng ${i + 1}, lô ${e.batchCode} tại ${e.locationcode || "vị trí đã chọn"} chỉ còn ${e.remainingStock}, thiếu ${shortfall}.`);
                     return;
                 }
             }
@@ -641,7 +651,8 @@ export default function IssueCreatePage() {
 
             const totalStock = stockByItem[String(r.itemId)]?.total;
             if (totalStock !== undefined && totalBatch > totalStock) {
-                showToast("error", `Dòng ${i + 1}: Số lượng yêu cầu (${totalBatch}) vượt tồn hiện tại (${totalStock}).`);
+                const shortfall = totalBatch - totalStock;
+                showToast("error", `Dòng ${i + 1}: Tồn hiện tại chỉ còn ${totalStock}, thiếu ${shortfall}.`);
                 return;
             }
         }
@@ -731,7 +742,13 @@ export default function IssueCreatePage() {
                         {/* ── Header row ── */}
                         <div className="rc-header-row">
                             <label className="rc-form-label">Ngày</label>
-                            <input type="date" className="rc-form-input" style={{ minWidth: 150 }} value={form.date} onChange={(e) => handleFormChange("date", e.target.value)} />
+                            <input
+                                className="rc-form-input"
+                                style={{ minWidth: 150 }}
+                                placeholder="dd/mm/yyyy"
+                                value={dateDisplay.docDate}
+                                onChange={(e) => handleDocDateChange(e.target.value)}
+                            />
                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Số</label>
                             <input className="rc-form-input" style={{ minWidth: 200 }} placeholder="Nhập số chứng từ" value={form.docno} onChange={(e) => handleFormChange("docno", e.target.value)} />
                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Loại</label>
@@ -909,7 +926,7 @@ export default function IssueCreatePage() {
                                                                                         />
                                                                                         {exceedsStock && (
                                                                                             <div style={{ fontSize: "0.75rem", color: "#c62828", marginTop: 2 }}>
-                                                                                                Vượt tồn lô ({entry.remainingStock})
+                                                                                                Thiếu {entryQty - entry.remainingStock}
                                                                                             </div>
                                                                                         )}
                                                                                     </td>

@@ -7,6 +7,7 @@ import { createAudit, getAllAudits, getAuditStockRows } from "../../api/auditApi
 import { getAllEmployees } from "../../api/employeeApi";
 import TopbarRight from "../../components/TopbarRight";
 import notify from "../../utils/notify";
+import { formatDateForDisplay, normalizeDateDisplayInput, parseDisplayDateToIso } from "../../utils/dateInput";
 import { auditDetailPayload, formatNumber, makeRowsFromStockRows, toInputDate } from "./auditRowUtils";
 
 function buildNextDocno(prefix, list) {
@@ -198,6 +199,10 @@ export default function AuditCreatePage() {
         description: "",
         assigneeId: "",
     });
+    const [dateDisplay, setDateDisplay] = useState({
+        startDate: formatDateForDisplay(todayStr()),
+        endDate: formatDateForDisplay(todayStr()),
+    });
     const [rows, setRows] = useState([]);
     const [stockOptions, setStockOptions] = useState([]);
     const [employees, setEmployees] = useState([]);
@@ -247,12 +252,18 @@ export default function AuditCreatePage() {
             setStockOptions(selectableStockRows);
             setRows(selectableStockRows.length > 0 ? [newEmptyAuditRow()] : []);
             const clone = location.state?.clone;
+            const nextStartDate = toInputDate(clone?.startDate || clone?.auditStartDate || clone?.fromDate || clone?.docDate);
+            const nextEndDate = toInputDate(clone?.endDate || clone?.auditEndDate || clone?.toDate || clone?.dueDate || clone?.docDate);
             setForm((prev) => ({
                 ...prev,
                 docno: prev.docno || buildNextDocno("PKK", auditList),
                 description: clone?.description || prev.description,
-                startDate: toInputDate(clone?.startDate || clone?.auditStartDate || clone?.fromDate || clone?.docDate) || prev.startDate,
-                endDate: toInputDate(clone?.endDate || clone?.auditEndDate || clone?.toDate || clone?.dueDate || clone?.docDate) || prev.endDate,
+                startDate: nextStartDate || prev.startDate,
+                endDate: nextEndDate || prev.endDate,
+            }));
+            setDateDisplay((prev) => ({
+                startDate: formatDateForDisplay(nextStartDate || form.startDate || prev.startDate),
+                endDate: formatDateForDisplay(nextEndDate || form.endDate || prev.endDate),
             }));
         } catch {
             notify("Không thể tải dữ liệu tồn kho theo lô.", { type: "error" });
@@ -269,6 +280,11 @@ export default function AuditCreatePage() {
 
     const setField = (field, value) => {
         setForm((prev) => ({ ...prev, [field]: value }));
+    };
+    const setDateField = (field, value) => {
+        const display = normalizeDateDisplayInput(value);
+        setDateDisplay((prev) => ({ ...prev, [field]: display }));
+        setForm((prev) => ({ ...prev, [field]: parseDisplayDateToIso(display) }));
     };
 
     const makeBatchEntry = (stockRow) => {
@@ -491,19 +507,19 @@ export default function AuditCreatePage() {
                     <div className="rc-header-row au-header-wrap">
                         <label className="rc-form-label">Ngày bắt đầu</label>
                         <input
-                            type="date"
                             className="rc-form-input"
                             style={{ minWidth: 150 }}
-                            value={form.startDate}
-                            onChange={(e) => setField("startDate", e.target.value)}
+                            placeholder="dd/mm/yyyy"
+                            value={dateDisplay.startDate}
+                            onChange={(e) => setDateField("startDate", e.target.value)}
                         />
                         <label className="rc-form-label" style={{ marginLeft: 16 }}>Ngày kết thúc</label>
                         <input
-                            type="date"
                             className="rc-form-input"
                             style={{ minWidth: 150 }}
-                            value={form.endDate}
-                            onChange={(e) => setField("endDate", e.target.value)}
+                            placeholder="dd/mm/yyyy"
+                            value={dateDisplay.endDate}
+                            onChange={(e) => setDateField("endDate", e.target.value)}
                         />
                         <label className="rc-form-label" style={{ marginLeft: 16 }}>Số</label>
                         <input

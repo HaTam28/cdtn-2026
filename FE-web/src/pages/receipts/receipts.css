@@ -243,7 +243,8 @@
 /* ── Detail table ────────────────────────────────────── */
 .rc-detail-table-wrap {
     border-radius: 8px;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
     border: 1px solid #b8d8c5;
     margin-bottom: 20px;
 }
@@ -261,6 +262,7 @@
 
 .rc-detail-table {
     width: 100%;
+    min-width: 1040px;
     table-layout: fixed;
     border-collapse: collapse;
     font-size: 0.87rem;
@@ -275,8 +277,8 @@
     padding: 9px 7px;
     font-weight: 600;
     font-size: 0.79rem;
-    white-space: normal;
-    word-break: break-word;
+    white-space: nowrap;
+    word-break: normal;
     text-align: left;
     line-height: 1.25;
 }
@@ -301,6 +303,7 @@
 
 .rc-detail-table .rc-td-num {
     text-align: right;
+    white-space: nowrap;
 }
 
 .rc-td-input {
