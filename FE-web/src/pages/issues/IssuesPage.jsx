@@ -7,7 +7,7 @@ import { getAllIssues } from "../../api/issueApi";
 import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
-import { useDraft, formatDraftTime } from "../../utils/useDraft";
+import { useDraft } from "../../utils/useDraft";
 
 const ISSUE_DRAFT_KEY = "draft_issue_create";
 
@@ -106,7 +106,7 @@ export default function IssuesPage() {
     const [selected, setSelected] = useState(new Set());
     const navigate = useNavigate();
 
-    const { hasDraft, draftSavedAt, loadDraft, clearDraft } = useDraft(ISSUE_DRAFT_KEY);
+    const { hasDraft, loadDraft, clearDraft } = useDraft(ISSUE_DRAFT_KEY);
 
     const fetchIssues = useCallback(async () => {
         setLoading(true);
@@ -159,6 +159,7 @@ export default function IssuesPage() {
             );
         }
         return list;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [issues, activeTab, search]);
 
     const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
@@ -302,8 +303,8 @@ export default function IssuesPage() {
                                         <td>{draftForm.date ? draftForm.date.split("-").reverse().join("/") : "—"}</td>
                                         <td>{draftForm.customerId ? `ID: ${draftForm.customerId}` : "—"}</td>
                                         <td style={{ textAlign: "right" }}>—</td>
-                                        <td style={{ color: "#8ba392", fontSize: "0.82rem" }}>
-                                            {draftSavedAt ? formatDraftTime(draftSavedAt) : ""}
+                                        <td style={{ color: "#4c6152", fontSize: "0.86rem" }}>
+                                            {user?.fullname || user?.name || "Admin hệ thống"}
                                         </td>
                                         <td>
                                             <span className="rc-badge rc-badge-local-draft">⬥ Nháp</span>
