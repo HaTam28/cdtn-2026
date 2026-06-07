@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import "../../styles/shared.css";
 import "./receipts.css";
 import { getAllReceipts, getReceiptsByUser } from "../../api/receiptApi";
@@ -11,7 +11,7 @@ import { useDraft, formatDraftTime } from "../../utils/useDraft";
 const RECEIPT_DRAFT_KEY = "draft_receipt_create";
 
 const STATUS_LABELS = {
-    DRAFT: "Nháp",
+    DRAFT: "Chờ duyệt",
     CONFIRMED: "Đã duyệt",
     CANCELLED: "Hủy",
     REJECTED: "Đã từ chối",
@@ -22,8 +22,8 @@ const STATUS_BADGE = {
     CANCELLED: "rc-badge rc-badge-cancelled",
     REJECTED: "rc-badge rc-badge-rejected",
 };
-const TABS = ["Tất cả", "Nháp", "Đã duyệt", "Đã từ chối", "Nháp local"];
-const TAB_STATUS = { "Nháp": "DRAFT", "Đã duyệt": "CONFIRMED", "Đã từ chối": "REJECTED" };
+const TABS = ["Tất cả", "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Nháp"];
+const TAB_STATUS = { "Chờ duyệt": "DRAFT", "Đã duyệt": "CONFIRMED", "Đã từ chối": "REJECTED" };
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
 function formatDate(str) {
@@ -287,10 +287,10 @@ export default function ReceiptsPage() {
                     {TABS.map((tab) => (
                         <div
                             key={tab}
-                            className={`rc-tab${activeTab === tab ? " rc-tab-active" : ""}${tab === "Nháp local" ? " rc-tab-draft-local" : ""}`}
+                            className={`rc-tab${activeTab === tab ? " rc-tab-active" : ""}${tab === "Nháp" ? " rc-tab-draft-local" : ""}`}
                             onClick={() => { setActiveTab(tab); setPage(1); }}
                         >
-                            {tab === "Nháp local" && hasDraft && (
+                            {tab === "Nháp" && hasDraft && (
                                 <span className="rc-tab-draft-dot" />
                             )}
                             {tab}
@@ -304,7 +304,7 @@ export default function ReceiptsPage() {
                         <thead>
                             <tr>
                                 <th className="sp-th-cb">
-                                    {activeTab !== "Nháp local" && (
+                                    {activeTab !== "Nháp" && (
                                         <input type="checkbox" checked={allChecked}
                                             ref={(el) => { if (el) el.indeterminate = someChecked; }}
                                             onChange={(e) => toggleAll(e.target.checked)} />
@@ -320,21 +320,21 @@ export default function ReceiptsPage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {/* ── Tab Nháp local ── */}
-                            {activeTab === "Nháp local" && (() => {
-                                if (!hasDraft) {
-                                    return (
-                                        <tr><td colSpan={8} className="sp-status-row">
-                                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "24px 0" }}>
-                                                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#c6dfd0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
-                                                <span style={{ color: "#8ba392" }}>Chưa có nháp nào được lưu.</span>
-                                                <button className="sp-btn-primary" style={{ marginTop: 4 }} onClick={() => navigate("/receipts/create")}>
-                                                    Tạo phiếu nhập kho mới
-                                                </button>
-                                            </div>
-                                        </td></tr>
-                                    );
-                                }
+                            {/* ── Tab Nháp (Khi không có nháp nào) ── */}
+                            {activeTab === "Nháp" && !hasDraft && (
+                                <tr><td colSpan={8} className="sp-status-row">
+                                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "24px 0" }}>
+                                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#c6dfd0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+                                        <span style={{ color: "#8ba392" }}>Chưa có nháp nào được lưu.</span>
+                                        <button className="sp-btn-primary" style={{ marginTop: 4 }} onClick={() => navigate("/receipts/create")}>
+                                            Tạo phiếu nhập kho mới
+                                        </button>
+                                    </div>
+                                </td></tr>
+                            )}
+
+                            {/* ── Hàng Nháp local hiển thị ở cả tab Nháp và tab Tất cả ── */}
+                            {(activeTab === "Nháp" || activeTab === "Tất cả") && hasDraft && (() => {
                                 const draft = loadDraft();
                                 const draftForm = draft?.form || {};
                                 const draftRows = draft?.rows || [];
@@ -353,7 +353,7 @@ export default function ReceiptsPage() {
                                         </td>
                                         <td>
                                             <span className="rc-badge rc-badge-local-draft">
-                                                ⬥ Nháp local
+                                                ⬥ Nháp
                                             </span>
                                             {itemCount > 0 && (
                                                 <div style={{ fontSize: "0.78rem", color: "#a16207", marginTop: 3 }}>
@@ -367,7 +367,7 @@ export default function ReceiptsPage() {
                                                     className="sp-edit-btn"
                                                     title="Tiếp tục nháp"
                                                     style={{ color: "#a16207" }}
-                                                    onClick={() => navigate("/receipts/create")}
+                                                    onClick={() => navigate("/receipts/create", { state: { resumeDraft: true } })}
                                                 >
                                                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                                         <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -391,16 +391,16 @@ export default function ReceiptsPage() {
                             })()}
 
                             {/* ── Danh sách phiếu thực ── */}
-                            {activeTab !== "Nháp local" && loading && (
+                            {activeTab !== "Nháp" && loading && (
                                 <tr><td colSpan={8} className="sp-status-row">Đang tải dữ liệu...</td></tr>
                             )}
-                            {activeTab !== "Nháp local" && !loading && error && (
+                            {activeTab !== "Nháp" && !loading && error && (
                                 <tr><td colSpan={8} className="sp-status-row sp-status-error">{error}</td></tr>
                             )}
-                            {activeTab !== "Nháp local" && !loading && !error && pageData.length === 0 && (
+                            {activeTab !== "Nháp" && !loading && !error && pageData.length === 0 && (
                                 <tr><td colSpan={8} className="sp-status-row">Không có phiếu nhập kho nào.</td></tr>
                             )}
-                            {activeTab !== "Nháp local" && !loading && !error && pageData.map((r) => (
+                            {activeTab !== "Nháp" && !loading && !error && pageData.map((r) => (
                                 <tr
                                     key={r.id}
                                     className={`sp-row-clickable${selected.has(r.id) ? " sp-row-selected" : ""}`}
@@ -425,7 +425,7 @@ export default function ReceiptsPage() {
                                         <button className="sp-edit-btn" title="Xem chi tiết"><IconEye /></button>
                                     </td>
                                 </tr>
-                            ))}}
+                            ))}
                         </tbody>
                     </table>
                 </div>

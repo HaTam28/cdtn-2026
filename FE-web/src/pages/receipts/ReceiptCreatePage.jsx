@@ -401,13 +401,25 @@ export default function ReceiptCreatePage() {
     const [prefilledFromOverview, setPrefilledFromOverview] = useState(false);
     const [auditSource, setAuditSource] = useState(null);
 
-    // Hiển thị banner nháp khi có nháp local và không có prefill từ audit/clone
+    // Hiển thị banner nháp hoặc tự động khôi phục nháp nếu được yêu cầu từ trang danh sách
     useEffect(() => {
         const hasAuditParam = !!searchParams.get("auditId");
         const hasCloneState = !!location.state?.clone;
         const hasOverviewState = !!location.state?.prefillItems;
         if (hasDraft && !hasAuditParam && !hasCloneState && !hasOverviewState) {
-            setShowDraftBanner(true);
+            if (location.state?.resumeDraft) {
+                const draft = loadDraft();
+                if (draft) {
+                    if (draft.form) setForm(draft.form);
+                    if (draft.invoice) setInvoice(draft.invoice);
+                    if (draft.dateDisplay) setDateDisplay(draft.dateDisplay);
+                    if (draft.rows) {
+                        setRows(draft.rows.map((r) => ({ ...r, _id: ++_rowKey })));
+                    }
+                }
+            } else {
+                setShowDraftBanner(true);
+            }
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -562,7 +574,8 @@ export default function ReceiptCreatePage() {
     const handleSaveDraftLocal = () => {
         try {
             saveDraft({ form, rows, invoice, dateDisplay });
-            showToast("success", "Đã lưu nháp local.");
+            showToast("success", "Đã lưu nháp thành công.");
+            setTimeout(() => navigate("/receipts"), 1000);
         } catch {
             showToast("error", "Không thể lưu nháp.");
         }
@@ -610,6 +623,18 @@ export default function ReceiptCreatePage() {
         const display = normalizeDateDisplayInput(value);
         setDateDisplay((prev) => ({ ...prev, invoiceDate: display }));
         setInvoice((prev) => ({ ...prev, date: parseDisplayDateToIso(display) }));
+    };
+
+    const handleDocDateSelect = (dateStr) => {
+        if (!dateStr) return;
+        setDateDisplay((prev) => ({ ...prev, docDate: formatDateForDisplay(dateStr) }));
+        setForm((prev) => ({ ...prev, date: dateStr }));
+    };
+
+    const handleInvoiceDateSelect = (dateStr) => {
+        if (!dateStr) return;
+        setDateDisplay((prev) => ({ ...prev, invoiceDate: formatDateForDisplay(dateStr) }));
+        setInvoice((prev) => ({ ...prev, date: dateStr }));
     };
 
     const handleRowChange = (idx, field, value) => {
@@ -809,13 +834,28 @@ export default function ReceiptCreatePage() {
                         {/* ── Header row ── */}
                         <div className="rc-header-row">
                             <label className="rc-form-label">Ngày<span className="rc-required">*</span></label>
-                            <input
-                                className="rc-form-input"
-                                style={{ minWidth: 150 }}
-                                placeholder="dd/mm/yyyy"
-                                value={dateDisplay.docDate}
-                                onChange={(e) => handleDocDateChange(e.target.value)}
-                            />
+                            <div className="rc-date-input-wrapper" style={{ position: "relative", display: "inline-flex", alignItems: "center", minWidth: 150 }}>
+                                <input
+                                    className="rc-form-input"
+                                    style={{ width: "100%", paddingRight: 36 }}
+                                    placeholder="dd/mm/yyyy"
+                                    value={dateDisplay.docDate}
+                                    onChange={(e) => handleDocDateChange(e.target.value)}
+                                />
+                                <span style={{ position: "absolute", right: 10, cursor: "pointer", color: "#8ba392", display: "flex", alignItems: "center", pointerEvents: "none" }}>
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                                        <line x1="16" y1="2" x2="16" y2="6" />
+                                        <line x1="8" y1="2" x2="8" y2="6" />
+                                        <line x1="3" y1="10" x2="21" y2="10" />
+                                    </svg>
+                                </span>
+                                <input
+                                    type="date"
+                                    style={{ position: "absolute", right: 0, top: 0, width: 36, height: "100%", opacity: 0, cursor: "pointer" }}
+                                    onChange={(e) => handleDocDateSelect(e.target.value)}
+                                />
+                            </div>
                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Số<span className="rc-required">*</span></label>
                             <input className="rc-form-input" style={{ minWidth: 200 }} placeholder="Nhập số chứng từ" value={form.docno} onChange={(e) => handleFormChange("docno", e.target.value)} />
                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Loại</label>
@@ -957,12 +997,28 @@ export default function ReceiptCreatePage() {
                                 <div className="rc-form-2col">
                                     <div className="rc-form-field">
                                         <label className="rc-form-label">Ngày HD<span className="rc-required">*</span></label>
-                                        <input
-                                            className="rc-form-input"
-                                            placeholder="dd/mm/yyyy"
-                                            value={dateDisplay.invoiceDate}
-                                            onChange={(e) => handleInvoiceDateChange(e.target.value)}
-                                        />
+                                        <div className="rc-date-input-wrapper" style={{ position: "relative", display: "flex", alignItems: "center", flex: 1 }}>
+                                            <input
+                                                className="rc-form-input"
+                                                style={{ width: "100%", paddingRight: 36 }}
+                                                placeholder="dd/mm/yyyy"
+                                                value={dateDisplay.invoiceDate}
+                                                onChange={(e) => handleInvoiceDateChange(e.target.value)}
+                                            />
+                                            <span style={{ position: "absolute", right: 10, cursor: "pointer", color: "#8ba392", display: "flex", alignItems: "center", pointerEvents: "none" }}>
+                                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                                                    <line x1="16" y1="2" x2="16" y2="6" />
+                                                    <line x1="8" y1="2" x2="8" y2="6" />
+                                                    <line x1="3" y1="10" x2="21" y2="10" />
+                                                </svg>
+                                            </span>
+                                            <input
+                                                type="date"
+                                                style={{ position: "absolute", right: 0, top: 0, width: 36, height: "100%", opacity: 0, cursor: "pointer" }}
+                                                onChange={(e) => handleInvoiceDateSelect(e.target.value)}
+                                            />
+                                        </div>
                                     </div>
                                     <div className="rc-form-field">
                                         <label className="rc-form-label">MST</label>

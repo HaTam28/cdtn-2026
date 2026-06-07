@@ -297,12 +297,23 @@ export default function IssueCreatePage() {
     const [prefilledFromClone, setPrefilledFromClone] = useState(false);
     const [auditSource, setAuditSource] = useState(null);
 
-    // Hiển thị banner nháp khi có nháp local và không có prefill từ audit/clone
+    // Hiển thị banner nháp hoặc tự động khôi phục nháp nếu được yêu cầu từ trang danh sách
     useEffect(() => {
         const hasAuditParam = !!searchParams.get("auditId");
         const hasCloneState = !!location.state?.clone;
         if (hasDraft && !hasAuditParam && !hasCloneState) {
-            setShowDraftBanner(true);
+            if (location.state?.resumeDraft) {
+                const draft = loadDraft();
+                if (draft) {
+                    if (draft.form) setForm(draft.form);
+                    if (draft.dateDisplay) setDateDisplay(draft.dateDisplay);
+                    if (draft.rows) {
+                        setRows(draft.rows.map((r) => ({ ...r, _id: ++_rowKey })));
+                    }
+                }
+            } else {
+                setShowDraftBanner(true);
+            }
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -458,7 +469,8 @@ export default function IssueCreatePage() {
     const handleSaveDraftLocal = () => {
         try {
             saveDraft({ form, rows, dateDisplay });
-            showToast("success", "Đã lưu nháp local.");
+            showToast("success", "Đã lưu nháp thành công.");
+            setTimeout(() => navigate("/issues"), 1000);
         } catch {
             showToast("error", "Không thể lưu nháp.");
         }
