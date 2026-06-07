@@ -6,7 +6,7 @@ import { getAllReceipts, getReceiptsByUser } from "../../api/receiptApi";
 import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
-import { useDraft, formatDraftTime } from "../../utils/useDraft";
+import { useDraft } from "../../utils/useDraft";
 
 const RECEIPT_DRAFT_KEY = "draft_receipt_create";
 
@@ -105,7 +105,7 @@ export default function ReceiptsPage() {
     const [selected, setSelected] = useState(new Set());
     const navigate = useNavigate();
 
-    const { hasDraft, draftSavedAt, loadDraft, clearDraft } = useDraft(RECEIPT_DRAFT_KEY);
+    const { hasDraft, loadDraft, clearDraft } = useDraft(RECEIPT_DRAFT_KEY);
 
     const fetchReceipts = useCallback(async () => {
         setLoading(true);
@@ -348,8 +348,8 @@ export default function ReceiptsPage() {
                                         <td>{draftForm.date ? draftForm.date.split("-").reverse().join("/") : "—"}</td>
                                         <td>{draftForm.customerId ? `ID: ${draftForm.customerId}` : "—"}</td>
                                         <td style={{ textAlign: "right" }}>—</td>
-                                        <td style={{ color: "#8ba392", fontSize: "0.82rem" }}>
-                                            {draftSavedAt ? formatDraftTime(draftSavedAt) : ""}
+                                        <td style={{ color: "#4c6152", fontSize: "0.86rem" }}>
+                                            {user?.fullname || user?.name || "Admin hệ thống"}
                                         </td>
                                         <td>
                                             <span className="rc-badge rc-badge-local-draft">

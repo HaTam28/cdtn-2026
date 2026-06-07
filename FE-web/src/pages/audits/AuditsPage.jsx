@@ -10,7 +10,7 @@ import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
 import { AUDIT_STATUS_BADGE, AUDIT_STATUS_LABELS, formatDisplayDate, getAuditEndDate, getAuditRowTone, getAuditStartDate, getAuditWorkflowStatus, normalizeAuditDetails, toNumber } from "./auditRowUtils";
-import { useDraft, formatDraftTime } from "../../utils/useDraft";
+import { useDraft } from "../../utils/useDraft";
 
 const AUDIT_DRAFT_KEY = "draft_audit_create";
 
@@ -139,7 +139,7 @@ export default function AuditsPage() {
     const [adjustmentDocs, setAdjustmentDocs] = useState([]);
     const navigate = useNavigate();
 
-    const { hasDraft, draftSavedAt, loadDraft, clearDraft } = useDraft(AUDIT_DRAFT_KEY);
+    const { hasDraft, loadDraft, clearDraft } = useDraft(AUDIT_DRAFT_KEY);
 
     const getDetailRowsForStatus = useCallback((audit) => (
         normalizeAuditDetails(audit.details || []).map((d) => ({
@@ -388,8 +388,8 @@ export default function AuditsPage() {
                                         </td>
                                         <td>{draftForm.startDate ? draftForm.startDate.split("-").reverse().join("/") : "—"}</td>
                                         <td>{draftForm.endDate ? draftForm.endDate.split("-").reverse().join("/") : "—"}</td>
-                                        <td style={{ color: "#8ba392", fontSize: "0.82rem" }}>
-                                            {draftSavedAt ? formatDraftTime(draftSavedAt) : ""}
+                                        <td style={{ color: "#4c6152", fontSize: "0.86rem" }}>
+                                            {user?.fullname || user?.name || "Admin hệ thống"}
                                         </td>
                                         <td>—</td>
                                         <td>

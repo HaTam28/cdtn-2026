@@ -83,6 +83,7 @@ function BatchPickerModal({ open, onClose, onConfirm, options }) {
 
     useEffect(() => {
         if (open) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setSearch("");
             setPage(1);
             setSelected(new Set());
@@ -304,6 +305,7 @@ export default function AuditCreatePage() {
         } finally {
             setLoadingData(false);
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [location.state]);
 
     useEffect(() => { loadData(); }, [loadData]);
@@ -660,7 +662,11 @@ export default function AuditCreatePage() {
                                     <tr><td colSpan={7} className="sp-status-row">Không có tồn kho theo mã lô.</td></tr>
                                 )}
                                 {!loadingData && rows.map((row, idx) => {
-                                    const rowSystemQty = (row.batchEntries || []).reduce((sum, entry) => sum + Number(entry.bookquantity || 0), 0);
+                                    const rowSystemQty = row.selectedItemId
+                                        ? stockOptions
+                                            .filter((option) => String(option.itemId) === String(row.selectedItemId))
+                                            .reduce((sum, option) => sum + Number(option.bookquantity || 0), 0)
+                                        : 0;
                                     return (
                                         <React.Fragment key={row._id}>
                                             <tr>
@@ -688,7 +694,7 @@ export default function AuditCreatePage() {
                                                 <td className="rc-td-num" style={{ color: "#8ba392" }}>-</td>
                                                 <td>
                                                     <button
-                                                        className="rc-row-del-btn"
+                                                        className="rc-del-btn"
                                                         onClick={() => handleRemoveRow(idx)}
                                                         type="button"
                                                         title="Xóa dòng"
