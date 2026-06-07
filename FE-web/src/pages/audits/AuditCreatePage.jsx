@@ -9,6 +9,10 @@ import TopbarRight from "../../components/TopbarRight";
 import notify from "../../utils/notify";
 import { formatDateForDisplay, normalizeDateDisplayInput, parseDisplayDateToIso } from "../../utils/dateInput";
 import { auditDetailPayload, formatNumber, makeRowsFromStockRows, toInputDate } from "./auditRowUtils";
+import { useDraft } from "../../utils/useDraft";
+import DraftBanner from "../../components/DraftBanner";
+
+const DRAFT_KEY = "draft_audit_create";
 
 function buildNextDocno(prefix, list) {
     const regex = new RegExp(`^${prefix}-(\\d+)$`);
@@ -192,6 +196,9 @@ export default function AuditCreatePage() {
     const user = JSON.parse(localStorage.getItem("user") || "{}");
     const isStaff = user?.role === "STAFF" || user?.role === "NV";
 
+    const { hasDraft, draftSavedAt, saveDraft, loadDraft, clearDraft } = useDraft(DRAFT_KEY);
+    const [showDraftBanner, setShowDraftBanner] = useState(false);
+
     const [form, setForm] = useState({
         startDate: todayStr(),
         endDate: todayStr(),
@@ -209,6 +216,15 @@ export default function AuditCreatePage() {
     const [loadingData, setLoadingData] = useState(true);
     const [saving, setSaving] = useState(false);
     const [batchModal, setBatchModal] = useState({ open: false, rowIdx: null, options: [] });
+
+    // Hiển thị banner nháp local khi có nháp và không có clone state
+    useEffect(() => {
+        const hasCloneState = !!location.state?.clone;
+        if (hasDraft && !hasCloneState) {
+            setShowDraftBanner(true);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const selectedAssignee = useMemo(
         () => employees.find((e) => String(e.id) === String(form.assigneeId)),
@@ -443,6 +459,7 @@ export default function AuditCreatePage() {
         try {
             const result = await createAudit(buildPayload());
             if (result?.success) {
+                clearDraft(); // Xóa nháp local khi lưu nháp BE thành công
                 notify("Đã lưu nháp phiếu kiểm kê.", { type: "success" });
                 const newId = result?.data?.id;
                 setTimeout(() => navigate(newId ? `/audits/${newId}` : "/audits"), 800);
@@ -466,6 +483,7 @@ export default function AuditCreatePage() {
         try {
             const result = await createAudit(buildPayload({ sendToStaff: true }));
             if (result?.success) {
+                clearDraft(); // Xóa nháp local khi gửi yêu cầu thành công
                 notify("Đã gửi yêu cầu kiểm kê cho nhân viên.", { type: "success" });
                 const newId = result?.data?.id;
                 setTimeout(() => navigate(newId ? `/audits/${newId}` : "/audits"), 800);
@@ -477,6 +495,45 @@ export default function AuditCreatePage() {
         } finally {
             setSaving(false);
         }
+    };
+
+    // ── Lưu nháp local ──────────────────────────────────────────────────────
+    const handleSaveDraftLocal = () => {
+        try {
+            saveDraft({ form, rows, dateDisplay });
+            notify("Đã lưu nháp local.", { type: "success" });
+        } catch {
+            notify("Không thể lưu nháp.", { type: "error" });
+        }
+    };
+
+    const handleRestoreDraft = () => {
+        const draft = loadDraft();
+        if (!draft) return;
+        if (draft.form) setForm(draft.form);
+        if (draft.dateDisplay) setDateDisplay(draft.dateDisplay);
+        if (draft.rows) {
+            setRows(draft.rows.map((r) => ({
+                ...r,
+                _id: `audit-restore-${++_auditRowKey}`,
+                batchEntries: (r.batchEntries || []).map((entry) => ({
+                    ...entry,
+                    _id: `audit-batch-restore-${++_auditRowKey}`,
+                })),
+            })));
+        }
+        setShowDraftBanner(false);
+        notify("Đã khôi phục nháp.", { type: "success" });
+    };
+
+    const handleDeleteDraft = () => {
+        clearDraft();
+        setShowDraftBanner(false);
+        notify("Đã xóa nháp local.", { type: "success" });
+    };
+
+    const handleDismissBanner = () => {
+        setShowDraftBanner(false);
     };
 
     return (
@@ -502,6 +559,15 @@ export default function AuditCreatePage() {
 
             <div className="sp-content">
                 <h1 className="sp-title">Phiếu kiểm kê hàng tồn kho</h1>
+
+                {showDraftBanner && (
+                    <DraftBanner
+                        draftSavedAt={draftSavedAt}
+                        onResume={handleRestoreDraft}
+                        onDelete={handleDeleteDraft}
+                        onDismiss={handleDismissBanner}
+                    />
+                )}
 
                 <div className="rc-form-card">
                     <div className="rc-header-row au-header-wrap">
@@ -703,6 +769,21 @@ export default function AuditCreatePage() {
 
                     <div className="rc-form-actions">
                         <button className="sp-btn-outline" onClick={() => navigate("/audits")}>Hủy bỏ</button>
+                        <button
+                            id="audit-local-draft-save-btn"
+                            type="button"
+                            className="sp-btn-draft"
+                            onClick={handleSaveDraftLocal}
+                            disabled={saving || loadingData}
+                            title="Lưu tạm dữ liệu vào máy, không tạo phiếu chính thức"
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                                <polyline points="17 21 17 13 7 13 7 21" />
+                                <polyline points="7 3 7 8 15 8" />
+                            </svg>
+                            Lưu nháp local
+                        </button>
                         <button className="sp-btn-outline" onClick={handleSaveDraft} disabled={saving || loadingData}>
                             {saving ? "Đang lưu..." : "Lưu nháp"}
                         </button>

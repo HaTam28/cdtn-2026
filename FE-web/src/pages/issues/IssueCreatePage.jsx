@@ -10,6 +10,10 @@ import { getAllItems } from "../../api/itemApi";
 import { getAllBatches } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
 import { formatDateForDisplay, normalizeDateDisplayInput, parseDisplayDateToIso } from "../../utils/dateInput";
+import { useDraft } from "../../utils/useDraft";
+import DraftBanner from "../../components/DraftBanner";
+
+const DRAFT_KEY = "draft_issue_create";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 let _rowKey = 0;
@@ -275,6 +279,9 @@ export default function IssueCreatePage() {
     const location = useLocation();
     const [searchParams] = useSearchParams();
 
+    const { hasDraft, draftSavedAt, saveDraft, loadDraft, clearDraft } = useDraft(DRAFT_KEY);
+    const [showDraftBanner, setShowDraftBanner] = useState(false);
+
     const [form, setForm] = useState({ date: todayStr(), docno: "", customerId: "", address: "", description: "", docType: "NORMAL" });
     const [dateDisplay, setDateDisplay] = useState({ docDate: formatDateForDisplay(todayStr()) });
     const [rows, setRows] = useState([newRow()]);
@@ -289,6 +296,16 @@ export default function IssueCreatePage() {
     const [prefilledFromAudit, setPrefilledFromAudit] = useState(false);
     const [prefilledFromClone, setPrefilledFromClone] = useState(false);
     const [auditSource, setAuditSource] = useState(null);
+
+    // Hiển thị banner nháp khi có nháp local và không có prefill từ audit/clone
+    useEffect(() => {
+        const hasAuditParam = !!searchParams.get("auditId");
+        const hasCloneState = !!location.state?.clone;
+        if (hasDraft && !hasAuditParam && !hasCloneState) {
+            setShowDraftBanner(true);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const loadData = useCallback(async () => {
         setLoadingData(true);
@@ -436,6 +453,38 @@ export default function IssueCreatePage() {
     const isAdjustment = form.docType === "ADJUSTMENT";
 
     const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3500); };
+
+    // ── Lưu nháp local ──────────────────────────────────────────────────────
+    const handleSaveDraftLocal = () => {
+        try {
+            saveDraft({ form, rows, dateDisplay });
+            showToast("success", "Đã lưu nháp local.");
+        } catch {
+            showToast("error", "Không thể lưu nháp.");
+        }
+    };
+
+    const handleRestoreDraft = () => {
+        const draft = loadDraft();
+        if (!draft) return;
+        if (draft.form) setForm(draft.form);
+        if (draft.dateDisplay) setDateDisplay(draft.dateDisplay);
+        if (draft.rows) {
+            setRows(draft.rows.map((r) => ({ ...r, _id: ++_rowKey })));
+        }
+        setShowDraftBanner(false);
+        showToast("success", "Đã khôi phục nháp.");
+    };
+
+    const handleDeleteDraft = () => {
+        clearDraft();
+        setShowDraftBanner(false);
+        showToast("success", "Đã xóa nháp.");
+    };
+
+    const handleDismissBanner = () => {
+        setShowDraftBanner(false);
+    };
 
     const handleFormChange = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
     const handleDocDateChange = (value) => {
@@ -685,6 +734,7 @@ export default function IssueCreatePage() {
             }
             const result = await createIssue(payload);
             if (result?.success) {
+                clearDraft(); // Xóa nháp local sau khi tạo phiếu thành công
                 showToast("success", "Tạo phiếu xuất kho thành công!");
                 const newId = result?.data?.id;
                 if (adjAuditId && form.docType === "ADJUSTMENT" && newId) {
@@ -737,6 +787,14 @@ export default function IssueCreatePage() {
 
                 <div className="sp-content">
                     <h1 className="sp-title">Phiếu xuất kho</h1>
+                    {showDraftBanner && (
+                        <DraftBanner
+                            draftSavedAt={draftSavedAt}
+                            onResume={handleRestoreDraft}
+                            onDelete={handleDeleteDraft}
+                            onDismiss={handleDismissBanner}
+                        />
+                    )}
                     <div className="rc-form-card">
 
                         {/* ── Header row ── */}
@@ -1012,6 +1070,21 @@ export default function IssueCreatePage() {
                         {/* ── Actions ── */}
                         <div className="rc-form-actions">
                             <button className="sp-btn-outline" onClick={() => navigate("/issues")}>Hủy bỏ</button>
+                            <button
+                                id="issue-draft-save-btn"
+                                type="button"
+                                className="sp-btn-draft"
+                                onClick={handleSaveDraftLocal}
+                                disabled={saving}
+                                title="Lưu tạm dữ liệu vào máy, không tạo phiếu chính thức"
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                                    <polyline points="17 21 17 13 7 13 7 21" />
+                                    <polyline points="7 3 7 8 15 8" />
+                                </svg>
+                                Lưu nháp
+                            </button>
                             <button className="sp-btn-primary" onClick={handleSave} disabled={saving}>
                                 {saving ? "Đang lưu..." : "Lưu phiếu"}
                             </button>
