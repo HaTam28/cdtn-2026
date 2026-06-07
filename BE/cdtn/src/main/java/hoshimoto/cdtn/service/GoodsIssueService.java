@@ -103,7 +103,6 @@ public class GoodsIssueService {
         issue = issueRepository.save(issue);
         notifyManagersIfStaffCreated(issue);
 
-        validateAdjustmentDetails(issue, request.getDetails());
         saveDetails(issue, request.getDetails());
         return toResponse(issue);
     }
@@ -121,7 +120,6 @@ public class GoodsIssueService {
         issue = issueRepository.save(issue);
 
         detailRepository.deleteByGoodsIssueId(id);
-        validateAdjustmentDetails(issue, request.getDetails());
         saveDetails(issue, request.getDetails());
         return toResponse(issue);
     }
@@ -140,6 +138,7 @@ public class GoodsIssueService {
         if (details == null || details.isEmpty()) {
             throw new RuntimeException("Phiếu xuất không có dòng chi tiết nào");
         }
+        validateIssueReadyForConfirm(issue, details);
 
         for (GoodsIssueDetail detail : details) {
             if (detail.getLocation() == null) {
@@ -154,9 +153,30 @@ public class GoodsIssueService {
             // Kiểm tra & trừ ItemLocation
             ItemLocation il = itemLocationRepository
                     .findByItemIdAndLocationId(item.getId(), location.getId())
-                    .orElseThrow(() -> new RuntimeException(
-                            "Không tìm thấy tồn kho của '" + item.getItemcode()
-                                    + "' tại vị trí '" + location.getLocationcode() + "'"));
+                    .orElseGet(() -> {
+                        BigDecimal batchSum = batchRepository.findAllByReceiptDetailLocationIdAndItemId(
+                                location.getId(), item.getId())
+                                .stream()
+                                .map(b -> b.getQuantityRemaining() != null ? b.getQuantityRemaining() : BigDecimal.ZERO)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                        ItemLocation newIl = new ItemLocation();
+                        newIl.setItem(item);
+                        newIl.setLocation(location);
+                        newIl.setQuantity(batchSum);
+                        newIl.setIsActive(batchSum.compareTo(BigDecimal.ZERO) > 0);
+                        return itemLocationRepository.save(newIl);
+                    });
+
+            if (il.getQuantity() == null || il.getQuantity().compareTo(qty) < 0) {
+                BigDecimal batchSum = batchRepository.findAllByReceiptDetailLocationIdAndItemId(
+                        location.getId(), item.getId())
+                        .stream()
+                        .map(b -> b.getQuantityRemaining() != null ? b.getQuantityRemaining() : BigDecimal.ZERO)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                il.setQuantity(batchSum);
+                il.setIsActive(batchSum.compareTo(BigDecimal.ZERO) > 0);
+                itemLocationRepository.save(il);
+            }
 
             if (il.getQuantity().compareTo(qty) < 0) {
                 throw new RuntimeException(
@@ -474,17 +494,10 @@ public class GoodsIssueService {
         if (detailRequests == null)
             return;
 
-        // Validate: không cho phép trùng batchId trong cùng một phiếu
-        List<Long> batchIds = detailRequests.stream()
-                .map(GoodsIssueDetailRequest::getBatchId)
-                .filter(id -> id != null)
-                .collect(Collectors.toList());
-        long distinctBatchCount = batchIds.stream().distinct().count();
-        if (distinctBatchCount < batchIds.size()) {
-            throw new RuntimeException("Phiếu xuất có mã lô bị trùng lặp. Mỗi mã lô chỉ được chọn một lần.");
-        }
-
         for (GoodsIssueDetailRequest req : detailRequests) {
+            if (req.getItemId() == null) {
+                continue;
+            }
             Item item = itemRepository.findById(req.getItemId())
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy hàng hóa id: " + req.getItemId()));
 
@@ -496,7 +509,7 @@ public class GoodsIssueService {
             detail.setUnitof(item.getUnitof());
             detail.setQuantity(req.getQuantity());
             detail.setUnitprice(req.getUnitprice() != null ? req.getUnitprice() : BigDecimal.ZERO);
-            detail.setAmount(detail.getQuantity().multiply(detail.getUnitprice()));
+            detail.setAmount(detail.getQuantity() != null ? detail.getQuantity().multiply(detail.getUnitprice()) : BigDecimal.ZERO);
             detail.setInventoryAuditDetailId(req.getInventoryAuditDetailId());
 
             // Xử lý lô hàng (batchId)
@@ -504,22 +517,6 @@ public class GoodsIssueService {
                 Batch batch = batchRepository.findById(req.getBatchId())
                         .orElseThrow(() -> new RuntimeException(
                                 "Không tìm thấy lô hàng id: " + req.getBatchId()));
-
-                // Validate lô thuộc đúng vật phẩm
-                if (!batch.getItem().getId().equals(item.getId())) {
-                    throw new RuntimeException(
-                            "Lô '" + batch.getBatchCode() + "' không thuộc mặt hàng '"
-                                    + item.getItemcode() + "'");
-                }
-
-                // Validate số lượng không vượt quá tồn khả dụng của lô
-                if (batch.getQuantityRemaining() == null
-                        || req.getQuantity().compareTo(batch.getQuantityRemaining()) > 0) {
-                    throw new RuntimeException(
-                            "Số lượng xuất (" + req.getQuantity() + ") vượt quá tồn khả dụng của lô '"
-                                    + batch.getBatchCode() + "' (còn lại: "
-                                    + (batch.getQuantityRemaining() != null ? batch.getQuantityRemaining() : 0) + ")");
-                }
 
                 detail.setBatch(batch);
 
@@ -590,6 +587,120 @@ public class GoodsIssueService {
                     req.getInventoryAuditDetailId(), issue.getId());
             boolean usedByReceipt = receiptDetailRepository.existsActiveAdjustmentByAuditDetailId(
                     req.getInventoryAuditDetailId(), null);
+            if (usedByIssue || usedByReceipt) {
+                throw new RuntimeException("Chi tiết phiếu kiểm kê đã được tạo phiếu điều chỉnh");
+            }
+        }
+    }
+
+    private void validateIssueReadyForConfirm(GoodsIssue issue, List<GoodsIssueDetail> details) {
+        java.util.Set<Long> batchIds = new java.util.HashSet<>();
+        java.util.Set<Long> auditDetailIds = new java.util.HashSet<>();
+
+        for (GoodsIssueDetail detail : details) {
+            if (detail.getItem() == null) {
+                throw new RuntimeException("Dòng chi tiết phiếu xuất chưa có hàng hóa");
+            }
+            if (detail.getQuantity() == null || detail.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new RuntimeException("Số lượng xuất phải lớn hơn 0");
+            }
+            if (detail.getLocation() == null) {
+                throw new RuntimeException(
+                        "Dòng chi tiết với mã hàng '" + detail.getItemcode() + "' chưa được gán vị trí");
+            }
+
+            Batch batch = detail.getBatch();
+            if (batch != null) {
+                if (!batchIds.add(batch.getId())) {
+                    throw new RuntimeException("Phiếu xuất có mã lô bị trùng lặp. Mỗi mã lô chỉ được chọn một lần.");
+                }
+                if (batch.getItem() == null || !batch.getItem().getId().equals(detail.getItem().getId())) {
+                    throw new RuntimeException(
+                            "Lô '" + batch.getBatchCode() + "' không thuộc mặt hàng '" + detail.getItemcode() + "'");
+                }
+                if (batch.getQuantityRemaining() == null
+                        || detail.getQuantity().compareTo(batch.getQuantityRemaining()) > 0) {
+                    throw new RuntimeException(
+                            "Số lượng xuất (" + detail.getQuantity() + ") vượt quá tồn khả dụng của lô '"
+                                    + batch.getBatchCode() + "' (còn lại: "
+                                    + (batch.getQuantityRemaining() != null ? batch.getQuantityRemaining() : 0) + ")");
+                }
+                if (batch.getReceiptDetail() != null
+                        && batch.getReceiptDetail().getLocation() != null
+                        && !batch.getReceiptDetail().getLocation().getId().equals(detail.getLocation().getId())) {
+                    throw new RuntimeException("Vị trí không khớp với mã lô");
+                }
+            }
+
+            ItemLocation il = itemLocationRepository
+                    .findByItemIdAndLocationId(detail.getItem().getId(), detail.getLocation().getId())
+                    .orElseGet(() -> {
+                        BigDecimal batchSum = batchRepository.findAllByReceiptDetailLocationIdAndItemId(
+                                detail.getLocation().getId(), detail.getItem().getId())
+                                .stream()
+                                .map(b -> b.getQuantityRemaining() != null ? b.getQuantityRemaining() : BigDecimal.ZERO)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                        ItemLocation newIl = new ItemLocation();
+                        newIl.setItem(detail.getItem());
+                        newIl.setLocation(detail.getLocation());
+                        newIl.setQuantity(batchSum);
+                        newIl.setIsActive(batchSum.compareTo(BigDecimal.ZERO) > 0);
+                        return itemLocationRepository.save(newIl);
+                    });
+
+            if (il.getQuantity() == null || il.getQuantity().compareTo(detail.getQuantity()) < 0) {
+                BigDecimal batchSum = batchRepository.findAllByReceiptDetailLocationIdAndItemId(
+                        detail.getLocation().getId(), detail.getItem().getId())
+                        .stream()
+                        .map(b -> b.getQuantityRemaining() != null ? b.getQuantityRemaining() : BigDecimal.ZERO)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                il.setQuantity(batchSum);
+                il.setIsActive(batchSum.compareTo(BigDecimal.ZERO) > 0);
+                itemLocationRepository.save(il);
+            }
+
+            if (il.getQuantity() == null || il.getQuantity().compareTo(detail.getQuantity()) < 0) {
+                throw new RuntimeException(
+                        "Số lượng tại vị trí không đủ để xuất cho mã hàng '" + detail.getItemcode() + "'");
+            }
+
+            InventoryBalance balance = inventoryBalanceRepository
+                    .findByItemId(detail.getItem().getId())
+                    .orElseThrow(() -> new RuntimeException("Không có tồn kho tổng cho mã hàng: " + detail.getItemcode()));
+            if (balance.getQuantity() == null || balance.getQuantity().compareTo(detail.getQuantity()) < 0) {
+                throw new RuntimeException("Tồn kho tổng không đủ để xuất cho mã hàng: " + detail.getItemcode());
+            }
+
+            if (!isAdjustment(issue)) {
+                continue;
+            }
+            if (detail.getInventoryAuditDetailId() == null) {
+                throw new RuntimeException("Phiếu xuất điều chỉnh phải liên kết chi tiết phiếu kiểm kê");
+            }
+            if (!auditDetailIds.add(detail.getInventoryAuditDetailId())) {
+                throw new RuntimeException("Chi tiết phiếu kiểm kê bị trùng trong phiếu điều chỉnh");
+            }
+            if (batch == null) {
+                throw new RuntimeException("Phiếu xuất điều chỉnh phải có mã lô");
+            }
+
+            var auditDetail = inventoryAuditDetailRepository.findById(detail.getInventoryAuditDetailId())
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy chi tiết phiếu kiểm kê id: " + detail.getInventoryAuditDetailId()));
+            if (auditDetail.getInventoryAudit() == null
+                    || !auditDetail.getInventoryAudit().getId().equals(issue.getInventoryAuditId())) {
+                throw new RuntimeException("Chi tiết phiếu kiểm kê không thuộc phiếu kiểm kê đã chọn");
+            }
+            if (auditDetail.getItem() != null && !auditDetail.getItem().getId().equals(detail.getItem().getId())) {
+                throw new RuntimeException("Vật tư không khớp với chi tiết phiếu kiểm kê");
+            }
+            if (auditDetail.getBatch() != null && !auditDetail.getBatch().getId().equals(batch.getId())) {
+                throw new RuntimeException("Mã lô không khớp với chi tiết phiếu kiểm kê");
+            }
+
+            boolean usedByIssue = detailRepository.existsActiveAdjustmentByAuditDetailId(
+                    detail.getInventoryAuditDetailId(), issue.getId());
+            boolean usedByReceipt = receiptDetailRepository.existsActiveAdjustmentByAuditDetailId(
+                    detail.getInventoryAuditDetailId(), null);
             if (usedByIssue || usedByReceipt) {
                 throw new RuntimeException("Chi tiết phiếu kiểm kê đã được tạo phiếu điều chỉnh");
             }

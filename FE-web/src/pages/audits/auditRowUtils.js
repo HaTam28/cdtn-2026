@@ -1,14 +1,14 @@
 export const AUDIT_STATUS_LABELS = {
     DRAFT: "Chờ gửi",
     REQUESTED: "Chờ kiểm kê",
-    IN_PROGRESS: "Đang kiểm kê",
+    IN_PROGRESS: "Chờ kiểm kê",
     SUBMITTED: "Chờ duyệt",
-    PENDING_PROCESS: "Chờ duyệt",
-    PROCESSED: "Đã xử lý chênh lệch",
+    PENDING_PROCESS: "Đã duyệt",
+    PROCESSED: "Đã duyệt",
     CONFIRMED: "Đã duyệt",
     APPROVED: "Đã duyệt",
     CANCELLED: "Đã hủy",
-    REJECTED: "Đã từ chối",
+    REJECTED: "Bị từ chối",
     OVERDUE: "Quá hạn",
 };
 
@@ -80,21 +80,11 @@ export function getAuditEndDate(audit) {
 }
 
 export function getDisplayStatus(audit) {
-    const status = audit?.docstatus || audit?.status || "";
-    const end = toInputDate(getAuditEndDate(audit));
-    if (end && OVERDUE_ELIGIBLE_STATUSES.has(status)) {
-        const today = toInputDate(new Date());
-        if (end < today) return "OVERDUE";
-    }
-    return status;
+    return audit?.docstatus || audit?.status || "";
 }
 
 export function getAuditWorkflowStatus(audit, details = audit?.details || []) {
     const raw = getDisplayStatus(audit);
-    if (raw === "OVERDUE") return "OVERDUE";
-    if (raw === "PENDING_PROCESS") return "SUBMITTED";
-    if (raw === "CONFIRMED") return "APPROVED";
-    if (raw === "PROCESSED") return "APPROVED";
     return raw;
 }
 
@@ -102,8 +92,8 @@ export function getAuditRowTone(status, pendingAdjustment = false) {
     if (pendingAdjustment) return "au-row-pending-adjustment";
     if (status === "DRAFT") return "au-row-draft";
     if (status === "REQUESTED" || status === "IN_PROGRESS") return "au-row-active";
-    if (status === "SUBMITTED") return "au-row-review";
-    if (status === "PROCESSED" || status === "APPROVED") return status === "PROCESSED" ? "au-row-processed" : "";
+    if (status === "SUBMITTED" || status === "PENDING_PROCESS") return "au-row-review";
+    if (status === "PROCESSED" || status === "CONFIRMED" || status === "APPROVED") return status === "PROCESSED" ? "au-row-processed" : "";
     if (status === "OVERDUE" || status === "REJECTED") return "au-row-danger";
     return "";
 }

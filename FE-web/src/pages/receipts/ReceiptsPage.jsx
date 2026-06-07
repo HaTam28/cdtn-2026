@@ -11,10 +11,10 @@ import { useDraft, formatDraftTime } from "../../utils/useDraft";
 const RECEIPT_DRAFT_KEY = "draft_receipt_create";
 
 const STATUS_LABELS = {
-    DRAFT: "Chờ duyệt",
-    CONFIRMED: "Đã duyệt",
-    CANCELLED: "Hủy",
-    REJECTED: "Đã từ chối",
+    DRAFT: "Nháp",
+    CONFIRMED: "Đã xác nhận",
+    CANCELLED: "Đã hủy",
+    REJECTED: "Bị từ chối",
 };
 const STATUS_BADGE = {
     DRAFT: "rc-badge rc-badge-draft",
@@ -403,7 +403,7 @@ export default function ReceiptsPage() {
                             {activeTab !== "Nháp" && !loading && !error && pageData.map((r) => (
                                 <tr
                                     key={r.id}
-                                    className={`sp-row-clickable${selected.has(r.id) ? " sp-row-selected" : ""}`}
+                                    className={`sp-row-clickable${r.docstatus === "DRAFT" ? " rc-row-draft" : ""}${selected.has(r.id) ? " sp-row-selected" : ""}`}
                                     onClick={() => navigate(`/receipts/${r.id}`)}
                                 >
                                     <td className="sp-td-cb" onClick={(e) => e.stopPropagation()}>

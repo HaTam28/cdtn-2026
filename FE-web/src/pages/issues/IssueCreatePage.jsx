@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import "../../styles/shared.css";
 import "../receipts/receipts.css";
 import "./issues.css";
-import { createIssue, getAvailableLocations, getAllIssues } from "../../api/issueApi";
+import { confirmIssue, createIssue, getAvailableLocations, getAllIssues, getIssueById, updateIssue } from "../../api/issueApi";
 import { getAuditById } from "../../api/auditApi";
 import { getAllCustomers } from "../../api/customerApi";
 import { getAllItems } from "../../api/itemApi";
@@ -278,6 +278,9 @@ export default function IssueCreatePage() {
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams] = useSearchParams();
+    const editId = searchParams.get("id");
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    const isManager = user?.role && !["STAFF", "NV"].includes(user.role);
 
     const { hasDraft, draftSavedAt, saveDraft, loadDraft, clearDraft } = useDraft(DRAFT_KEY);
     const [showDraftBanner, setShowDraftBanner] = useState(false);
@@ -296,6 +299,7 @@ export default function IssueCreatePage() {
     const [prefilledFromAudit, setPrefilledFromAudit] = useState(false);
     const [prefilledFromClone, setPrefilledFromClone] = useState(false);
     const [auditSource, setAuditSource] = useState(null);
+    const customerOptions = customers.filter((c) => c.iscustomer);
 
     // Hiển thị banner nháp hoặc tự động khôi phục nháp nếu được yêu cầu từ trang danh sách
     useEffect(() => {
@@ -330,13 +334,82 @@ export default function IssueCreatePage() {
             setCustomers(cList);
             setItems(iList);
             setBatches(bList);
-            setForm((prev) => ({
-                ...prev,
-                docno: prev.docno || buildNextDocno("PX", iDocList),
-            }));
+            if (!editId) {
+                setForm((prev) => ({
+                    ...prev,
+                    docno: prev.docno || buildNextDocno("PX", iDocList),
+                }));
+            }
         } catch { /* non-blocking */ } finally { setLoadingData(false); }
-    }, []);
+    }, [editId]);
     useEffect(() => { loadData(); }, [loadData]);
+
+    useEffect(() => {
+        if (!editId) return;
+        const loadDraft = async () => {
+            setLoadingData(true);
+            try {
+                const draft = await getIssueById(editId);
+                if (draft) {
+                    const toDateOnly = (val) => (val ? String(val).slice(0, 10) : "");
+                    setForm({
+                        date: toDateOnly(draft.docDate),
+                        docno: draft.docno || "",
+                        customerId: String(draft.customerId || ""),
+                        address: draft.address || "",
+                        description: draft.description || "",
+                        docType: draft.docType || "NORMAL"
+                    });
+                    setDateDisplay({
+                        docDate: formatDateForDisplay(toDateOnly(draft.docDate))
+                    });
+
+                    // Group details by itemId
+                    const grouped = {};
+                    (draft.details || []).forEach((d) => {
+                        const key = String(d.itemId);
+                        if (!grouped[key]) {
+                            grouped[key] = {
+                                _id: ++_rowKey,
+                                itemId: String(d.itemId),
+                                itemcode: d.itemcode || "",
+                                itemname: d.itemname || "",
+                                unitof: d.unitof || "",
+                                quantity: 0,
+                                price: d.unitprice != null ? String(d.unitprice) : "",
+                                inventoryAuditDetailId: d.inventoryAuditDetailId || "",
+                                batchEntries: []
+                            };
+                        }
+                        grouped[key].quantity += Number(d.quantity || 0);
+                        grouped[key].batchEntries.push({
+                            _id: ++_rowKey,
+                            _pickKey: `${d.batchId || ""}-${d.locationId || ""}`,
+                            batchId: d.batchId,
+                            batchCode: d.batchCode || "",
+                            locationId: d.locationId || "",
+                            locationcode: d.locationcode || "",
+                            remainingStock: Number(d.quantity) || 0,
+                            quantity: String(d.quantity || ""),
+                            unitCost: d.unitprice || 0
+                        });
+                    });
+
+                    const rowsFromIssue = Object.values(grouped).map(r => ({
+                        ...r,
+                        quantity: String(r.quantity)
+                    }));
+                    
+                    setRows(rowsFromIssue.length > 0 ? rowsFromIssue : [newRow()]);
+                }
+            } catch (err) {
+                showToast("error", "Không thể tải chi tiết phiếu xuất nháp.");
+            } finally {
+                setLoadingData(false);
+            }
+        };
+        loadDraft();
+    }, [editId]);
 
     useEffect(() => {
         const paramType = searchParams.get("docType");
@@ -506,7 +579,7 @@ export default function IssueCreatePage() {
     };
 
     const handleCustomerChange = (customerId) => {
-        const found = customers.find((c) => String(c.id) === String(customerId));
+        const found = customerOptions.find((c) => String(c.id) === String(customerId));
         setForm((prev) => ({ ...prev, customerId, address: found?.address || "" }));
     };
 
@@ -666,6 +739,36 @@ export default function IssueCreatePage() {
         return sum + rowTotal;
     }, 0);
 
+    const buildDetailsPayload = (sourceRows = rows) => sourceRows.flatMap((r) => {
+        if (!r.itemId) return [];
+        return (r.batchEntries || [])
+            .filter((e) => e.batchId && e.locationId && Number(e.quantity) > 0)
+            .map((e) => ({
+                itemId: Number(r.itemId),
+                batchId: Number(e.batchId),
+                locationId: Number(e.locationId),
+                quantity: Number(e.quantity),
+                unitprice: Number(e.unitCost) || Number(r.price) || 0,
+                ...(isAdjustment && r.inventoryAuditDetailId ? { inventoryAuditDetailId: Number(r.inventoryAuditDetailId) } : {}),
+            }));
+    });
+
+    const buildIssuePayload = (details = buildDetailsPayload()) => {
+        const adjAuditId = searchParams.get("auditId");
+        const payload = {
+            docno: form.docno.trim(),
+            docDate: form.date,
+            description: form.description.trim(),
+            doctype: form.docType,
+            ...(adjAuditId ? { inventoryAuditId: Number(adjAuditId) } : {}),
+            details,
+        };
+        if (!isAdjustment) {
+            payload.customerId = form.customerId ? Number(form.customerId) : undefined;
+        }
+        return payload;
+    };
+
     const handleSave = async () => {
         if (!form.date) { showToast("error", "Vui lòng chọn ngày."); return; }
         if (!form.docno.trim()) { showToast("error", "Vui lòng nhập số chứng từ."); return; }
@@ -718,33 +821,14 @@ export default function IssueCreatePage() {
             }
         }
 
-        const details = rows.flatMap((r) =>
-            r.batchEntries.map((e) => ({
-                itemId: Number(r.itemId),
-                batchId: e.batchId ? Number(e.batchId) : undefined,
-                locationId: e.locationId ? Number(e.locationId) : null,
-                quantity: Number(e.quantity),
-                unitprice: Number(e.unitCost) || Number(r.price) || 0,
-                ...(isAdjustment && r.inventoryAuditDetailId ? { inventoryAuditDetailId: Number(r.inventoryAuditDetailId) } : {}),
-            }))
-        );
+        const details = buildDetailsPayload();
 
         setSaving(true);
         const adjAuditId = searchParams.get("auditId");
         const adjAuditDetailId = searchParams.get("auditDetailId");
         try {
-            const payload = {
-                docno: form.docno.trim(),
-                docDate: form.date,
-                description: form.description.trim(),
-                doctype: form.docType,
-                ...(adjAuditId ? { inventoryAuditId: Number(adjAuditId) } : {}),
-                details,
-            };
-            if (!isAdjustment) {
-                payload.customerId = Number(form.customerId);
-            }
-            const result = await createIssue(payload);
+            const payload = buildIssuePayload(details);
+            const result = editId ? await updateIssue(editId, payload) : await createIssue(payload);
             if (result?.success) {
                 clearDraft(); // Xóa nháp local sau khi tạo phiếu thành công
                 showToast("success", "Tạo phiếu xuất kho thành công!");
@@ -758,10 +842,29 @@ export default function IssueCreatePage() {
                 }
                 setTimeout(() => navigate(newId ? `/issues/${newId}` : "/issues"), 1200);
             } else {
-                showToast("error", result?.message || "Tạo phiếu thất bại.");
+                showToast("error", result?.message || (editId ? "Cập nhật phiếu thất bại." : "Tạo phiếu thất bại."));
             }
         } catch (err) {
-            showToast("error", err?.response?.data?.message || "Có lỗi xảy ra khi tạo phiếu xuất kho.");
+            showToast("error", err?.response?.data?.message || (editId ? "Có lỗi xảy ra khi cập nhật phiếu xuất kho." : "Có lỗi xảy ra khi tạo phiếu xuất kho."));
+        } finally { setSaving(false); }
+    };
+
+    const handleSaveDraft = async () => {
+        if (!form.date) { showToast("error", "Vui lòng nhập ngày theo định dạng dd/mm/yyyy."); return; }
+        if (!form.docno.trim()) { showToast("error", "Vui lòng nhập số chứng từ."); return; }
+        setSaving(true);
+        try {
+            const payload = buildIssuePayload();
+            const result = editId ? await updateIssue(editId, payload) : await createIssue(payload);
+            if (result?.success) {
+                showToast("success", editId ? "Đã cập nhật phiếu xuất kho." : "Đã lưu nháp phiếu xuất kho.");
+                const newId = editId || result?.data?.id;
+                setTimeout(() => navigate(newId ? `/issues/${newId}` : "/issues"), 900);
+            } else {
+                showToast("error", result?.message || (editId ? "Cập nhật nháp thất bại." : "Lưu nháp thất bại."));
+            }
+        } catch (err) {
+            showToast("error", err?.response?.data?.message || (editId ? "Có lỗi xảy ra khi cập nhật nháp phiếu xuất kho." : "Có lỗi xảy ra khi lưu nháp phiếu xuất kho."));
         } finally { setSaving(false); }
     };
 
@@ -811,7 +914,7 @@ export default function IssueCreatePage() {
 
                         {/* ── Header row ── */}
                         <div className="rc-header-row">
-                            <label className="rc-form-label">Ngày</label>
+                            <label className="rc-form-label" style={{ minWidth: 110 }}>Ngày</label>
                             <input
                                 className="rc-form-input"
                                 style={{ minWidth: 150 }}
@@ -837,7 +940,7 @@ export default function IssueCreatePage() {
                         {/* ── Đối tượng ── */}
                         {!isAdjustment && (
                             <div className="rc-form-row">
-                                <label className="rc-form-label">Đối tượng</label>
+                                <label className="rc-form-label" style={{ minWidth: 110 }}>Đối tượng</label>
                                 <select className="rc-form-select rc-form-full" value={form.customerId} onChange={(e) => handleCustomerChange(e.target.value)} disabled={loadingData}>
                                     <option value="">Chọn đối tượng</option>
                                     {customers.filter((c) => c.iscustomer).map((c) => (
@@ -850,14 +953,14 @@ export default function IssueCreatePage() {
                         {/* ── Địa chỉ ── */}
                         {!isAdjustment && (
                             <div className="rc-form-row">
-                                <label className="rc-form-label">Địa chỉ</label>
+                                <label className="rc-form-label" style={{ minWidth: 110 }}>Địa chỉ</label>
                                 <input className="rc-form-input rc-form-full" placeholder="Nhập địa chỉ" value={form.address} onChange={(e) => handleFormChange("address", e.target.value)} />
                             </div>
                         )}
 
                         {/* ── Diễn giải ── */}
                         <div className="rc-form-row">
-                            <label className="rc-form-label">Diễn giải</label>
+                            <label className="rc-form-label" style={{ minWidth: 110 }}>Diễn giải</label>
                             <input className="rc-form-input rc-form-full" placeholder="Nhập diễn giải" value={form.description} onChange={(e) => handleFormChange("description", e.target.value)} />
                         </div>
 
@@ -920,7 +1023,7 @@ export default function IssueCreatePage() {
                                                         />
                                                     </td>
                                                     {!isAdjustment && (
-                                                        <td className="rc-td-num" style={{ color: Number(row.quantity) > (stockByItem[row.itemId]?.total ?? Number.POSITIVE_INFINITY) ? "#c62828" : "#4c6152" }}>
+                                                        <td className="rc-td-num" style={{ color: Number(row.quantity) > (stockByItem[row.itemId]?.total ?? Number.POSITIVE_INFINITY) ? "#c62828" : "#4c6152", textAlign: "right", paddingRight: "12px" }}>
                                                             {!row.itemId
                                                                 ? "—"
                                                                 : stockByItem[row.itemId]?.loading
@@ -1086,7 +1189,7 @@ export default function IssueCreatePage() {
                                 Lưu nháp
                             </button>
                             <button className="sp-btn-primary" onClick={handleSave} disabled={saving}>
-                                {saving ? "Đang lưu..." : "Lưu phiếu"}
+                                {saving ? "Đang lưu..." : isManager ? "Lưu và xác nhận" : "Lưu phiếu"}
                             </button>
                         </div>
                     </div>

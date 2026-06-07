@@ -980,6 +980,8 @@ Response (200) example:
 
 ### 7.1 Tạo / Cập nhật phiếu nhập (DRAFT)
 
+> **Lưu nháp:** `POST /api/goods-receipts` và `PUT /api/goods-receipts/{id}` luôn lưu ở `docstatus = DRAFT`. BE chỉ validate tối thiểu để lưu bản ghi; các dòng chưa có `itemId` sẽ không được lưu xuống detail. Các validation nghiệp vụ như đủ `quantity`, đủ `locationId`, sức chứa, batch điều chỉnh, trùng dòng kiểm kê... được thực hiện khi gọi `POST /api/goods-receipts/{id}/confirm`.
+
 **Request body:**
 ```json
 {
@@ -1019,7 +1021,7 @@ ZZZa| `inventoryAuditId` | ❌ / ✅ khi điều chỉnh | ID phiếu kiểm kê
 > `locationId` có thể để `null` khi tạo DRAFT; phải gán trước khi confirm.
 > `batchId` / `batchCode` trong response chỉ xuất hiện sau khi phiếu được **CONFIRMED** — BE tự động tạo lô khi xác nhận, FE **không cần** gọi `POST /api/batches` trong luồng nhập kho thông thường.
 >
-> **Phiếu nhập điều chỉnh từ kiểm kê:** FE không cần gửi `invoiceNumber`, `customerId`, thông tin hóa đơn/đối tượng. Nếu FE gửi thừa, BE sẽ không lưu các trường này. Mỗi dòng bắt buộc có `batchId`, `locationId`, `quantity > 0`, `inventoryAuditDetailId`; `batchId` phải là mã lô auto-fill từ dòng kiểm kê. `locationId` là vị trí nhận hàng điều chỉnh do người dùng chọn, **không bắt buộc trùng vị trí gốc của mã lô**. Khi confirm, BE cộng số lượng vào batch hiện có, **không sinh batchCode mới**. BE kiểm tra sức chứa ngay khi lưu DRAFT/cập nhật và kiểm tra lại khi confirm. Nếu không đủ chỗ, BE trả `"Vị trí không đủ sức chứa."`.
+> **Phiếu nhập điều chỉnh từ kiểm kê:** FE không cần gửi `invoiceNumber`, `customerId`, thông tin hóa đơn/đối tượng. Nếu FE gửi thừa, BE sẽ không lưu các trường này. Khi lưu nháp có thể lưu thiếu thông tin nghiệp vụ. Khi confirm, mỗi dòng bắt buộc có `batchId`, `locationId`, `quantity > 0`, `inventoryAuditDetailId`; `batchId` phải là mã lô auto-fill từ dòng kiểm kê. `locationId` là vị trí nhận hàng điều chỉnh do người dùng chọn, **không bắt buộc trùng vị trí gốc của mã lô**. Khi confirm, BE cộng số lượng vào batch hiện có, **không sinh batchCode mới**. BE kiểm tra sức chứa khi confirm. Nếu không đủ chỗ, BE trả `"Vị trí không đủ sức chứa."`.
 >
 > **LƯU Ý VỀ LÔ HÀNG (BATCH):**
 > - **Tự động tạo khi confirm:** Khi phiếu nhập được xác nhận, BE tự sinh batch theo từng dòng chi tiết gắn vị trí. Nếu cùng 1 mã hàng được nhập ở nhiều vị trí khác nhau, mỗi vị trí sẽ có `batchCode` riêng.
@@ -1235,6 +1237,8 @@ Response (200) example:
 
 ### 8.1 Tạo / Cập nhật phiếu xuất (DRAFT)
 
+> **Lưu nháp:** `POST /api/goods-issues` và `PUT /api/goods-issues/{id}` luôn lưu ở `docstatus = DRAFT`. BE chỉ validate tối thiểu để lưu bản ghi; các dòng chưa có `itemId` sẽ không được lưu xuống detail. Các validation nghiệp vụ như đủ `quantity`, đủ `locationId`, tồn kho, batch thuộc item/vị trí, trùng batch, batch điều chỉnh... được thực hiện khi gọi `POST /api/goods-issues/{id}/confirm`.
+
 > **Luồng mã lô mới:** Mỗi mã lô được chọn ở FE = **một dòng chi tiết riêng** trong `details[]`. Vị trí (`locationId`) có thể bỏ trống — BE tự xác định từ lô đã chọn (`batch.receiptDetail.location`). Nếu FE gửi `locationId`, giá trị đó được ưu tiên.
 
 **Request body:**
@@ -1264,13 +1268,13 @@ Response (200) example:
 
 > `docno` có thể bỏ trống để BE tự sinh theo dạng `PX-01`, `PX-02`, ...
 
-> `batchId` tùy chọn. Nếu gửi, BE validate và tự xác định `locationId` từ lô. Nếu cần ghi đè vị trí, gửi thêm `locationId`.
+> `batchId` tùy chọn khi lưu nháp. Khi confirm, nếu gửi `batchId`, BE validate batch thuộc đúng `itemId`, còn đủ tồn, và vị trí khớp mã lô.
 
 > **`doctype`** (optional): FE có thể gửi `"NORMAL"` cho xuất thường. Nếu không gửi, mặc định là `"NORMAL"`. Khi request có `inventoryAuditId`, BE **luôn ghi đè** thành `"ADJUSTMENT"` bất kể FE gửi gì.
 >
 > **Phiếu xuất điều chỉnh từ kiểm kê:** FE không cần gửi `customerId`/đối tượng. Nếu FE gửi thừa, BE sẽ không lưu. Header bắt buộc có `inventoryAuditId`; từng dòng bắt buộc có `inventoryAuditDetailId`, `itemId`, `batchId`, `locationId`, `quantity > 0`. BE không kiểm tra sức chứa cho phiếu xuất điều chỉnh, chỉ kiểm tra lô/vị trí/tồn kho hợp lệ và chặn trùng dòng kiểm kê.
 
-**Validation mã lô (BE thực hiện khi lưu DRAFT):**
+**Validation mã lô (BE thực hiện khi confirm):**
 | # | Kiểm tra | Lỗi trả về |
 |---|----------|-----------|
 | 1 | Lô tồn tại trong hệ thống | `"Không tìm thấy lô hàng id: {id}"` |
@@ -1280,6 +1284,8 @@ Response (200) example:
 | 5 | Phiếu xuất điều chỉnh có `inventoryAuditDetailId` đúng audit/header | `"Chi tiết phiếu kiểm kê không thuộc phiếu kiểm kê đã chọn"` |
 | 6 | Lô và vị trí khớp với dòng kiểm kê/stock hiện có | `"Mã lô không khớp với chi tiết phiếu kiểm kê"` / `"Vị trí không khớp với mã lô"` |
 | 7 | Dòng kiểm kê chưa được tạo phiếu điều chỉnh khác | `"Chi tiết phiếu kiểm kê đã được tạo phiếu điều chỉnh"` |
+
+ERROR
 
 **Response (ví dụ):**
 ```json
@@ -1436,14 +1442,16 @@ BE thực hiện:
 
 ```
 Manager tạo yêu cầu kiểm kê cho Staff (khuyến nghị):
+  DRAFT (lưu nháp) ──(manager gửi yêu cầu)──► REQUESTED
   REQUESTED (manager gán) ──(staff cập nhật)──► IN_PROGRESS
   IN_PROGRESS ──(staff submit)──► SUBMITTED / PENDING_PROCESS
   SUBMITTED / PENDING_PROCESS ──(manager confirm)──► CONFIRMED / PROCESSED
-  DRAFT / REQUESTED / IN_PROGRESS / SUBMITTED / PENDING_PROCESS ──(quá endDate)──► OVERDUE
-  DRAFT ──(manager lưu nháp)──► CANCELLED
+  REQUESTED / IN_PROGRESS / SUBMITTED / PENDING_PROCESS ──(quá endDate)──► OVERDUE
+  DRAFT ──(manager hủy nháp)──► CANCELLED
 ```
 
-> **Ghi chú quan trọng:** Manager **không** thực hiện "tự kiểm" bằng cách gửi `actualquantity` khi tạo phiếu. BE sẽ chặn hành vi này. Quy trình chuẩn: manager gán yêu cầu cho staff → staff thực hiện kiểm kê và `submit` → manager `confirm`/`reject`.
+> **Lưu nháp:** Phiếu `DRAFT` chỉ là bản lưu tạm, không nằm trong danh sách `/assigned` của STAFF, không gửi thông báo cho người xử lý tiếp theo, và không tự chuyển `OVERDUE`.
+> **Ghi chú quan trọng:** Quy trình chuẩn là manager lưu nháp/gửi yêu cầu cho staff → staff thực hiện kiểm kê và `submit` → manager `confirm`/`reject`.
 > **Quan trọng:** Khi `confirm`, nếu có `diffquantity ≠ 0` thì trạng thái là **`PROCESSED`** (đã xử lý chênh lệch); nếu toàn bộ diff = 0 thì là **`CONFIRMED`**. Cả hai trường hợp đều đã áp dụng chênh lệch vào `InventoryBalance` tổng kho.  
 > Khi `confirm`, chỉ `InventoryBalance` (tổng kho) được cập nhật — **không** cập nhật `ItemLocation` (tồn theo vị trí). Nếu cần điều chỉnh tồn theo vị trí sau kiểm kê, FE tạo phiếu nhập/xuất thông thường (xem mục 9.4).
 > Từ bản kiểm kê theo lô: chi tiết phiếu lưu snapshot theo `itemId + batchId + locationId + bookquantity`; Staff mở phiếu dùng snapshot này, không lấy tồn realtime.
@@ -1458,7 +1466,8 @@ Manager tạo yêu cầu kiểm kê cho Staff (khuyến nghị):
 | GET | `/api/inventory-audits/{id}` | Chi tiết phiếu kiểm kê | ADMIN, MANAGER, STAFF |
 | GET | `/api/inventory-audits/stock-rows?itemId=&locationId=` | Lấy tồn theo từng mã lô/vị trí để tạo phiếu; `itemId`, `locationId` đều optional | ADMIN, MANAGER, STAFF |
 | POST | `/api/inventory-audits` | Tạo phiếu kiểm kê | ADMIN, MANAGER |
-| PUT | `/api/inventory-audits/{id}` | Sửa phiếu DRAFT (chỉ DRAFT, phải có actualquantity) | ADMIN, MANAGER, STAFF |
+| PUT | `/api/inventory-audits/{id}` | Lưu/cập nhật phiếu DRAFT | ADMIN, MANAGER, STAFF |
+| POST | `/api/inventory-audits/{id}/request` | Gửi yêu cầu kiểm kê từ phiếu DRAFT cho STAFF | ADMIN, MANAGER |
 | POST | `/api/inventory-audits/{id}/confirm` | Xác nhận → cập nhật InventoryBalance | ADMIN, MANAGER |
 | POST | `/api/inventory-audits/{id}/reject` | Từ chối duyệt (kèm lý do) | ADMIN, MANAGER |
 | POST | `/api/inventory-audits/{id}/cancel` | Hủy phiếu (chỉ DRAFT) | ADMIN, MANAGER |
@@ -1533,7 +1542,7 @@ FE gửi từng dòng snapshot theo `itemId`, `batchId`, `locationId`. Không g�
 
 #### Chế độ 2 – Manager tự nhập kết quả (`sendToStaff = false` hoặc bỏ trống)
 
-`actualquantity` là **bắt buộc** cho mọi dòng chi tiết. Phiếu sẽ ở trạng thái `DRAFT`.
+Khi lưu nháp, `actualquantity`, `quantity`, `locationId`, `assignedUserId` có thể chưa đầy đủ tùy UI đang nhập dở. Phiếu sẽ ở trạng thái `DRAFT`.
 
 ```json
 {
@@ -1548,7 +1557,7 @@ FE gửi từng dòng snapshot theo `itemId`, `batchId`, `locationId`. Không g�
 }
 ```
 
-→ Kết quả: `docstatus = DRAFT`, `bookquantity` và `diffquantity` đã được BE tính sẵn.
+→ Kết quả: `docstatus = DRAFT`; các dòng có `itemId` hợp lệ được lưu, các dòng chưa chọn `itemId` sẽ bị bỏ qua ở detail.
 
 #### Bảng trường request
 
@@ -1557,15 +1566,15 @@ FE gửi từng dòng snapshot theo `itemId`, `batchId`, `locationId`. Không g�
 | `docno` | ❌ | BE tự sinh `PKK-01`, `PKK-02`, ... nếu không gửi |
 | `docDate` | ❌ | Ngày kiểm kê (yyyy-MM-dd) |
 | `startDate` | ❌ | Ngày bắt đầu kiểm kê (yyyy-MM-dd) |
-| `endDate` | ❌ | Ngày kết thúc kiểm kê; nếu gửi phải `>= startDate` |
+| `endDate` | ❌ | Ngày kết thúc kiểm kê; khi gửi yêu cầu/submit/confirm phải `>= startDate` |
 | `description` | ❌ | Ghi chú phiếu |
 | `assignedUserId` | ❌ | ID nhân viên được giao |
-| `sendToStaff` | ❌ | `true` → gán Staff, `false`/null → Manager tự nhập |
-| `details[].itemId` | ✅ | ID hàng hóa |
+| `sendToStaff` | ❌ | `true` khi muốn tạo và gửi yêu cầu ngay; `false`/null → lưu nháp |
+| `details[].itemId` | ✅ khi gửi yêu cầu | ID hàng hóa; khi lưu nháp, dòng chưa có `itemId` sẽ không lưu xuống detail |
 | `details[].batchId` | Khuyến nghị ✅ | ID mã lô cần kiểm kê |
 | `details[].locationId` | Khuyến nghị ✅ | ID vị trí của lô |
 | `details[].bookquantity` | ❌ | Chỉ dùng fallback nếu không gửi `batchId`; với `batchId`, BE tự snapshot từ batch |
-| `details[].actualquantity` | ✅ nếu không gán Staff | Số đếm thực tế |
+| `details[].actualquantity` | ❌ khi lưu nháp / ✅ khi submit | Số đếm thực tế |
 | `details[].description` | ❌ | Ghi chú dòng |
 
 **Response:**
@@ -1628,6 +1637,17 @@ FE gửi từng dòng snapshot theo `itemId`, `batchId`, `locationId`. Không g�
 
 ---
 
+### 9.1.1 Gửi yêu cầu từ phiếu nháp
+
+**Endpoint:** `POST /api/inventory-audits/{id}/request`
+
+- Có thể gửi kèm body giống `PUT /api/inventory-audits/{id}` để BE lưu dữ liệu hiện tại rồi gửi yêu cầu.
+- Có thể không gửi body nếu phiếu `DRAFT` đã lưu đủ dữ liệu.
+- Khi gửi yêu cầu, BE validate đầy đủ: phiếu phải có `assignedUserId`, ngày bắt đầu/kết thúc hợp lệ, và ít nhất một dòng chi tiết có `itemId` hợp lệ.
+- Thành công: `docstatus = REQUESTED`, phiếu mới xuất hiện trong `/api/inventory-audits/assigned` của STAFF được giao.
+
+---
+
 ### 9.2 STAFF cập nhật kết quả kiểm kê
 
 **Endpoint:** `PUT /api/inventory-audits/{id}/assigned`
@@ -1636,7 +1656,9 @@ FE gửi từng dòng snapshot theo `itemId`, `batchId`, `locationId`. Không g�
 
 Khi STAFF cập nhật lần đầu, `REQUESTED` tự động chuyển sang `IN_PROGRESS`.
 
-`actualquantity` là **bắt buộc** cho mọi dòng. FE nên gửi `details[].id` lấy từ response chi tiết phiếu; nếu không gửi `id`, phải gửi đủ `itemId + batchId + locationId` để BE khớp với snapshot.
+Khi STAFF bấm lưu nháp/cập nhật, `actualquantity` có thể còn thiếu và BE sẽ lưu các dòng gửi lên, chuyển `REQUESTED → IN_PROGRESS` ở lần cập nhật đầu. Khi STAFF bấm `submit`, BE mới bắt buộc mọi dòng có `actualquantity`.
+
+FE nên gửi `details[].id` lấy từ response chi tiết phiếu; nếu không gửi `id`, phải gửi đủ `itemId + batchId + locationId` để BE khớp với snapshot.
 
 ```json
 {

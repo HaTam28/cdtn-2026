@@ -234,9 +234,9 @@ export default function AuditsPage() {
     const filtered = useMemo(() => {
         let list = audits;
         if (activeTab !== "Tất cả") {
-            const st = TAB_STATUS[activeTab];
+            const st = TAB_STATUS[activeTab] || [];
             list = list.filter((r) => {
-                return getStatusForAudit(r) === st;
+                return st.includes(getStatusForAudit(r));
             });
         }
         if (search.trim()) {

@@ -2,14 +2,11 @@ package hoshimoto.cdtn.dto.request;
 
 import java.math.BigDecimal;
 
-import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 @Data
 public class GoodsReceiptDetailRequest {
 
-    @NotNull(message = "itemId không được để trống")
     private Long itemId;
 
     /** ID vị trí được chọn (người dùng chọn từ danh sách gợi ý) */
@@ -18,8 +15,6 @@ public class GoodsReceiptDetailRequest {
     /** Existing batch selected by FE; required for ADJUSTMENT receipts from audits. */
     private Long batchId;
 
-    @NotNull(message = "Số lượng không được để trống")
-    @DecimalMin(value = "0.0001", message = "Số lượng phải lớn hơn 0")
     private BigDecimal quantity;
 
     private BigDecimal unitprice;

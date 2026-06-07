@@ -39,6 +39,12 @@ export const updateAudit = async (id, body) => {
     return res.data;
 };
 
+/** POST /api/inventory-audits/{id}/request — Gửi yêu cầu từ phiếu DRAFT */
+export const requestAudit = async (id, body) => {
+    const res = await axiosInstance.post(`${BASE}/${id}/request`, body);
+    return res.data;
+};
+
 /** POST /api/inventory-audits/{id}/confirm */
 export const confirmAudit = async (id) => {
     const res = await axiosInstance.post(`${BASE}/${id}/confirm`);

@@ -3,13 +3,11 @@ package hoshimoto.cdtn.dto.request;
 import java.math.BigDecimal;
 
 import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.NotNull;
 
 public class InventoryAuditDetailRequest {
 
     private Long id;
 
-    @NotNull(message = "itemId is required")
     private Long itemId;
 
     private Long batchId;

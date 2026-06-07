@@ -17,6 +17,7 @@ public interface GoodsReceiptDetailRepository extends JpaRepository<GoodsReceipt
             from GoodsReceiptDetail d
             where d.inventoryAuditDetailId = :auditDetailId
               and (:receiptId is null or d.goodsReceipt.id <> :receiptId)
+              and d.goodsReceipt.docstatus <> hoshimoto.cdtn.entity.Enum.DocStatus.DRAFT
               and d.goodsReceipt.docstatus <> hoshimoto.cdtn.entity.Enum.DocStatus.CANCELLED
               and d.goodsReceipt.docstatus <> hoshimoto.cdtn.entity.Enum.DocStatus.REJECTED
             """)

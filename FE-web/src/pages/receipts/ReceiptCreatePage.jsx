@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import "../../styles/shared.css";
 import "./receipts.css";
-import { createReceipt, getAvailableLocations, getAllReceipts } from "../../api/receiptApi";
+import { confirmReceipt, createReceipt, getAvailableLocations, getAllReceipts, getReceiptById, updateReceipt } from "../../api/receiptApi";
 import { getAuditById } from "../../api/auditApi";
 import { getAllCustomers } from "../../api/customerApi";
 import { getAllItems } from "../../api/itemApi";
@@ -379,6 +379,7 @@ export default function ReceiptCreatePage() {
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams] = useSearchParams();
+    const editId = searchParams.get("id");
 
     const { hasDraft, draftSavedAt, saveDraft, loadDraft, clearDraft } = useDraft(DRAFT_KEY);
     const [showDraftBanner, setShowDraftBanner] = useState(false);
@@ -429,13 +430,88 @@ export default function ReceiptCreatePage() {
             const [cList, iList, rList] = await Promise.all([getAllCustomers(), getAllItems(), getAllReceipts()]);
             setCustomers(cList);
             setItems(iList);
-            setForm((prev) => ({
-                ...prev,
-                docno: prev.docno || buildNextDocno("PN", rList),
-            }));
+            if (!editId) {
+                setForm((prev) => ({
+                    ...prev,
+                    docno: prev.docno || buildNextDocno("PN", rList),
+                }));
+            }
         } catch { /* non-blocking */ } finally { setLoadingData(false); }
-    }, []);
+    }, [editId]);
     useEffect(() => { loadData(); }, [loadData]);
+
+    useEffect(() => {
+        if (!editId) return;
+        const loadDraft = async () => {
+            setLoadingData(true);
+            try {
+                const draft = await getReceiptById(editId);
+                if (draft) {
+                    const toDateOnly = (val) => (val ? String(val).slice(0, 10) : "");
+                    setForm({
+                        date: toDateOnly(draft.docDate),
+                        docno: draft.docno || "",
+                        customerId: String(draft.customerId || draft.supplierId || ""),
+                        address: draft.address || "",
+                        description: draft.description || "",
+                        docType: draft.docType || "NORMAL"
+                    });
+                    
+                    setInvoice({
+                        date: toDateOnly(draft.invoiceDate),
+                        taxcode: draft.taxcode || draft.customerTaxcode || "",
+                        number: draft.invoiceNo || draft.invoiceNumber || "",
+                        supplierId: String(draft.supplierId || draft.customerId || "")
+                    });
+                    
+                    setDateDisplay({
+                        docDate: formatDateForDisplay(toDateOnly(draft.docDate)),
+                        invoiceDate: formatDateForDisplay(toDateOnly(draft.invoiceDate))
+                    });
+
+                    // Group details by itemId
+                    const grouped = {};
+                    (draft.details || []).forEach((d) => {
+                        const key = String(d.itemId);
+                        if (!grouped[key]) {
+                            grouped[key] = {
+                                _id: ++_rowKey,
+                                itemId: String(d.itemId),
+                                itemcode: d.itemcode || "",
+                                itemname: d.itemname || "",
+                                unitof: d.unitof || "",
+                                quantity: 0,
+                                price: d.unitprice != null ? String(d.unitprice) : "",
+                                nameBatch: d.batchCode || d.nameBatch || "L",
+                                batchId: d.batchId || "",
+                                sourceBatchCode: d.batchCode || "",
+                                inventoryAuditDetailId: d.inventoryAuditDetailId || "",
+                                selectedLocations: []
+                            };
+                        }
+                        grouped[key].quantity += Number(d.quantity || 0);
+                        grouped[key].selectedLocations.push({
+                            locationId: d.locationId,
+                            locationcode: d.locationcode || String(d.locationId),
+                            allocQty: Number(d.quantity || 0)
+                        });
+                    });
+
+                    const rowsFromReceipt = Object.values(grouped).map(r => ({
+                        ...r,
+                        quantity: String(r.quantity)
+                    }));
+                    
+                    setRows(rowsFromReceipt.length > 0 ? rowsFromReceipt : [newRow()]);
+                }
+            } catch (err) {
+                showToast("error", "Không thể tải chi tiết phiếu nhập nháp.");
+            } finally {
+                setLoadingData(false);
+            }
+        };
+        loadDraft();
+    }, [editId]);
 
     useEffect(() => {
         const paramType = searchParams.get("docType");
@@ -565,7 +641,7 @@ export default function ReceiptCreatePage() {
     }, [searchParams, prefilledFromAudit]);
 
     const user = JSON.parse(localStorage.getItem("user") || "{}");
-    const isManager = user?.role && user.role !== "STAFF";
+    const isManager = user?.role && !["STAFF", "NV"].includes(user.role);
     const isAdjustment = form.docType === "ADJUSTMENT";
 
     const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3500); };
@@ -613,7 +689,7 @@ export default function ReceiptCreatePage() {
     };
 
     const handleCustomerChange = (customerId) => {
-        const found = customers.find((c) => String(c.id) === String(customerId));
+        const found = supplierOptions.find((c) => String(c.id) === String(customerId));
         setForm((prev) => ({ ...prev, customerId, address: found?.address || "" }));
         if (found) setInvoice((prev) => ({ ...prev, taxcode: found.taxcode || "", supplierId: customerId }));
     };
@@ -693,6 +769,40 @@ export default function ReceiptCreatePage() {
 
     const totalAmount = rows.reduce((sum, r) => sum + (Number(r.quantity) || 0) * (Number(r.price) || 0), 0);
 
+    const buildDetailsPayload = (sourceRows = rows) => sourceRows.flatMap((r) => {
+        if (!r.itemId) return [];
+        return (r.selectedLocations || [])
+            .filter((loc) => loc.locationId && Number(loc.allocQty) > 0)
+            .map((loc) => ({
+                itemId: Number(r.itemId),
+                locationId: Number(loc.locationId),
+                quantity: Number(loc.allocQty),
+                unitprice: Number(r.price) || 0,
+                ...(isAdjustment && r.batchId ? { batchId: Number(r.batchId) } : {}),
+                ...(isAdjustment && r.inventoryAuditDetailId ? { inventoryAuditDetailId: Number(r.inventoryAuditDetailId) } : {}),
+            }));
+    });
+
+    const buildReceiptPayload = (details = buildDetailsPayload()) => {
+        const adjAuditId = searchParams.get("auditId");
+        const payload = {
+            docno: form.docno.trim(),
+            docDate: form.date,
+            description: form.description.trim(),
+            doctype: form.docType,
+            ...(adjAuditId ? { inventoryAuditId: Number(adjAuditId) } : {}),
+            details,
+        };
+        if (!isAdjustment) {
+            payload.customerId = form.customerId ? Number(form.customerId) : undefined;
+            payload.invoiceDate = invoice.date || undefined;
+            payload.taxcode = invoice.taxcode || undefined;
+            payload.invoiceNumber = invoice.number || undefined;
+            payload.supplierId = invoice.supplierId ? Number(invoice.supplierId) : undefined;
+        }
+        return payload;
+    };
+
     const validateAdjustmentCapacity = async (targetRows = rows) => {
         const allocationsByItem = new Map();
         targetRows.forEach((row) => {
@@ -750,54 +860,49 @@ export default function ReceiptCreatePage() {
             if (isAdjustment && !r.inventoryAuditDetailId) { showToast("error", `Dòng ${i + 1}: Thiếu liên kết chi tiết kiểm kê.`); return; }
         }
         if (isAdjustment && !(await validateAdjustmentCapacity())) return;
-        const details = rows.flatMap((r) =>
-            r.selectedLocations.map((loc) => ({
-                itemId: Number(r.itemId),
-                locationId: Number(loc.locationId),
-                quantity: Number(loc.allocQty),
-                unitprice: Number(r.price),
-                ...(isAdjustment && r.batchId ? { batchId: Number(r.batchId) } : {}),
-                ...(isAdjustment && r.inventoryAuditDetailId ? { inventoryAuditDetailId: Number(r.inventoryAuditDetailId) } : {}),
-            }))
-        );
+        const details = buildDetailsPayload();
         setSaving(true);
         const adjAuditId = searchParams.get("auditId");
         const adjAuditDetailId = searchParams.get("auditDetailId");
         try {
-            const payload = {
-                docno: form.docno.trim(),
-                docDate: form.date,
-                description: form.description.trim(),
-                doctype: form.docType,
-                docstatus: isManager ? "CONFIRMED" : "DRAFT",
-                ...(adjAuditId ? { inventoryAuditId: Number(adjAuditId) } : {}),
-                details,
-            };
-            if (!isAdjustment) {
-                payload.customerId = Number(form.customerId);
-                payload.invoiceDate = invoice.date || undefined;
-                payload.taxcode = invoice.taxcode || undefined;
-                payload.invoiceNumber = invoice.number || undefined;
-                payload.supplierId = invoice.supplierId ? Number(invoice.supplierId) : undefined;
-            }
-            const result = await createReceipt(payload);
+            const payload = buildReceiptPayload(details);
+            const result = editId ? await updateReceipt(editId, payload) : await createReceipt(payload);
             if (result?.success) {
                 clearDraft(); // Xóa nháp local sau khi tạo phiếu thành công
                 showToast("success", "Tạo phiếu nhập kho thành công!");
                 // Lưu ID phiếu để AuditDetailPage kiểm tra status sau này
-                if (adjAuditId && form.docType === "ADJUSTMENT" && result?.data?.id) {
-                    localStorage.setItem(`audit_adj_receipt_id_${adjAuditId}`, String(result.data.id));
+                if (adjAuditId && form.docType === "ADJUSTMENT" && newId) {
+                    localStorage.setItem(`audit_adj_receipt_id_${adjAuditId}`, String(newId));
                     if (adjAuditDetailId) {
                         localStorage.setItem(`audit_adj_receipt_detail_${adjAuditId}_${adjAuditDetailId}`, "1");
-                        localStorage.setItem(`audit_adj_receipt_detail_doc_${adjAuditId}_${adjAuditDetailId}`, String(result.data.id));
+                        localStorage.setItem(`audit_adj_receipt_detail_doc_${adjAuditId}_${adjAuditDetailId}`, String(newId));
                     }
                 }
-                setTimeout(() => navigate("/receipts"), 1200);
+                setTimeout(() => navigate(newId ? `/receipts/${newId}` : "/receipts"), 1200);
             } else {
-                showToast("error", result?.message || "Tạo phiếu thất bại.");
+                showToast("error", result?.message || (editId ? "Cập nhật phiếu thất bại." : "Tạo phiếu thất bại."));
             }
         } catch (err) {
-            showToast("error", err?.response?.data?.message || "Có lỗi xảy ra khi tạo phiếu nhập kho.");
+            showToast("error", err?.response?.data?.message || (editId ? "Có lỗi xảy ra khi cập nhật phiếu nhập kho." : "Có lỗi xảy ra khi tạo phiếu nhập kho."));
+        } finally { setSaving(false); }
+    };
+
+    const handleSaveDraft = async () => {
+        if (!form.date) { showToast("error", "Vui lòng nhập ngày theo định dạng dd/mm/yyyy."); return; }
+        if (!form.docno.trim()) { showToast("error", "Vui lòng nhập số chứng từ."); return; }
+        setSaving(true);
+        try {
+            const payload = buildReceiptPayload();
+            const result = editId ? await updateReceipt(editId, payload) : await createReceipt(payload);
+            if (result?.success) {
+                showToast("success", editId ? "Đã cập nhật phiếu nhập kho." : "Đã lưu nháp phiếu nhập kho.");
+                const newId = editId || result?.data?.id;
+                setTimeout(() => navigate(newId ? `/receipts/${newId}` : "/receipts"), 900);
+            } else {
+                showToast("error", result?.message || (editId ? "Cập nhật nháp thất bại." : "Lưu nháp thất bại."));
+            }
+        } catch (err) {
+            showToast("error", err?.response?.data?.message || (editId ? "Có lỗi xảy ra khi cập nhật nháp phiếu nhập kho." : "Có lỗi xảy ra khi lưu nháp phiếu nhập kho."));
         } finally { setSaving(false); }
     };
 
@@ -813,7 +918,7 @@ export default function ReceiptCreatePage() {
                             Chứng từ &rsaquo;{" "}
                             <span className="sp-breadcrumb-link" onClick={() => navigate("/receipts")}>Phiếu nhập kho</span>
                             {" "}&rsaquo;{" "}
-                            <span className="sp-breadcrumb-active">Thêm mới phiếu nhập kho</span>
+                            <span className="sp-breadcrumb-active">{editId ? "Cập nhật phiếu nhập kho" : "Thêm mới phiếu nhập kho"}</span>
                         </div>
                     </div>
                     <TopbarRight />
@@ -1041,7 +1146,7 @@ export default function ReceiptCreatePage() {
                                         <label className="rc-form-label">Tên NCC</label>
                                         <select className="rc-form-select" value={invoice.supplierId} onChange={(e) => handleInvoiceChange("supplierId", e.target.value)}>
                                             <option value="">Chọn tên nhà cung cấp</option>
-                                            {customers.filter((c) => c.issupplier).map((c) => (
+                                            {supplierOptions.map((c) => (
                                                 <option key={c.id} value={c.id}>{c.customername}</option>
                                             ))}
                                         </select>
@@ -1070,7 +1175,7 @@ export default function ReceiptCreatePage() {
                                 Lưu nháp
                             </button>
                             <button className="sp-btn-primary" onClick={handleSave} disabled={saving}>
-                                {saving ? "Đang lưu..." : "Lưu"}
+                                {saving ? "Đang lưu..." : isManager ? "Lưu và xác nhận" : "Lưu phiếu"}
                             </button>
                         </div>
                     </div>

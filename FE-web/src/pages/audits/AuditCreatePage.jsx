@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import "../../styles/shared.css";
 import "../receipts/receipts.css";
 import "./audits.css";
-import { createAudit, getAllAudits, getAuditStockRows } from "../../api/auditApi";
+import { createAudit, getAllAudits, getAuditStockRows, getAuditById, updateAudit } from "../../api/auditApi";
 import { getAllEmployees } from "../../api/employeeApi";
 import TopbarRight from "../../components/TopbarRight";
 import notify from "../../utils/notify";
@@ -193,6 +193,8 @@ function BatchPickerModal({ open, onClose, onConfirm, options }) {
 export default function AuditCreatePage() {
     const navigate = useNavigate();
     const location = useLocation();
+    const [searchParams] = useSearchParams();
+    const editId = searchParams.get("id");
     const user = JSON.parse(localStorage.getItem("user") || "{}");
     const isStaff = user?.role === "STAFF" || user?.role === "NV";
 
@@ -284,29 +286,94 @@ export default function AuditCreatePage() {
             const selectableStockRows = makeRowsFromStockRows(stockRows);
             setEmployees(employeeList || []);
             setStockOptions(selectableStockRows);
-            setRows(selectableStockRows.length > 0 ? [newEmptyAuditRow()] : []);
-            const clone = location.state?.clone;
-            const nextStartDate = toInputDate(clone?.startDate || clone?.auditStartDate || clone?.fromDate || clone?.docDate);
-            const nextEndDate = toInputDate(clone?.endDate || clone?.auditEndDate || clone?.toDate || clone?.dueDate || clone?.docDate);
-            setForm((prev) => ({
-                ...prev,
-                docno: prev.docno || buildNextDocno("PKK", auditList),
-                description: clone?.description || prev.description,
-                startDate: nextStartDate || prev.startDate,
-                endDate: nextEndDate || prev.endDate,
-            }));
-            setDateDisplay((prev) => ({
-                startDate: formatDateForDisplay(nextStartDate || form.startDate || prev.startDate),
-                endDate: formatDateForDisplay(nextEndDate || form.endDate || prev.endDate),
-            }));
+            if (!editId) {
+                setRows(selectableStockRows.length > 0 ? [newEmptyAuditRow()] : []);
+                const clone = location.state?.clone;
+                const nextStartDate = toInputDate(clone?.startDate || clone?.auditStartDate || clone?.fromDate || clone?.docDate);
+                const nextEndDate = toInputDate(clone?.endDate || clone?.auditEndDate || clone?.toDate || clone?.dueDate || clone?.docDate);
+                setForm((prev) => ({
+                    ...prev,
+                    docno: prev.docno || buildNextDocno("PKK", auditList),
+                    description: clone?.description || prev.description,
+                    startDate: nextStartDate || prev.startDate,
+                    endDate: nextEndDate || prev.endDate,
+                }));
+                setDateDisplay((prev) => ({
+                    startDate: formatDateForDisplay(nextStartDate || form.startDate || prev.startDate),
+                    endDate: formatDateForDisplay(nextEndDate || form.endDate || prev.endDate),
+                }));
+            }
         } catch {
             notify("Không thể tải dữ liệu tồn kho theo lô.", { type: "error" });
         } finally {
             setLoadingData(false);
         }
-    }, [location.state]);
+    }, [location.state, editId]);
 
     useEffect(() => { loadData(); }, [loadData]);
+
+    useEffect(() => {
+        if (!editId || stockOptions.length === 0) return;
+        const loadDraft = async () => {
+            setLoadingData(true);
+            try {
+                const draft = await getAuditById(editId);
+                if (draft) {
+                    const toDateOnly = (val) => (val ? String(val).slice(0, 10) : "");
+                    setForm({
+                        startDate: toDateOnly(getAuditStartDate(draft)),
+                        endDate: toDateOnly(getAuditEndDate(draft)),
+                        docno: draft.docno || "",
+                        description: draft.description || "",
+                        assigneeId: String(draft.assignedUserId || draft.assignedToUserId || draft.assignedToId || "")
+                    });
+                    
+                    setDateDisplay({
+                        startDate: formatDateForDisplay(toDateOnly(getAuditStartDate(draft))),
+                        endDate: formatDateForDisplay(toDateOnly(getAuditEndDate(draft)))
+                    });
+
+                    const grouped = {};
+                    let currentKey = 0;
+                    const details = normalizeAuditDetails(draft.details);
+                    details.forEach((d) => {
+                        const key = String(d.itemId);
+                        if (!grouped[key]) {
+                            grouped[key] = {
+                                _id: `audit-row-${++currentKey}`,
+                                selectedItemId: String(d.itemId),
+                                itemId: d.itemId,
+                                itemcode: d.itemcode || "",
+                                itemname: d.itemname || "",
+                                unitof: d.unitof || "",
+                                batchEntries: []
+                            };
+                        }
+                        const foundStockOption = stockOptions.find(opt => String(opt.batchId) === String(d.batchId) && String(opt.locationId) === String(d.locationId));
+                        const selectedStockId = foundStockOption ? foundStockOption._id : `${d.batchId ?? ""}-${d.locationId ?? ""}-0`;
+                        grouped[key].batchEntries.push({
+                            _id: `audit-batch-${++currentKey}`,
+                            selectedStockId,
+                            batchId: d.batchId,
+                            batchCode: d.batchCode || "",
+                            locationId: d.locationId,
+                            locationcode: d.locationcode || d.locationname || "",
+                            locationname: d.locationname || "",
+                            bookquantity: d.bookquantity || 0
+                        });
+                    });
+
+                    const rowsFromAudit = Object.values(grouped);
+                    setRows(rowsFromAudit.length > 0 ? rowsFromAudit : [newEmptyAuditRow()]);
+                }
+            } catch (err) {
+                notify("Không thể tải chi tiết phiếu kiểm kê nháp.", { type: "error" });
+            } finally {
+                setLoadingData(false);
+            }
+        };
+        loadDraft();
+    }, [editId, stockOptions]);
 
     useEffect(() => {
         if (isStaff) navigate("/audits/requests");
@@ -462,13 +529,15 @@ export default function AuditCreatePage() {
         }, includeActual))
     ));
 
-    const buildPayload = ({ sendToStaff = false } = {}) => ({
-        docDate: form.startDate,
-        startDate: form.startDate,
-        endDate: form.endDate,
+    const buildPayload = ({ sendToStaff = false, draft = false } = {}) => ({
+        docDate: form.startDate || todayStr(),
+        startDate: form.startDate || todayStr(),
+        endDate: form.endDate || form.startDate || todayStr(),
         description: form.description.trim() || null,
+        ...(draft ? { docstatus: "DRAFT" } : {}),
         details: flattenRowsForPayload(false),
-        ...(sendToStaff ? { assignedUserId: Number(form.assigneeId), sendToStaff: true } : {}),
+        assignedUserId: form.assigneeId ? Number(form.assigneeId) : null,
+        ...(sendToStaff ? { sendToStaff: true } : {}),
     });
 
 
@@ -481,17 +550,18 @@ export default function AuditCreatePage() {
         }
         setSaving(true);
         try {
-            const result = await createAudit(buildPayload({ sendToStaff: true }));
+            const payload = buildPayload({ sendToStaff: true });
+            const result = editId ? await updateAudit(editId, payload) : await createAudit(payload);
             if (result?.success) {
                 clearDraft(); // Xóa nháp local khi gửi yêu cầu thành công
                 notify("Đã gửi yêu cầu kiểm kê cho nhân viên.", { type: "success" });
                 const newId = result?.data?.id;
                 setTimeout(() => navigate(newId ? `/audits/${newId}` : "/audits"), 800);
             } else {
-                notify(result?.message || "Gửi yêu cầu thất bại.", { type: "error" });
+                notify(result?.message || (editId ? "Cập nhật và gửi yêu cầu thất bại." : "Gửi yêu cầu thất bại."), { type: "error" });
             }
         } catch (err) {
-            notify(err?.response?.data?.message || "Có lỗi xảy ra khi gửi yêu cầu.", { type: "error" });
+            notify(err?.response?.data?.message || (editId ? "Có lỗi xảy ra khi cập nhật và gửi yêu cầu." : "Có lỗi xảy ra khi gửi yêu cầu."), { type: "error" });
         } finally {
             setSaving(false);
         }
@@ -552,14 +622,14 @@ export default function AuditCreatePage() {
                         Chứng từ &rsaquo;{" "}
                         <span className="sp-breadcrumb-link" onClick={() => navigate("/audits")}>Kiểm kê hàng tồn kho</span>
                         {" "}&rsaquo;{" "}
-                        <span className="sp-breadcrumb-active">Thêm mới phiếu kiểm kê</span>
+                        <span className="sp-breadcrumb-active">{editId ? "Cập nhật phiếu kiểm kê" : "Thêm mới phiếu kiểm kê"}</span>
                     </div>
                 </div>
                 <TopbarRight />
             </div>
 
             <div className="sp-content">
-                <h1 className="sp-title">Phiếu kiểm kê hàng tồn kho</h1>
+                <h1 className="sp-title">{editId ? "Cập nhật phiếu kiểm kê" : "Phiếu kiểm kê hàng tồn kho"}</h1>
 
                 {showDraftBanner && (
                     <DraftBanner

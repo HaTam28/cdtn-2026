@@ -12,10 +12,10 @@ import { useDraft, formatDraftTime } from "../../utils/useDraft";
 const ISSUE_DRAFT_KEY = "draft_issue_create";
 
 const STATUS_LABELS = {
-    DRAFT: "Chờ duyệt",
-    CONFIRMED: "Đã duyệt",
-    CANCELLED: "Hủy",
-    REJECTED: "Đã từ chối",
+    DRAFT: "Nháp",
+    CONFIRMED: "Đã xác nhận",
+    CANCELLED: "Đã hủy",
+    REJECTED: "Bị từ chối",
 };
 const STATUS_BADGE = {
     DRAFT: "rc-badge rc-badge-draft",
@@ -336,7 +336,7 @@ export default function IssuesPage() {
                             {activeTab !== "Nháp" && !loading && !error && pageData.map((r) => (
                                 <tr
                                     key={r.id}
-                                    className={`sp-row-clickable${selected.has(r.id) ? " sp-row-selected" : ""}`}
+                                    className={`sp-row-clickable${r.docstatus === "DRAFT" ? " rc-row-draft" : ""}${selected.has(r.id) ? " sp-row-selected" : ""}`}
                                     onClick={() => navigate(`/issues/${r.id}`)}
                                 >
                                     <td className="sp-td-cb" onClick={(e) => { e.stopPropagation(); toggleOne(r.id); }}>
