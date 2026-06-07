@@ -840,7 +840,7 @@ export default function IssueCreatePage() {
                                 <label className="rc-form-label">Đối tượng</label>
                                 <select className="rc-form-select rc-form-full" value={form.customerId} onChange={(e) => handleCustomerChange(e.target.value)} disabled={loadingData}>
                                     <option value="">Chọn đối tượng</option>
-                                    {customers.map((c) => (
+                                    {customers.filter((c) => c.iscustomer).map((c) => (
                                         <option key={c.id} value={c.id}>{c.customercode ? `${c.customercode}: ` : ""}{c.customername}</option>
                                     ))}
                                 </select>
@@ -868,11 +868,10 @@ export default function IssueCreatePage() {
                                     <tr>
                                         <th className="rc-td-stt" style={{ width: "4%" }}>STT</th>
                                         <th style={{ width: "9%" }}>Mã hàng</th>
-                                        <th style={{ width: "30%" }}>Tên vật tư hàng hóa</th>
+                                        <th style={{ width: "40%" }}>Tên vật tư hàng hóa</th>
                                         <th style={{ width: "6%" }}>ĐVT</th>
                                         <th style={{ width: "8%", textAlign: "right" }}>SL yêu cầu</th>
                                         {!isAdjustment && <th style={{ width: "9%", textAlign: "right" }}>Tồn hiện tại</th>}
-                                        <th style={{ width: "10%", textAlign: "right" }}>Thành tiền</th>
                                         <th style={{ width: "4%" }}></th>
                                     </tr>
                                 </thead>
@@ -885,8 +884,7 @@ export default function IssueCreatePage() {
 
                                         return (
                                             <React.Fragment key={row._id}>
-                                                {/* ── Main item row ── */}
-                                                <tr>
+                                                <tr style={{ background: "#f5faf7" }}>
                                                     <td className="rc-td-stt">{idx + 1}</td>
                                                     <td>
                                                         <select
@@ -932,10 +930,7 @@ export default function IssueCreatePage() {
                                                                         : (stockByItem[row.itemId]?.total ?? 0)}
                                                         </td>
                                                     )}
-                                                    <td className="rc-td-num">
-                                                        {formatMoney((Number(row.quantity) || 0) * (Number(row.price) || 0))}
-                                                    </td>
-                                                    <td>
+                                                    <td style={{ textAlign: "center", width: "4%" }}>
                                                         {rows.length > 1 && (
                                                             <button className="rc-del-btn" onClick={() => handleRemoveRow(idx)} type="button" title="Xóa dòng">
                                                                 <IconTrash />
@@ -946,7 +941,7 @@ export default function IssueCreatePage() {
 
                                                 {/* ── Batch entries sub-row ── */}
                                                 <tr>
-                                                    <td colSpan={isAdjustment ? 7 : 8} style={{ padding: "0 0 10px 32px", background: "#fafcfb" }}>
+                                                    <td colSpan={isAdjustment ? 6 : 7} style={{ padding: "0 0 10px 32px", background: "#fafcfb" }}>
                                                         <div style={{ borderLeft: "3px solid #c6dfd0", paddingLeft: 12, paddingTop: 6 }}>
 
                                                             {/* Batch entries table */}
@@ -1002,9 +997,9 @@ export default function IssueCreatePage() {
                                                                                     <td style={{ padding: "5px 8px", textAlign: "center" }}>
                                                                                         <button
                                                                                             type="button"
+                                                                                            className="rc-del-btn"
                                                                                             onClick={() => removeBatchEntry(idx, eIdx)}
                                                                                             title="Xóa mã lô"
-                                                                                            style={{ background: "none", border: "none", cursor: "pointer", color: "#e57373", padding: 2 }}
                                                                                         >
                                                                                             <IconTrash />
                                                                                         </button>
@@ -1055,7 +1050,7 @@ export default function IssueCreatePage() {
                                         );
                                     })}
                                     <tr className="rc-add-row" onClick={handleAddRow}>
-                                        <td colSpan={isAdjustment ? 7 : 8}>
+                                        <td colSpan={isAdjustment ? 6 : 7}>
                                             <button className="rc-add-row-btn" type="button">
                                                 <IconPlus size={13} /> Thêm mới dữ liệu
                                             </button>
@@ -1063,7 +1058,7 @@ export default function IssueCreatePage() {
                                     </tr>
                                     {totalAmount > 0 && (
                                         <tr className="rc-total-row">
-                                            <td colSpan={isAdjustment ? 5 : 6} style={{ textAlign: "right", paddingRight: 12 }}>Tổng cộng</td>
+                                            <td colSpan={isAdjustment ? 4 : 5} style={{ textAlign: "right", paddingRight: 12 }}>Tổng cộng</td>
                                             <td className="rc-td-num" style={{ textAlign: "right" }}>{formatMoney(totalAmount)}</td>
                                             <td />
                                         </tr>

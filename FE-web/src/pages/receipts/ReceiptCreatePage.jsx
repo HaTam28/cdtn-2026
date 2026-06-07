@@ -877,7 +877,7 @@ export default function ReceiptCreatePage() {
                                 <label className="rc-form-label">Đối tượng<span className="rc-required">*</span></label>
                                 <select className="rc-form-select rc-form-full" value={form.customerId} onChange={(e) => handleCustomerChange(e.target.value)} disabled={loadingData}>
                                     <option value="">Chọn đối tượng</option>
-                                    {customers.map((c) => (
+                                    {customers.filter((c) => c.issupplier).map((c) => (
                                         <option key={c.id} value={c.id}>{c.customercode ? `${c.customercode}: ` : ""}{c.customername}</option>
                                     ))}
                                 </select>
@@ -920,7 +920,7 @@ export default function ReceiptCreatePage() {
                                         const amount = (Number(row.quantity) || 0) * (Number(row.price) || 0);
                                         const locLabel = row.selectedLocations.map((l) => l.locationcode).join(" / ");
                                         return (
-                                            <tr key={row._id}>
+                                            <tr key={row._id} style={{ background: "#f5faf7" }}>
                                                 <td className="rc-td-stt">{idx + 1}</td>
                                                 <td>
                                                     <select className="rc-td-select" value={row.itemId} onChange={(e) => handleRowChange(idx, "itemId", e.target.value)}>
@@ -970,7 +970,7 @@ export default function ReceiptCreatePage() {
                                                 <td className="rc-td-num" style={{ textAlign: "right", fontWeight: 500 }}>
                                                     {amount > 0 ? formatMoney(amount) : ""}
                                                 </td>
-                                                <td>
+                                                <td style={{ textAlign: "center", width: 32 }}>
                                                     {rows.length > 1 && (
                                                         <button className="rc-del-btn" onClick={() => handleRemoveRow(idx)} title="Xóa dòng"><IconTrash /></button>
                                                     )}
