@@ -1285,6 +1285,8 @@ Response (200) example:
 | 6 | Lô và vị trí khớp với dòng kiểm kê/stock hiện có | `"Mã lô không khớp với chi tiết phiếu kiểm kê"` / `"Vị trí không khớp với mã lô"` |
 | 7 | Dòng kiểm kê chưa được tạo phiếu điều chỉnh khác | `"Chi tiết phiếu kiểm kê đã được tạo phiếu điều chỉnh"` |
 
+ERROR
+
 **Response (ví dụ):**
 ```json
 {
