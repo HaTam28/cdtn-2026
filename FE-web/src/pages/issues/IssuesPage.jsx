@@ -7,6 +7,9 @@ import { getAllIssues } from "../../api/issueApi";
 import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
+import { useDraft, formatDraftTime } from "../../utils/useDraft";
+
+const ISSUE_DRAFT_KEY = "draft_issue_create";
 
 const STATUS_LABELS = {
     DRAFT: "Nháp",
@@ -20,8 +23,8 @@ const STATUS_BADGE = {
     CANCELLED: "rc-badge rc-badge-cancelled",
     REJECTED: "rc-badge rc-badge-rejected",
 };
-const TABS = ["Tất cả", "Nháp", "Đã xác nhận", "Bị từ chối"];
-const TAB_STATUS = { "Nháp": "DRAFT", "Đã xác nhận": "CONFIRMED", "Bị từ chối": "REJECTED" };
+const TABS = ["Tất cả", "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Nháp"];
+const TAB_STATUS = { "Chờ duyệt": "DRAFT", "Đã duyệt": "CONFIRMED", "Đã từ chối": "REJECTED" };
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
 function formatDate(str) {
@@ -102,6 +105,8 @@ export default function IssuesPage() {
     const [rowsPerPage, setRowsPerPage] = useState(15);
     const [selected, setSelected] = useState(new Set());
     const navigate = useNavigate();
+
+    const { hasDraft, draftSavedAt, loadDraft, clearDraft } = useDraft(ISSUE_DRAFT_KEY);
 
     const fetchIssues = useCallback(async () => {
         setLoading(true);
@@ -238,9 +243,12 @@ export default function IssuesPage() {
                     {TABS.map((tab) => (
                         <div
                             key={tab}
-                            className={`rc-tab${activeTab === tab ? " rc-tab-active" : ""}`}
+                            className={`rc-tab${activeTab === tab ? " rc-tab-active" : ""}${tab === "Nháp" ? " rc-tab-draft-local" : ""}`}
                             onClick={() => { setActiveTab(tab); setPage(1); }}
                         >
+                            {tab === "Nháp" && hasDraft && (
+                                <span className="rc-tab-draft-dot" />
+                            )}
                             {tab}
                         </div>
                     ))}
@@ -266,16 +274,66 @@ export default function IssuesPage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {loading && (
+                            {/* ── Tab Nháp (Khi không có nháp nào) ── */}
+                            {activeTab === "Nháp" && !hasDraft && (
+                                <tr><td colSpan={8} className="sp-status-row">
+                                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "24px 0" }}>
+                                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#c6dfd0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+                                        <span style={{ color: "#8ba392" }}>Chưa có nháp nào được lưu.</span>
+                                        <button className="sp-btn-primary" style={{ marginTop: 4 }} onClick={() => navigate("/issues/create")}>
+                                            Tạo phiếu xuất kho mới
+                                        </button>
+                                    </div>
+                                </td></tr>
+                            )}
+
+                            {/* ── Hàng Nháp local hiển thị ở cả tab Nháp và tab Tất cả ── */}
+                            {(activeTab === "Nháp" || activeTab === "Tất cả") && hasDraft && (() => {
+                                const draft = loadDraft();
+                                const draftForm = draft?.form || {};
+                                const draftRows = draft?.rows || [];
+                                const itemCount = draftRows.filter((r) => r.itemId).length;
+                                return (
+                                    <tr className="rc-draft-local-row">
+                                        <td className="sp-td-cb" />
+                                        <td className="sp-td-id" style={{ color: "#a16207" }}>
+                                            <span style={{ fontStyle: "italic", opacity: 0.7 }}>(Chưa có số)</span>
+                                        </td>
+                                        <td>{draftForm.date ? draftForm.date.split("-").reverse().join("/") : "—"}</td>
+                                        <td>{draftForm.customerId ? `ID: ${draftForm.customerId}` : "—"}</td>
+                                        <td style={{ textAlign: "right" }}>—</td>
+                                        <td style={{ color: "#8ba392", fontSize: "0.82rem" }}>
+                                            {draftSavedAt ? formatDraftTime(draftSavedAt) : ""}
+                                        </td>
+                                        <td>
+                                            <span className="rc-badge rc-badge-local-draft">⬥ Nháp</span>
+                                            {itemCount > 0 && <div style={{ fontSize: "0.78rem", color: "#a16207", marginTop: 3 }}>{itemCount} mặt hàng</div>}
+                                        </td>
+                                        <td className="sp-td-action">
+                                            <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+                                                <button className="sp-edit-btn" title="Tiếp tục nháp" style={{ color: "#a16207" }} onClick={() => navigate("/issues/create", { state: { resumeDraft: true } })}>
+                                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                                                </button>
+                                                <button className="sp-edit-btn" title="Xóa nháp" style={{ color: "#b91c1c" }} onClick={() => { clearDraft(); notify("Đã xóa nháp.", { type: "success" }); }}>
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4h6v2" /></svg>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })()}
+
+                            {/* ── Danh sách phiếu thực ── */}
+                            {activeTab !== "Nháp" && loading && (
                                 <tr><td colSpan={8} className="sp-status-row">Đang tải dữ liệu...</td></tr>
                             )}
-                            {!loading && error && (
+                            {activeTab !== "Nháp" && !loading && error && (
                                 <tr><td colSpan={8} className="sp-status-row sp-status-error">{error}</td></tr>
                             )}
-                            {!loading && !error && pageData.length === 0 && (
+                            {activeTab !== "Nháp" && !loading && !error && pageData.length === 0 && (
                                 <tr><td colSpan={8} className="sp-status-row">Không có phiếu xuất kho nào.</td></tr>
                             )}
-                            {!loading && !error && pageData.map((r) => (
+                            {activeTab !== "Nháp" && !loading && !error && pageData.map((r) => (
                                 <tr
                                     key={r.id}
                                     className={`sp-row-clickable${r.docstatus === "DRAFT" ? " rc-row-draft" : ""}${selected.has(r.id) ? " sp-row-selected" : ""}`}

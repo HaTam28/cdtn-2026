@@ -10,16 +10,18 @@ import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
 import { AUDIT_STATUS_BADGE, AUDIT_STATUS_LABELS, formatDisplayDate, getAuditEndDate, getAuditRowTone, getAuditStartDate, getAuditWorkflowStatus, normalizeAuditDetails, toNumber } from "./auditRowUtils";
+import { useDraft, formatDraftTime } from "../../utils/useDraft";
 
-const TABS = ["Tất cả", "Nháp", "Chờ kiểm kê", "Chờ duyệt", "Đã duyệt", "Bị từ chối", "Quá hạn"];
-const STAFF_TABS = ["Tất cả", "Chờ kiểm kê", "Chờ duyệt", "Đã duyệt", "Bị từ chối", "Quá hạn"];
+const AUDIT_DRAFT_KEY = "draft_audit_create";
+
+const TABS = ["Tất cả", "Chờ kiểm kê", "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Quá hạn", "Nháp"];
+const STAFF_TABS = ["Tất cả", "Chờ kiểm kê", "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Quá hạn", "Nháp"];
 const TAB_STATUS = {
-    "Nháp": ["DRAFT"],
-    "Chờ kiểm kê": ["REQUESTED", "IN_PROGRESS"],
-    "Chờ duyệt": ["SUBMITTED"],
-    "Đã duyệt": ["PENDING_PROCESS", "CONFIRMED", "PROCESSED", "APPROVED"],
-    "Bị từ chối": ["REJECTED"],
-    "Quá hạn": ["OVERDUE"],
+    "Chờ kiểm kê": "REQUESTED",
+    "Chờ duyệt": "SUBMITTED",
+    "Đã duyệt": "APPROVED",
+    "Đã từ chối": "REJECTED",
+    "Quá hạn": "OVERDUE",
 };
 const ROWS_OPTIONS = [10, 15, 20, 50];
 const APPROVED_AUDIT_STATUSES = new Set(["CONFIRMED", "PROCESSED"]);
@@ -136,6 +138,8 @@ export default function AuditsPage() {
     const [selected, setSelected] = useState(new Set());
     const [adjustmentDocs, setAdjustmentDocs] = useState([]);
     const navigate = useNavigate();
+
+    const { hasDraft, draftSavedAt, loadDraft, clearDraft } = useDraft(AUDIT_DRAFT_KEY);
 
     const getDetailRowsForStatus = useCallback((audit) => (
         normalizeAuditDetails(audit.details || []).map((d) => ({
@@ -324,9 +328,12 @@ export default function AuditsPage() {
                     {visibleTabs.map((tab) => (
                         <div
                             key={tab}
-                            className={`rc-tab${activeTab === tab ? " rc-tab-active" : ""}`}
+                            className={`rc-tab${activeTab === tab ? " rc-tab-active" : ""}${tab === "Nháp" ? " rc-tab-draft-local" : ""}`}
                             onClick={() => { setActiveTab(tab); setPage(1); }}
                         >
+                            {tab === "Nháp" && hasDraft && (
+                                <span className="rc-tab-draft-dot" />
+                            )}
                             {tab}
                         </div>
                     ))}
@@ -352,16 +359,68 @@ export default function AuditsPage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {loading && (
+                            {/* ── Tab Nháp (Khi không có nháp nào) ── */}
+                            {activeTab === "Nháp" && !hasDraft && (
+                                <tr><td colSpan={8} className="sp-status-row">
+                                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "24px 0" }}>
+                                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#c6dfd0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+                                        <span style={{ color: "#8ba392" }}>Chưa có nháp nào được lưu.</span>
+                                        {!isStaff && (
+                                            <button className="sp-btn-primary" style={{ marginTop: 4 }} onClick={() => navigate("/audits/create")}>
+                                                Tạo phiếu kiểm kê mới
+                                            </button>
+                                        )}
+                                    </div>
+                                </td></tr>
+                            )}
+
+                            {/* ── Hàng Nháp local hiển thị ở cả tab Nháp và tab Tất cả ── */}
+                            {(activeTab === "Nháp" || activeTab === "Tất cả") && hasDraft && (() => {
+                                const draft = loadDraft();
+                                const draftForm = draft?.form || {};
+                                const draftRows = draft?.rows || [];
+                                const itemCount = draftRows.filter((r) => r.itemId || r.selectedItemId).length;
+                                return (
+                                    <tr className="rc-draft-local-row">
+                                        <td className="sp-td-cb" />
+                                        <td className="sp-td-id" style={{ color: "#a16207" }}>
+                                            <span style={{ fontStyle: "italic", opacity: 0.7 }}>(Chưa có số)</span>
+                                        </td>
+                                        <td>{draftForm.startDate ? draftForm.startDate.split("-").reverse().join("/") : "—"}</td>
+                                        <td>{draftForm.endDate ? draftForm.endDate.split("-").reverse().join("/") : "—"}</td>
+                                        <td style={{ color: "#8ba392", fontSize: "0.82rem" }}>
+                                            {draftSavedAt ? formatDraftTime(draftSavedAt) : ""}
+                                        </td>
+                                        <td>—</td>
+                                        <td>
+                                            <span className="rc-badge rc-badge-local-draft">⬥ Nháp</span>
+                                            {itemCount > 0 && <div style={{ fontSize: "0.78rem", color: "#a16207", marginTop: 3 }}>{itemCount} vật tư</div>}
+                                        </td>
+                                        <td className="sp-td-action">
+                                            <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+                                                <button className="sp-edit-btn" title="Tiếp tục nháp" style={{ color: "#a16207" }} onClick={() => navigate("/audits/create", { state: { resumeDraft: true } })}>
+                                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                                                </button>
+                                                <button className="sp-edit-btn" title="Xóa nháp" style={{ color: "#b91c1c" }} onClick={() => { clearDraft(); notify("Đã xóa nháp.", { type: "success" }); }}>
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4h6v2" /></svg>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })()}
+
+                            {/* ── Danh sách phiếu thực ── */}
+                            {activeTab !== "Nháp" && loading && (
                                 <tr><td colSpan={8} className="sp-status-row">Đang tải dữ liệu...</td></tr>
                             )}
-                            {!loading && error && (
+                            {activeTab !== "Nháp" && !loading && error && (
                                 <tr><td colSpan={8} className="sp-status-row sp-status-error">{error}</td></tr>
                             )}
-                            {!loading && !error && pageData.length === 0 && (
+                            {activeTab !== "Nháp" && !loading && !error && pageData.length === 0 && (
                                 <tr><td colSpan={8} className="sp-status-row">{isStaff ? "Không có yêu cầu kiểm kê nào." : "Không có phiếu kiểm kê nào."}</td></tr>
                             )}
-                            {!loading && !error && pageData.map((r) => {
+                            {activeTab !== "Nháp" && !loading && !error && pageData.map((r) => {
                                 const detailRows = getDetailRowsForStatus(r);
                                 const pendingAdjustment = hasUnresolvedAdjustment(r, detailRows);
                                 const rowDisplayStatus = getStatusForAudit(r);

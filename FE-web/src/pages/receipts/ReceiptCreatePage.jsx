@@ -9,6 +9,10 @@ import { getAllItems } from "../../api/itemApi";
 import { getAllBatches } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
 import { formatDateForDisplay, normalizeDateDisplayInput, parseDisplayDateToIso } from "../../utils/dateInput";
+import { useDraft } from "../../utils/useDraft";
+import DraftBanner from "../../components/DraftBanner";
+
+const DRAFT_KEY = "draft_receipt_create";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 let _rowKey = 0;
@@ -377,6 +381,9 @@ export default function ReceiptCreatePage() {
     const [searchParams] = useSearchParams();
     const editId = searchParams.get("id");
 
+    const { hasDraft, draftSavedAt, saveDraft, loadDraft, clearDraft } = useDraft(DRAFT_KEY);
+    const [showDraftBanner, setShowDraftBanner] = useState(false);
+
     const [form, setForm] = useState({ date: todayStr(), docno: "", customerId: "", address: "", description: "", docType: "NORMAL" });
     const [rows, setRows] = useState([newRow()]);
     const [invoice, setInvoice] = useState({ date: "", taxcode: "", number: "", supplierId: "" });
@@ -394,7 +401,29 @@ export default function ReceiptCreatePage() {
     const [prefilledFromClone, setPrefilledFromClone] = useState(false);
     const [prefilledFromOverview, setPrefilledFromOverview] = useState(false);
     const [auditSource, setAuditSource] = useState(null);
-    const supplierOptions = customers.filter((c) => c.issupplier);
+
+    // Hiển thị banner nháp hoặc tự động khôi phục nháp nếu được yêu cầu từ trang danh sách
+    useEffect(() => {
+        const hasAuditParam = !!searchParams.get("auditId");
+        const hasCloneState = !!location.state?.clone;
+        const hasOverviewState = !!location.state?.prefillItems;
+        if (hasDraft && !hasAuditParam && !hasCloneState && !hasOverviewState) {
+            if (location.state?.resumeDraft) {
+                const draft = loadDraft();
+                if (draft) {
+                    if (draft.form) setForm(draft.form);
+                    if (draft.invoice) setInvoice(draft.invoice);
+                    if (draft.dateDisplay) setDateDisplay(draft.dateDisplay);
+                    if (draft.rows) {
+                        setRows(draft.rows.map((r) => ({ ...r, _id: ++_rowKey })));
+                    }
+                }
+            } else {
+                setShowDraftBanner(true);
+            }
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     const loadData = useCallback(async () => {
         setLoadingData(true);
         try {
@@ -617,6 +646,41 @@ export default function ReceiptCreatePage() {
 
     const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3500); };
 
+    // ── Lưu nháp local ──────────────────────────────────────────────────────
+    const handleSaveDraftLocal = () => {
+        try {
+            saveDraft({ form, rows, invoice, dateDisplay });
+            showToast("success", "Đã lưu nháp thành công.");
+            setTimeout(() => navigate("/receipts"), 1000);
+        } catch {
+            showToast("error", "Không thể lưu nháp.");
+        }
+    };
+
+    const handleRestoreDraft = () => {
+        const draft = loadDraft();
+        if (!draft) return;
+        if (draft.form) setForm(draft.form);
+        if (draft.invoice) setInvoice(draft.invoice);
+        if (draft.dateDisplay) setDateDisplay(draft.dateDisplay);
+        if (draft.rows) {
+            // Gán lại _id để tránh key collision
+            setRows(draft.rows.map((r) => ({ ...r, _id: ++_rowKey })));
+        }
+        setShowDraftBanner(false);
+        showToast("success", "Đã khôi phục nháp.");
+    };
+
+    const handleDeleteDraft = () => {
+        clearDraft();
+        setShowDraftBanner(false);
+        showToast("success", "Đã xóa nháp.");
+    };
+
+    const handleDismissBanner = () => {
+        setShowDraftBanner(false);
+    };
+
     const handleFormChange = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
     const handleDocDateChange = (value) => {
         const display = normalizeDateDisplayInput(value);
@@ -635,6 +699,18 @@ export default function ReceiptCreatePage() {
         const display = normalizeDateDisplayInput(value);
         setDateDisplay((prev) => ({ ...prev, invoiceDate: display }));
         setInvoice((prev) => ({ ...prev, date: parseDisplayDateToIso(display) }));
+    };
+
+    const handleDocDateSelect = (dateStr) => {
+        if (!dateStr) return;
+        setDateDisplay((prev) => ({ ...prev, docDate: formatDateForDisplay(dateStr) }));
+        setForm((prev) => ({ ...prev, date: dateStr }));
+    };
+
+    const handleInvoiceDateSelect = (dateStr) => {
+        if (!dateStr) return;
+        setDateDisplay((prev) => ({ ...prev, invoiceDate: formatDateForDisplay(dateStr) }));
+        setInvoice((prev) => ({ ...prev, date: dateStr }));
     };
 
     const handleRowChange = (idx, field, value) => {
@@ -792,18 +868,8 @@ export default function ReceiptCreatePage() {
             const payload = buildReceiptPayload(details);
             const result = editId ? await updateReceipt(editId, payload) : await createReceipt(payload);
             if (result?.success) {
-                const newId = editId || result?.data?.id;
-                if (isManager && newId) {
-                    const confirmed = await confirmReceipt(newId);
-                    if (!confirmed?.success) {
-                        showToast("error", confirmed?.message || "Đã lưu nháp nhưng xác nhận thất bại.");
-                        return;
-                    }
-                }
-                showToast("success", editId 
-                    ? (isManager ? "Cập nhật và xác nhận phiếu nhập kho thành công!" : "Đã cập nhật phiếu nhập kho.")
-                    : (isManager ? "Tạo và xác nhận phiếu nhập kho thành công!" : "Đã lưu nháp phiếu nhập kho.")
-                );
+                clearDraft(); // Xóa nháp local sau khi tạo phiếu thành công
+                showToast("success", "Tạo phiếu nhập kho thành công!");
                 // Lưu ID phiếu để AuditDetailPage kiểm tra status sau này
                 if (adjAuditId && form.docType === "ADJUSTMENT" && newId) {
                     localStorage.setItem(`audit_adj_receipt_id_${adjAuditId}`, String(newId));
@@ -859,19 +925,42 @@ export default function ReceiptCreatePage() {
                 </div>
 
                 <div className="sp-content">
-                    <h1 className="sp-title">{editId ? "Cập nhật phiếu nhập kho" : "Phiếu nhập kho"}</h1>
+                    <h1 className="sp-title">Phiếu nhập kho</h1>
+                    {showDraftBanner && (
+                        <DraftBanner
+                            draftSavedAt={draftSavedAt}
+                            onResume={handleRestoreDraft}
+                            onDelete={handleDeleteDraft}
+                            onDismiss={handleDismissBanner}
+                        />
+                    )}
                     <div className="rc-form-card">
 
                         {/* ── Header row ── */}
                         <div className="rc-header-row">
                             <label className="rc-form-label">Ngày<span className="rc-required">*</span></label>
-                            <input
-                                className="rc-form-input"
-                                style={{ minWidth: 150 }}
-                                placeholder="dd/mm/yyyy"
-                                value={dateDisplay.docDate}
-                                onChange={(e) => handleDocDateChange(e.target.value)}
-                            />
+                            <div className="rc-date-input-wrapper" style={{ position: "relative", display: "inline-flex", alignItems: "center", minWidth: 150 }}>
+                                <input
+                                    className="rc-form-input"
+                                    style={{ width: "100%", paddingRight: 36 }}
+                                    placeholder="dd/mm/yyyy"
+                                    value={dateDisplay.docDate}
+                                    onChange={(e) => handleDocDateChange(e.target.value)}
+                                />
+                                <span style={{ position: "absolute", right: 10, cursor: "pointer", color: "#8ba392", display: "flex", alignItems: "center", pointerEvents: "none" }}>
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                                        <line x1="16" y1="2" x2="16" y2="6" />
+                                        <line x1="8" y1="2" x2="8" y2="6" />
+                                        <line x1="3" y1="10" x2="21" y2="10" />
+                                    </svg>
+                                </span>
+                                <input
+                                    type="date"
+                                    style={{ position: "absolute", right: 0, top: 0, width: 36, height: "100%", opacity: 0, cursor: "pointer" }}
+                                    onChange={(e) => handleDocDateSelect(e.target.value)}
+                                />
+                            </div>
                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Số<span className="rc-required">*</span></label>
                             <input className="rc-form-input" style={{ minWidth: 200 }} placeholder="Nhập số chứng từ" value={form.docno} onChange={(e) => handleFormChange("docno", e.target.value)} />
                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Loại</label>
@@ -893,7 +982,7 @@ export default function ReceiptCreatePage() {
                                 <label className="rc-form-label">Đối tượng<span className="rc-required">*</span></label>
                                 <select className="rc-form-select rc-form-full" value={form.customerId} onChange={(e) => handleCustomerChange(e.target.value)} disabled={loadingData}>
                                     <option value="">Chọn đối tượng</option>
-                                    {supplierOptions.map((c) => (
+                                    {customers.filter((c) => c.issupplier).map((c) => (
                                         <option key={c.id} value={c.id}>{c.customercode ? `${c.customercode}: ` : ""}{c.customername}</option>
                                     ))}
                                 </select>
@@ -936,12 +1025,19 @@ export default function ReceiptCreatePage() {
                                         const amount = (Number(row.quantity) || 0) * (Number(row.price) || 0);
                                         const locLabel = row.selectedLocations.map((l) => l.locationcode).join(" / ");
                                         return (
-                                            <tr key={row._id}>
+                                            <tr key={row._id} style={{ background: "#f5faf7" }}>
                                                 <td className="rc-td-stt">{idx + 1}</td>
                                                 <td>
                                                     <select className="rc-td-select" value={row.itemId} onChange={(e) => handleRowChange(idx, "itemId", e.target.value)}>
                                                         <option value="">--</option>
-                                                        {items.map((it) => <option key={it.id} value={it.id}>{it.itemcode}</option>)}
+                                                        {items.map((it) => {
+                                                            const isSelectedElsewhere = rows.some((r, rIdx) => rIdx !== idx && String(r.itemId) === String(it.id));
+                                                            return (
+                                                                <option key={it.id} value={it.id} disabled={isSelectedElsewhere}>
+                                                                    {it.itemcode} {isSelectedElsewhere ? "(Đã chọn)" : ""}
+                                                                </option>
+                                                            );
+                                                        })}
                                                     </select>
                                                 </td>
                                                 <td>
@@ -979,7 +1075,7 @@ export default function ReceiptCreatePage() {
                                                 <td className="rc-td-num" style={{ textAlign: "right", fontWeight: 500 }}>
                                                     {amount > 0 ? formatMoney(amount) : ""}
                                                 </td>
-                                                <td>
+                                                <td style={{ textAlign: "center", width: 32 }}>
                                                     {rows.length > 1 && (
                                                         <button className="rc-del-btn" onClick={() => handleRemoveRow(idx)} title="Xóa dòng"><IconTrash /></button>
                                                     )}
@@ -1013,12 +1109,28 @@ export default function ReceiptCreatePage() {
                                 <div className="rc-form-2col">
                                     <div className="rc-form-field">
                                         <label className="rc-form-label">Ngày HD<span className="rc-required">*</span></label>
-                                        <input
-                                            className="rc-form-input"
-                                            placeholder="dd/mm/yyyy"
-                                            value={dateDisplay.invoiceDate}
-                                            onChange={(e) => handleInvoiceDateChange(e.target.value)}
-                                        />
+                                        <div className="rc-date-input-wrapper" style={{ position: "relative", display: "flex", alignItems: "center", flex: 1 }}>
+                                            <input
+                                                className="rc-form-input"
+                                                style={{ width: "100%", paddingRight: 36 }}
+                                                placeholder="dd/mm/yyyy"
+                                                value={dateDisplay.invoiceDate}
+                                                onChange={(e) => handleInvoiceDateChange(e.target.value)}
+                                            />
+                                            <span style={{ position: "absolute", right: 10, cursor: "pointer", color: "#8ba392", display: "flex", alignItems: "center", pointerEvents: "none" }}>
+                                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                                                    <line x1="16" y1="2" x2="16" y2="6" />
+                                                    <line x1="8" y1="2" x2="8" y2="6" />
+                                                    <line x1="3" y1="10" x2="21" y2="10" />
+                                                </svg>
+                                            </span>
+                                            <input
+                                                type="date"
+                                                style={{ position: "absolute", right: 0, top: 0, width: 36, height: "100%", opacity: 0, cursor: "pointer" }}
+                                                onChange={(e) => handleInvoiceDateSelect(e.target.value)}
+                                            />
+                                        </div>
                                     </div>
                                     <div className="rc-form-field">
                                         <label className="rc-form-label">MST</label>
@@ -1046,11 +1158,22 @@ export default function ReceiptCreatePage() {
                         {/* ── Actions ── */}
                         <div className="rc-form-actions">
                             <button className="sp-btn-outline" onClick={() => navigate("/receipts")} disabled={saving}>Hủy bỏ</button>
-                            {!isAdjustment && (
-                                <button className="sp-btn-outline" onClick={handleSaveDraft} disabled={saving}>
-                                    {saving ? "Đang lưu..." : "Lưu nháp"}
-                                </button>
-                            )}
+                            <button
+                                id="receipt-draft-save-btn"
+                                type="button"
+                                className="sp-btn-draft"
+                                onClick={handleSaveDraftLocal}
+                                disabled={saving}
+                                title="Lưu tạm dữ liệu vào máy, không tạo phiếu chính thức"
+                            >
+                                {/* Floppy disk icon */}
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                                    <polyline points="17 21 17 13 7 13 7 21" />
+                                    <polyline points="7 3 7 8 15 8" />
+                                </svg>
+                                Lưu nháp
+                            </button>
                             <button className="sp-btn-primary" onClick={handleSave} disabled={saving}>
                                 {saving ? "Đang lưu..." : isManager ? "Lưu và xác nhận" : "Lưu phiếu"}
                             </button>
