@@ -125,7 +125,6 @@ public class GoodsReceiptService {
         receipt = receiptRepository.save(receipt);
         notifyManagersIfStaffCreated(receipt);
 
-        validateAdjustmentDetails(receipt, request.getDetails());
         saveDetails(receipt, request.getDetails());
         return toResponse(receipt);
     }
@@ -146,7 +145,6 @@ public class GoodsReceiptService {
         // will be replaced.
         deleteBatchesForReceipt(id);
         detailRepository.deleteByGoodsReceiptId(id);
-        validateAdjustmentDetails(receipt, request.getDetails());
         saveDetails(receipt, request.getDetails());
         return toResponse(receipt);
     }
@@ -165,6 +163,7 @@ public class GoodsReceiptService {
         if (details == null || details.isEmpty()) {
             throw new RuntimeException("Phiếu nhập không có dòng chi tiết nào");
         }
+        validateReceiptReadyForConfirm(receipt, details);
 
         for (GoodsReceiptDetail detail : details) {
             if (detail.getLocation() == null) {
@@ -511,6 +510,9 @@ public class GoodsReceiptService {
         if (detailRequests == null)
             return;
         for (GoodsReceiptDetailRequest req : detailRequests) {
+            if (req.getItemId() == null) {
+                continue;
+            }
             Item item = itemRepository.findById(req.getItemId())
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy hàng hóa id: " + req.getItemId()));
 
@@ -522,7 +524,7 @@ public class GoodsReceiptService {
             detail.setUnitof(item.getUnitof());
             detail.setQuantity(req.getQuantity());
             detail.setUnitprice(req.getUnitprice() != null ? req.getUnitprice() : BigDecimal.ZERO);
-            detail.setAmount(detail.getQuantity().multiply(detail.getUnitprice()));
+            detail.setAmount(detail.getQuantity() != null ? detail.getQuantity().multiply(detail.getUnitprice()) : BigDecimal.ZERO);
             detail.setInventoryAuditDetailId(req.getInventoryAuditDetailId());
 
             if (req.getBatchId() != null) {
@@ -685,6 +687,70 @@ public class GoodsReceiptService {
             }
 
             quantityByLocation.merge(req.getLocationId(), req.getQuantity(), BigDecimal::add);
+        }
+
+        for (var entry : quantityByLocation.entrySet()) {
+            Location location = locationRepository.findById(entry.getKey())
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy vị trí id: " + entry.getKey()));
+            validateLocationCapacity(location, entry.getValue());
+        }
+    }
+
+    private void validateReceiptReadyForConfirm(GoodsReceipt receipt, List<GoodsReceiptDetail> details) {
+        java.util.Map<Long, BigDecimal> quantityByLocation = new java.util.HashMap<>();
+        java.util.Set<Long> auditDetailIds = new java.util.HashSet<>();
+
+        for (GoodsReceiptDetail detail : details) {
+            if (detail.getItem() == null) {
+                throw new RuntimeException("Dòng chi tiết phiếu nhập chưa có hàng hóa");
+            }
+            if (detail.getQuantity() == null || detail.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new RuntimeException("Số lượng nhập phải lớn hơn 0");
+            }
+            if (detail.getLocation() == null) {
+                throw new RuntimeException(
+                        "Dòng chi tiết với mã hàng '" + detail.getItemcode() + "' chưa được gán vị trí");
+            }
+
+            quantityByLocation.merge(detail.getLocation().getId(), detail.getQuantity(), BigDecimal::add);
+
+            if (!isAdjustment(receipt)) {
+                continue;
+            }
+
+            if (detail.getInventoryAuditDetailId() == null) {
+                throw new RuntimeException("Phiếu nhập điều chỉnh phải liên kết chi tiết phiếu kiểm kê");
+            }
+            if (!auditDetailIds.add(detail.getInventoryAuditDetailId())) {
+                throw new RuntimeException("Chi tiết phiếu kiểm kê bị trùng trong phiếu điều chỉnh");
+            }
+            if (detail.getBatch() == null) {
+                throw new RuntimeException("Phiếu nhập điều chỉnh phải có mã lô");
+            }
+
+            var auditDetail = inventoryAuditDetailRepository.findById(detail.getInventoryAuditDetailId())
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy chi tiết phiếu kiểm kê id: " + detail.getInventoryAuditDetailId()));
+            if (auditDetail.getInventoryAudit() == null
+                    || !auditDetail.getInventoryAudit().getId().equals(receipt.getInventoryAuditId())) {
+                throw new RuntimeException("Chi tiết phiếu kiểm kê không thuộc phiếu kiểm kê đã chọn");
+            }
+            if (auditDetail.getItem() != null && !auditDetail.getItem().getId().equals(detail.getItem().getId())) {
+                throw new RuntimeException("Vật tư không khớp với chi tiết phiếu kiểm kê");
+            }
+            if (auditDetail.getBatch() == null || !auditDetail.getBatch().getId().equals(detail.getBatch().getId())) {
+                throw new RuntimeException("Mã lô không khớp với chi tiết phiếu kiểm kê");
+            }
+            if (detail.getBatch().getItem() != null && !detail.getBatch().getItem().getId().equals(detail.getItem().getId())) {
+                throw new RuntimeException("Mã lô không khớp với vật tư");
+            }
+
+            boolean usedByReceipt = detailRepository.existsActiveAdjustmentByAuditDetailId(
+                    detail.getInventoryAuditDetailId(), receipt.getId());
+            boolean usedByIssue = issueDetailRepository.existsActiveAdjustmentByAuditDetailId(
+                    detail.getInventoryAuditDetailId(), null);
+            if (usedByReceipt || usedByIssue) {
+                throw new RuntimeException("Chi tiết phiếu kiểm kê đã được tạo phiếu điều chỉnh");
+            }
         }
 
         for (var entry : quantityByLocation.entrySet()) {

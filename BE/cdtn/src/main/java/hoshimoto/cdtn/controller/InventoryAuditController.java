@@ -98,6 +98,16 @@ public class InventoryAuditController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Gửi kết quả kiểm kê thành công", inventoryAuditService.submitFromStaff(id)));
     }
 
+    /** Quản lý gửi yêu cầu kiểm kê từ phiếu nháp cho nhân viên */
+    @PostMapping("/{id}/request")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<ApiResponse<InventoryAuditResponse>> sendRequest(
+            @PathVariable Long id,
+            @RequestBody(required = false) InventoryAuditRequest request) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Gửi yêu cầu kiểm kê thành công",
+                inventoryAuditService.sendRequestToStaff(id, request)));
+    }
+
     /** Cập nhật phiếu kiểm kê nháp */
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'STAFF')")

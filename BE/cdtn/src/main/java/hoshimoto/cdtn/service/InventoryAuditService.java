@@ -93,39 +93,22 @@ public class InventoryAuditService {
             throw new RuntimeException("Mã phiếu '" + audit.getDocno() + "' đã tồn tại");
         }
 
-        Long assignedUserId = request.getAssignedUserId();
-        boolean sendToStaff = assignedUserId != null && Boolean.TRUE.equals(request.getSendToStaff());
-
-        // Prevent Manager from doing "self-check" by creating a draft with actual quantities.
-        // Managers should assign to staff (sendToStaff = true) and review/confirm after staff submits.
-        var optUser = getCurrentUser();
-        if (optUser.isPresent()) {
-            var current = optUser.get();
-            if (current.getRole() == Role.MANAGER && !sendToStaff && request.getDetails() != null) {
-                // If manager attempts to create draft with actual quantities, block it
-                boolean hasActual = request.getDetails().stream().anyMatch(d -> d.getActualquantity() != null);
-                if (hasActual) {
-                    throw new RuntimeException("Managers must assign audit tasks to staff. To perform checks, assign to staff and review results after they submit.");
-                }
-            }
-        }
+        boolean sendToStaff = request.getAssignedUserId() != null && Boolean.TRUE.equals(request.getSendToStaff());
+        applyAssignedUser(audit, request.getAssignedUserId());
 
         if (sendToStaff) {
-            Long nonNullAssignedUserId = Objects.requireNonNull(assignedUserId, "assignedUserId không được để trống");
-            // set assigned user
-            User assigned = userRepository.findById(nonNullAssignedUserId)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy user được giao id: " + request.getAssignedUserId()));
-            audit.setAssignedUser(assigned);
+            validateAuditRequestReadyToSend(request);
             audit.setDocstatus(DocStatus.REQUESTED);
         } else {
-            requireActualQuantity(request.getDetails(), "Vui lòng nhập số lượng thực tế khi không gửi yêu cầu cho nhân viên");
             audit.setDocstatus(DocStatus.DRAFT);
         }
 
         audit = auditRepository.save(audit);
-        notifyAssignedStaff(audit);
+        if (audit.getDocstatus() == DocStatus.REQUESTED) {
+            notifyAssignedStaff(audit);
+        }
 
-        saveDetails(audit, request.getDetails());
+        saveDetails(audit, request.getDetails(), sendToStaff);
         return toResponse(audit);
     }
 
@@ -137,14 +120,50 @@ public class InventoryAuditService {
         InventoryAudit audit = markOverdueIfNeeded(findOrThrow(id));
         requireStatus(audit, DocStatus.DRAFT, "Chỉ có thể sửa phiếu ở trạng thái DRAFT");
 
-        requireActualQuantity(request.getDetails(), "Vui lòng nhập số lượng thực tế khi cập nhật phiếu DRAFT");
-
         applyHeader(audit, request);
+        applyAssignedUser(audit, request.getAssignedUserId());
+        boolean sendToStaff = audit.getAssignedUser() != null && Boolean.TRUE.equals(request.getSendToStaff());
+        if (sendToStaff) {
+            validateAuditRequestReadyToSend(request);
+            audit.setDocstatus(DocStatus.REQUESTED);
+        }
         audit.setModifiedAt(LocalDateTime.now());
         audit = auditRepository.save(audit);
 
         detailRepository.deleteByInventoryAuditId(id);
-        saveDetails(audit, request.getDetails());
+        saveDetails(audit, request.getDetails(), sendToStaff);
+        if (sendToStaff) {
+            notifyAssignedStaff(audit);
+        }
+        return toResponse(audit);
+    }
+
+    @Transactional
+    public InventoryAuditResponse sendRequestToStaff(Long id, InventoryAuditRequest request) {
+        InventoryAudit audit = markOverdueIfNeeded(findOrThrow(id));
+        requireStatus(audit, DocStatus.DRAFT, "Chỉ có thể gửi yêu cầu từ phiếu ở trạng thái DRAFT");
+
+        if (request != null) {
+            applyHeader(audit, request);
+            applyAssignedUser(audit, request.getAssignedUserId());
+            audit.setModifiedAt(LocalDateTime.now());
+            audit = auditRepository.save(audit);
+
+            if (request.getDetails() != null) {
+                detailRepository.deleteByInventoryAuditId(id);
+                saveDetails(audit, request.getDetails(), true);
+            }
+        }
+
+        validateAuditReadyToSend(audit);
+        audit.setDocstatus(DocStatus.REQUESTED);
+        audit.setModifiedAt(LocalDateTime.now());
+        var currentUser = getCurrentUser();
+        if (currentUser.isPresent()) {
+            audit.setModifiedBy(currentUser.get().getUsername());
+        }
+        auditRepository.save(audit);
+        notifyAssignedStaff(audit);
         return toResponse(audit);
     }
 
@@ -192,8 +211,6 @@ public class InventoryAuditService {
             throw new RuntimeException("Bạn không có quyền cập nhật phiếu này");
         }
 
-        requireActualQuantity(request.getDetails(), "Vui lòng nhập số lượng thực tế trước khi gửi kết quả");
-
         if (audit.getDocstatus() == DocStatus.REQUESTED) {
             audit.setDocstatus(DocStatus.IN_PROGRESS);
         }
@@ -217,6 +234,7 @@ public class InventoryAuditService {
         if (optUser.isEmpty() || audit.getAssignedUser() == null || !audit.getAssignedUser().getId().equals(optUser.get().getId())) {
             throw new RuntimeException("Bạn không có quyền gửi phiếu này");
         }
+        validateAuditPeriod(audit.getStartDate(), audit.getEndDate());
         List<InventoryAuditDetail> details = detailRepository.findByInventoryAuditId(id);
         if (details == null || details.isEmpty()) {
             throw new RuntimeException("Phiếu kiểm kê không có dòng chi tiết nào");
@@ -254,6 +272,7 @@ public class InventoryAuditService {
                 && audit.getDocstatus() != DocStatus.PENDING_PROCESS) {
             throw new RuntimeException("Chỉ có thể xác nhận phiếu ở trạng thái DRAFT, SUBMITTED hoặc PENDING_PROCESS");
         }
+        validateAuditPeriod(audit.getStartDate(), audit.getEndDate());
 
         List<InventoryAuditDetail> details = detailRepository.findByInventoryAuditId(id);
         if (details == null || details.isEmpty()) {
@@ -348,7 +367,6 @@ public class InventoryAuditService {
         audit.setDocDate(request.getDocDate());
         audit.setStartDate(request.getStartDate());
         audit.setEndDate(request.getEndDate());
-        validateAuditPeriod(audit.getStartDate(), audit.getEndDate());
         audit.setDescription(request.getDescription());
         if (audit.getUser() == null) {
             getCurrentUser().ifPresent(u -> {
@@ -420,10 +438,13 @@ public class InventoryAuditService {
         );
     }
 
-    private void saveDetails(InventoryAudit audit, List<InventoryAuditDetailRequest> detailRequests) {
+    private void saveDetails(InventoryAudit audit, List<InventoryAuditDetailRequest> detailRequests, boolean strict) {
         if (detailRequests == null) return;
         for (InventoryAuditDetailRequest req : detailRequests) {
-            Long itemId = Objects.requireNonNull(req.getItemId(), "itemId không được để trống");
+            if (req.getItemId() == null) {
+                continue;
+            }
+            Long itemId = req.getItemId();
             Item item = itemRepository.findById(itemId)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy hàng hóa id: " + req.getItemId()));
 
@@ -433,15 +454,22 @@ public class InventoryAuditService {
             if (req.getBatchId() != null) {
                 batch = batchRepository.findById(req.getBatchId())
                         .orElseThrow(() -> new RuntimeException("Không tìm thấy lô hàng id: " + req.getBatchId()));
-                if (batch.getItem() == null || !batch.getItem().getId().equals(item.getId())) {
+                if (strict && (batch.getItem() == null || !batch.getItem().getId().equals(item.getId()))) {
                     throw new RuntimeException("Lô hàng không thuộc đúng hàng hóa");
                 }
                 location = resolveBatchLocation(batch);
-                if (location == null) {
+                if (strict && location == null) {
                     throw new RuntimeException("Lô hàng không có vị trí");
                 }
-                if (req.getLocationId() != null && !location.getId().equals(req.getLocationId())) {
-                    throw new RuntimeException("Lô hàng không thuộc đúng vị trí");
+                if (req.getLocationId() != null) {
+                    Location requestedLocation = locationRepository.findById(req.getLocationId())
+                            .orElseThrow(() -> new RuntimeException("Không tìm thấy vị trí id: " + req.getLocationId()));
+                    if (!strict || location == null) {
+                        location = requestedLocation;
+                    }
+                    if (strict && location != null && !location.getId().equals(requestedLocation.getId())) {
+                        throw new RuntimeException("Lô hàng không thuộc đúng vị trí");
+                    }
                 }
                 bookQty = defaultZero(batch.getQuantityRemaining());
             } else {
@@ -474,13 +502,23 @@ public class InventoryAuditService {
         }
     }
 
+    private void applyAssignedUser(InventoryAudit audit, Long assignedUserId) {
+        if (assignedUserId == null) {
+            audit.setAssignedUser(null);
+            return;
+        }
+        User assigned = userRepository.findById(assignedUserId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy user được giao id: " + assignedUserId));
+        audit.setAssignedUser(assigned);
+    }
+
     private void updateExistingDetailsWithActuals(InventoryAudit audit, List<InventoryAuditDetailRequest> detailRequests) {
         List<InventoryAuditDetail> existing = detailRepository.findByInventoryAuditIdOrderByIdAsc(audit.getId());
         if (existing.isEmpty()) {
             throw new RuntimeException("Phiếu kiểm kê không có dòng chi tiết nào");
         }
-        if (detailRequests == null || detailRequests.size() != existing.size()) {
-            throw new RuntimeException("Không được thiếu dòng kiểm kê");
+        if (detailRequests == null || detailRequests.isEmpty()) {
+            return;
         }
 
         Map<Long, InventoryAuditDetail> byId = existing.stream()
@@ -501,9 +539,37 @@ public class InventoryAuditService {
             BigDecimal actualQty = req.getActualquantity();
             validateActualQuantity(actualQty);
             detail.setActualquantity(actualQty);
-            detail.setDiffquantity(actualQty.subtract(defaultZero(detail.getBookquantity())));
+            detail.setDiffquantity(actualQty != null ? actualQty.subtract(defaultZero(detail.getBookquantity())) : null);
             detail.setDescription(req.getDescription());
             detailRepository.save(detail);
+        }
+    }
+
+    private void validateAuditRequestReadyToSend(InventoryAuditRequest request) {
+        validateAuditPeriod(request.getStartDate(), request.getEndDate());
+        if (request.getAssignedUserId() == null) {
+            throw new RuntimeException("Vui lòng chọn nhân viên kiểm kê");
+        }
+        if (request.getDetails() == null || request.getDetails().isEmpty()
+                || request.getDetails().stream().noneMatch(d -> d.getItemId() != null)) {
+            throw new RuntimeException("Phiếu kiểm kê phải có ít nhất một dòng chi tiết");
+        }
+    }
+
+    private void validateAuditReadyToSend(InventoryAudit audit) {
+        validateAuditPeriod(audit.getStartDate(), audit.getEndDate());
+        if (audit.getAssignedUser() == null) {
+            throw new RuntimeException("Vui lòng chọn nhân viên kiểm kê");
+        }
+        List<InventoryAuditDetail> details = detailRepository.findByInventoryAuditId(audit.getId());
+        if (details == null || details.isEmpty()) {
+            throw new RuntimeException("Phiếu kiểm kê phải có ít nhất một dòng chi tiết");
+        }
+        for (InventoryAuditDetail detail : details) {
+            if (detail.getItem() == null) {
+                throw new RuntimeException("Dòng chi tiết phiếu kiểm kê chưa có hàng hóa");
+            }
+            validateAuditSnapshot(detail);
         }
     }
 
@@ -553,6 +619,19 @@ public class InventoryAuditService {
         }
     }
 
+    private void validateAuditSnapshot(InventoryAuditDetail detail) {
+        if (detail.getBatch() != null && detail.getItem() != null
+                && (detail.getBatch().getItem() == null || !detail.getBatch().getItem().getId().equals(detail.getItem().getId()))) {
+            throw new RuntimeException("Mã lô không thuộc đúng hàng hóa");
+        }
+        if (detail.getBatch() != null && detail.getLocation() != null) {
+            Location batchLocation = resolveBatchLocation(detail.getBatch());
+            if (batchLocation == null || !batchLocation.getId().equals(detail.getLocation().getId())) {
+                throw new RuntimeException("Mã lô không thuộc đúng vị trí");
+            }
+        }
+    }
+
     private Location resolveBatchLocation(Batch batch) {
         if (batch == null || batch.getReceiptDetail() == null) {
             return null;
@@ -583,8 +662,7 @@ public class InventoryAuditService {
     }
 
     private boolean canBecomeOverdue(DocStatus status) {
-        return status == DocStatus.DRAFT
-                || status == DocStatus.REQUESTED
+        return status == DocStatus.REQUESTED
                 || status == DocStatus.IN_PROGRESS
                 || status == DocStatus.SUBMITTED
                 || status == DocStatus.PENDING_PROCESS;

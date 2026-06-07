@@ -17,6 +17,7 @@ public interface GoodsIssueDetailRepository extends JpaRepository<GoodsIssueDeta
             from GoodsIssueDetail d
             where d.inventoryAuditDetailId = :auditDetailId
               and (:issueId is null or d.goodsIssue.id <> :issueId)
+              and d.goodsIssue.docstatus <> hoshimoto.cdtn.entity.Enum.DocStatus.DRAFT
               and d.goodsIssue.docstatus <> hoshimoto.cdtn.entity.Enum.DocStatus.CANCELLED
               and d.goodsIssue.docstatus <> hoshimoto.cdtn.entity.Enum.DocStatus.REJECTED
             """)
