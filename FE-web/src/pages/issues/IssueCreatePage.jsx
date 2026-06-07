@@ -854,7 +854,7 @@ export default function IssueCreatePage() {
 
                         {/* ── Header row ── */}
                         <div className="rc-header-row">
-                            <label className="rc-form-label">Ngày</label>
+                            <label className="rc-form-label" style={{ minWidth: 110 }}>Ngày</label>
                             <input
                                 className="rc-form-input"
                                 style={{ minWidth: 150 }}
@@ -880,7 +880,7 @@ export default function IssueCreatePage() {
                         {/* ── Đối tượng ── */}
                         {!isAdjustment && (
                             <div className="rc-form-row">
-                                <label className="rc-form-label">Đối tượng</label>
+                                <label className="rc-form-label" style={{ minWidth: 110 }}>Đối tượng</label>
                                 <select className="rc-form-select rc-form-full" value={form.customerId} onChange={(e) => handleCustomerChange(e.target.value)} disabled={loadingData}>
                                     <option value="">Chọn đối tượng</option>
                                     {customerOptions.map((c) => (
@@ -893,14 +893,14 @@ export default function IssueCreatePage() {
                         {/* ── Địa chỉ ── */}
                         {!isAdjustment && (
                             <div className="rc-form-row">
-                                <label className="rc-form-label">Địa chỉ</label>
+                                <label className="rc-form-label" style={{ minWidth: 110 }}>Địa chỉ</label>
                                 <input className="rc-form-input rc-form-full" placeholder="Nhập địa chỉ" value={form.address} onChange={(e) => handleFormChange("address", e.target.value)} />
                             </div>
                         )}
 
                         {/* ── Diễn giải ── */}
                         <div className="rc-form-row">
-                            <label className="rc-form-label">Diễn giải</label>
+                            <label className="rc-form-label" style={{ minWidth: 110 }}>Diễn giải</label>
                             <input className="rc-form-input rc-form-full" placeholder="Nhập diễn giải" value={form.description} onChange={(e) => handleFormChange("description", e.target.value)} />
                         </div>
 
@@ -914,9 +914,8 @@ export default function IssueCreatePage() {
                                         <th style={{ width: "17%" }}>Tên vật tư hàng hóa</th>
                                         <th style={{ width: "6%" }}>ĐVT</th>
                                         <th style={{ width: "8%" }}>SL yêu cầu</th>
-                                        {!isAdjustment && <th style={{ width: "9%" }}>Tồn hiện tại</th>}
-                                        <th style={{ width: "13%" }}>Đơn giá xuất</th>
-                                        <th style={{ width: "10%" }}>Thành tiền</th>
+                                        {!isAdjustment && <th style={{ width: "9%", textAlign: "right", paddingRight: "12px" }}>Tồn hiện tại</th>}
+                                        <th style={{ width: "10%", textAlign: "right", paddingRight: "12px" }}>Thành tiền</th>
                                         <th style={{ width: "4%" }}></th>
                                     </tr>
                                 </thead>
@@ -961,7 +960,7 @@ export default function IssueCreatePage() {
                                                         />
                                                     </td>
                                                     {!isAdjustment && (
-                                                        <td className="rc-td-num" style={{ color: Number(row.quantity) > (stockByItem[row.itemId]?.total ?? Number.POSITIVE_INFINITY) ? "#c62828" : "#4c6152" }}>
+                                                        <td className="rc-td-num" style={{ color: Number(row.quantity) > (stockByItem[row.itemId]?.total ?? Number.POSITIVE_INFINITY) ? "#c62828" : "#4c6152", textAlign: "right", paddingRight: "12px" }}>
                                                             {!row.itemId
                                                                 ? "—"
                                                                 : stockByItem[row.itemId]?.loading
@@ -971,18 +970,7 @@ export default function IssueCreatePage() {
                                                                         : (stockByItem[row.itemId]?.total ?? 0)}
                                                         </td>
                                                     )}
-                                                    <td>
-                                                        <input
-                                                            className="rc-td-input rc-td-num"
-                                                            style={{ background: row.price ? "#f0faf4" : undefined, fontWeight: row.price ? 600 : undefined, color: "#1E3A2F" }}
-                                                            type="number"
-                                                            min="0"
-                                                            value={row.price}
-                                                            onChange={(e) => handleRowChange(idx, "price", e.target.value)}
-                                                            placeholder="0"
-                                                        />
-                                                    </td>
-                                                    <td className="rc-td-num">
+                                                    <td className="rc-td-num" style={{ textAlign: "right", paddingRight: "12px" }}>
                                                         {formatMoney((Number(row.quantity) || 0) * (Number(row.price) || 0))}
                                                     </td>
                                                     <td>
@@ -996,7 +984,7 @@ export default function IssueCreatePage() {
 
                                                 {/* ── Batch entries sub-row ── */}
                                                 <tr>
-                                                    <td colSpan={isAdjustment ? 8 : 9} style={{ padding: "0 0 10px 32px", background: "#fafcfb" }}>
+                                                    <td colSpan={isAdjustment ? 7 : 8} style={{ padding: "0 0 10px 32px", background: "#fafcfb" }}>
                                                         <div style={{ borderLeft: "3px solid #c6dfd0", paddingLeft: 12, paddingTop: 6 }}>
 
                                                             {/* Batch entries table */}
@@ -1105,19 +1093,13 @@ export default function IssueCreatePage() {
                                         );
                                     })}
                                     <tr className="rc-add-row" onClick={handleAddRow}>
-                                        <td colSpan={isAdjustment ? 8 : 9}>
+                                        <td colSpan={isAdjustment ? 7 : 8}>
                                             <button className="rc-add-row-btn" type="button">
                                                 <IconPlus size={13} /> Thêm mới dữ liệu
                                             </button>
                                         </td>
                                     </tr>
-                                    {totalAmount > 0 && (
-                                        <tr className="rc-total-row">
-                                            <td colSpan={isAdjustment ? 6 : 7} style={{ textAlign: "right", paddingRight: 12 }}>Tổng cộng</td>
-                                            <td className="rc-td-num" style={{ textAlign: "right" }}>{formatMoney(totalAmount)}</td>
-                                            <td />
-                                        </tr>
-                                    )}
+
                                 </tbody>
                             </table>
                         </div>

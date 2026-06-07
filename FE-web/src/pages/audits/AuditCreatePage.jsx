@@ -291,7 +291,7 @@ export default function AuditCreatePage() {
                         endDate: toDateOnly(getAuditEndDate(draft)),
                         docno: draft.docno || "",
                         description: draft.description || "",
-                        assigneeId: String(draft.assignedUserId || draft.assignedToId || "")
+                        assigneeId: String(draft.assignedUserId || draft.assignedToUserId || draft.assignedToId || "")
                     });
                     
                     setDateDisplay({
@@ -502,7 +502,8 @@ export default function AuditCreatePage() {
         description: form.description.trim() || null,
         ...(draft ? { docstatus: "DRAFT" } : {}),
         details: flattenRowsForPayload(false),
-        ...(sendToStaff ? { assignedUserId: Number(form.assigneeId), sendToStaff: true } : {}),
+        assignedUserId: form.assigneeId ? Number(form.assigneeId) : null,
+        ...(sendToStaff ? { sendToStaff: true } : {}),
     });
 
     const handleSaveDraft = async () => {
