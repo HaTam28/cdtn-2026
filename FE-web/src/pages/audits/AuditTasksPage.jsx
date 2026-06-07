@@ -41,7 +41,6 @@ export default function AuditTasksPage() {
     const [error, setError] = useState(null);
     const [active, setActive] = useState(null);
     const [activeLoading, setActiveLoading] = useState(false);
-    const [saving, setSaving] = useState(false);
     const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
@@ -152,23 +151,6 @@ export default function AuditTasksPage() {
         return true;
     };
 
-    const handleSave = async () => {
-        if (!active) return;
-        setSaving(true);
-        try {
-            const res = await updateAssignedAudit(active.id, buildSaveBody(true));
-            if (res?.success) {
-                notify("Đã lưu số liệu kiểm kê.", { type: "success" });
-                await handleOpen(active.id);
-            } else {
-                notify(res?.message || "Lưu thất bại.", { type: "error" });
-            }
-        } catch (err) {
-            notify(err?.response?.data?.message || "Có lỗi xảy ra khi lưu.", { type: "error" });
-        } finally {
-            setSaving(false);
-        }
-    };
 
     const handleSubmit = async () => {
         if (!active || !validateActuals()) return;
@@ -341,14 +323,9 @@ export default function AuditTasksPage() {
                         <div className="rc-form-actions">
                             <button className="sp-btn-outline" onClick={() => navigate("/audits")}>Đóng</button>
                             {canEdit && (
-                                <>
-                                    <button className="sp-btn-outline" onClick={handleSave} disabled={saving || submitting}>
-                                        {saving ? "Đang lưu..." : "Lưu nháp"}
-                                    </button>
-                                    <button className="sp-btn-primary" onClick={handleSubmit} disabled={saving || submitting}>
-                                        {submitting ? "Đang gửi..." : "Gửi kết quả"}
-                                    </button>
-                                </>
+                                <button className="sp-btn-primary" onClick={handleSubmit} disabled={submitting}>
+                                    {submitting ? "Đang gửi..." : "Gửi kết quả"}
+                                </button>
                             )}
                         </div>
                     </div>
