@@ -11,8 +11,14 @@ public class InventoryAuditDetailResponse {
     private String itemcode;
     private String itemname;
     private String unitof;
+    private Long batchId;
+    private String batchCode;
+    private Long locationId;
+    private String locationcode;
+    private String locationname;
     private BigDecimal bookquantity;
     private BigDecimal actualquantity;
     private BigDecimal diffquantity;
+    private String processingSuggestion;
     private String description;
 }

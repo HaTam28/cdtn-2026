@@ -31,6 +31,14 @@ public class InventoryAuditDetail {
     @JoinColumn(name = "itemid")
     private Item item;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "batchid")
+    private Batch batch;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "locationid")
+    private Location location;
+
     @Column(length = 30)
     private String unitof;
 

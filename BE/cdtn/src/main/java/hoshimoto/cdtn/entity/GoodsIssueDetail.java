@@ -56,4 +56,7 @@ public class GoodsIssueDetail {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "batchid")
     private Batch batch;
+
+    @Column(name = "inventory_audit_detail_id")
+    private Long inventoryAuditDetailId;
 }

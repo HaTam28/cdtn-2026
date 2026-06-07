@@ -12,6 +12,8 @@ public class InventoryAuditResponse {
     private Long id;
     private String docno;
     private LocalDate docDate;
+    private LocalDate startDate;
+    private LocalDate endDate;
     private String description;
     private DocStatus docstatus;
     private LocalDateTime createdAt;
@@ -31,5 +33,8 @@ public class InventoryAuditResponse {
     private String rejectReason;
     private Boolean adjustmentCreated;
     private java.util.List<Boolean> adjustmentFlags;
+    private java.math.BigDecimal totalBookquantity;
+    private java.math.BigDecimal totalActualquantity;
+    private java.math.BigDecimal totalDiffquantity;
     private List<InventoryAuditDetailResponse> details;
 }

@@ -10,7 +10,7 @@ const COMPANY_NAME = "CÔNG TY TNHH HOSHIMOTO VIỆT NAM";
 const COMPANY_ADDRESS_LINE1 = "Căn số 49-TT5, Khu nhà ở Đài phát sóng phát thanh Mễ Trì,";
 const COMPANY_ADDRESS_LINE2 = "Phường Đại Mỗ, TP Hà Nội";
 
-const STATUS_LABELS = { DRAFT: "Chờ duyệt", CONFIRMED: "Đã duyệt", CANCELLED: "Hủy", REJECTED: "Đã từ chối" };
+const STATUS_LABELS = { DRAFT: "Nháp", CONFIRMED: "Đã xác nhận", CANCELLED: "Đã hủy", REJECTED: "Bị từ chối" };
 const STATUS_CLASS = {
     DRAFT: "rc-status-pill rc-status-pill-draft",
     CONFIRMED: "rc-status-pill rc-status-pill-confirmed",
@@ -20,6 +20,9 @@ const STATUS_CLASS = {
 
 function formatDate(str) {
     if (!str) return "";
+    const raw = String(str);
+    const dateOnly = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
     const d = new Date(str);
     if (isNaN(d)) return str;
     return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
@@ -357,7 +360,7 @@ export default function IssueDetailPage() {
                             {/* ── Header ── */}
                             <div className="rc-header-row rc-header-row-wrap">
                                 <label className="rc-form-label">Ngày</label>
-                                <input type="date" className="rc-form-input rc-input-auto" value={formatDateInput(issue.docDate)} readOnly />
+                                <input className="rc-form-input rc-input-auto" value={formatDate(issue.docDate)} readOnly />
                                 <label className="rc-form-label" style={{ marginLeft: 16 }}>Số</label>
                                 <input className="rc-form-input rc-input-auto" value={issue.docno || ""} readOnly />
                                 <label className="rc-form-label" style={{ marginLeft: 16 }}>Loại</label>
@@ -404,12 +407,22 @@ export default function IssueDetailPage() {
                                 </div>
                             ) : null}
 
-                            <div className="rc-form-row">
-                                <label className="rc-form-label">Người lập</label>
-                                <input className="rc-form-input rc-input-auto" value={issue.createdByFullname || issue.createdByName || ""} readOnly />
-                                <label className="rc-form-label" style={{ marginLeft: 16 }}>Đối tượng</label>
-                                <input className="rc-form-input" style={{ flex: 1, minWidth: 260 }} value={issue.customerName || ""} readOnly />
-                            </div>
+                            {/* Define isAdjustment helper */}
+                            {(() => {
+                                const isAdjustment = issue && String(issue.docType || issue.doctype || "").toUpperCase() === "ADJUSTMENT";
+                                return (
+                                    <div className="rc-form-row">
+                                        <label className="rc-form-label">Người lập</label>
+                                        <input className="rc-form-input rc-input-auto" value={issue.createdByFullname || issue.createdByName || ""} readOnly />
+                                        {!isAdjustment && (
+                                            <>
+                                                <label className="rc-form-label" style={{ marginLeft: 16 }}>Đối tượng</label>
+                                                <input className="rc-form-input" style={{ flex: 1, minWidth: 260 }} value={issue.customerName || ""} readOnly />
+                                            </>
+                                        )}
+                                    </div>
+                                );
+                            })()}
 
                             {/* ── Diễn giải ── */}
                             <div className="rc-form-row">
@@ -477,15 +490,10 @@ export default function IssueDetailPage() {
                             <div className="rc-form-actions">
                                 <button className="rc-btn-template" onClick={handleExportPdf}>Xuất PDF</button>
                                 <button className="sp-btn-outline" onClick={() => navigate("/issues")}>Quay lại</button>
-                                {issue.docstatus === "DRAFT" && canConfirmCancel && (
-                                    <>
-                                        <button className="sp-btn-danger-outline" onClick={() => setRejectModal(true)} disabled={actionLoading}>
-                                            Từ chối
-                                        </button>
-                                        <button className="sp-btn-primary" onClick={() => setConfirmModal(true)} disabled={actionLoading}>
-                                            Xác nhận
-                                        </button>
-                                    </>
+                                {issue.docstatus === "DRAFT" && (
+                                    <button className="sp-btn-primary" onClick={() => navigate(`/issues/create?id=${issue.id}`)}>
+                                        Cập nhật
+                                    </button>
                                 )}
                             </div>
                         </div>

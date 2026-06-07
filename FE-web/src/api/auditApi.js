@@ -15,9 +15,16 @@ export const getAuditById = async (id) => {
     return res.data.data;
 };
 
+/** GET /api/inventory-audits/stock-rows?itemId=&locationId= */
+export const getAuditStockRows = async (params = {}) => {
+    const res = await axiosInstance.get(`${BASE}/stock-rows`, { params });
+    return res.data.data || [];
+};
+
 /**
  * POST /api/inventory-audits — Tạo phiếu kiểm kê (DRAFT/REQUESTED)
- * body: { docno, docDate, description, locationId, assignedUserId?, sendToStaff?, details: [{itemId, actualquantity, description}] }
+ * sendToStaff=true: details [{ itemId, batchId, locationId }]
+ * sendToStaff=false: details [{ itemId, batchId, locationId, actualquantity }]
  */
 export const createAudit = async (body) => {
     const res = await axiosInstance.post(BASE, body);
@@ -29,6 +36,12 @@ export const createAudit = async (body) => {
  */
 export const updateAudit = async (id, body) => {
     const res = await axiosInstance.put(`${BASE}/${id}`, body);
+    return res.data;
+};
+
+/** POST /api/inventory-audits/{id}/request — Gửi yêu cầu từ phiếu DRAFT */
+export const requestAudit = async (id, body) => {
+    const res = await axiosInstance.post(`${BASE}/${id}/request`, body);
     return res.data;
 };
 
@@ -64,7 +77,7 @@ export const getAssignedAuditsDone = async () => {
 
 /**
  * PUT /api/inventory-audits/{id}/assigned — STAFF cập nhật số liệu thực tế
- * body: { docno, docDate, description, details: [{ itemId, actualquantity, description }] }
+ * body: { details: [{ id, itemId, batchId, locationId, actualquantity, description }] }
  */
 export const updateAssignedAudit = async (id, body) => {
     const res = await axiosInstance.put(`${BASE}/${id}/assigned`, body);

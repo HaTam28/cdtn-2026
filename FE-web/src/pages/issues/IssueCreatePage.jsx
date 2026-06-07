@@ -3,12 +3,13 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import "../../styles/shared.css";
 import "../receipts/receipts.css";
 import "./issues.css";
-import { createIssue, getAvailableLocations, getAllIssues } from "../../api/issueApi";
+import { confirmIssue, createIssue, getAvailableLocations, getAllIssues, getIssueById, updateIssue } from "../../api/issueApi";
 import { getAuditById } from "../../api/auditApi";
 import { getAllCustomers } from "../../api/customerApi";
 import { getAllItems } from "../../api/itemApi";
 import { getAllBatches } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
+import { formatDateForDisplay, normalizeDateDisplayInput, parseDisplayDateToIso } from "../../utils/dateInput";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 let _rowKey = 0;
@@ -20,6 +21,7 @@ const newRow = () => ({
     unitof: "",
     quantity: "",       // required total quantity for this item
     price: "",          // unit price
+    inventoryAuditDetailId: "",
     batchEntries: [],   // [{_id, batchId, batchCode, locationId, locationcode, remainingStock, quantity, unitCost}]
 });
 
@@ -116,7 +118,7 @@ function BatchModal({ open, onClose, onConfirm, loading, batches, alreadySelecte
             if (remaining <= 0) return;
             const available = Number(b.remainingStock || 0);
             if (available <= 0) return;
-            next.add(String(b.batchId));
+            next.add(String(b._pickKey));
             remaining -= available;
         });
         setSelected(next);
@@ -124,7 +126,7 @@ function BatchModal({ open, onClose, onConfirm, loading, batches, alreadySelecte
 
     if (!open) return null;
 
-    const available = batches.filter((b) => !alreadySelectedIds.has(String(b.batchId)));
+    const available = batches.filter((b) => !alreadySelectedIds.has(String(b._pickKey)));
     const filtered = available.filter((b) => {
         const q = search.trim().toLowerCase();
         return !q
@@ -135,11 +137,11 @@ function BatchModal({ open, onClose, onConfirm, loading, batches, alreadySelecte
     const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
     const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-    const handleToggle = (batchId, disabled) => {
+    const handleToggle = (pickKey, disabled) => {
         if (disabled) return;
         setSelected((prev) => {
             const next = new Set(prev);
-            const key = String(batchId);
+            const key = String(pickKey);
             if (next.has(key)) next.delete(key);
             else next.add(key);
             return next;
@@ -149,7 +151,7 @@ function BatchModal({ open, onClose, onConfirm, loading, batches, alreadySelecte
     const handleConfirm = () => {
         const picked = pageItems.length === 0
             ? []
-            : filtered.filter((b) => selected.has(String(b.batchId)));
+            : filtered.filter((b) => selected.has(String(b._pickKey)));
         if (picked.length > 0) onConfirm(picked);
     };
 
@@ -205,17 +207,17 @@ function BatchModal({ open, onClose, onConfirm, loading, batches, alreadySelecte
                                 </thead>
                                 <tbody>
                                     {pageItems.map((b) => {
-                                        const isChecked = selected.has(String(b.batchId));
+                                        const isChecked = selected.has(String(b._pickKey));
                                         const selectedTotal = Array.from(selected).reduce((sum, id) => {
-                                            const found = batches.find((x) => String(x.batchId) === String(id));
+                                            const found = batches.find((x) => String(x._pickKey) === String(id));
                                             return sum + Number(found?.remainingStock || 0);
                                         }, 0);
                                         const reached = Number(requiredQty || 0) > 0 && selectedTotal >= Number(requiredQty || 0);
                                         const isDisabled = !isChecked && reached;
                                         return (
                                             <tr
-                                                key={b.batchId}
-                                                onClick={() => handleToggle(b.batchId, isDisabled)}
+                                                key={b._pickKey}
+                                                onClick={() => handleToggle(b._pickKey, isDisabled)}
                                                 style={{ cursor: isDisabled ? "not-allowed" : "pointer", opacity: isDisabled ? 0.4 : 1 }}
                                                 className={isChecked ? "rc-row-selected" : ""}
                                             >
@@ -224,7 +226,7 @@ function BatchModal({ open, onClose, onConfirm, loading, batches, alreadySelecte
                                                         type="checkbox"
                                                         checked={isChecked}
                                                         disabled={isDisabled}
-                                                        onChange={() => handleToggle(b.batchId, isDisabled)}
+                                                        onChange={() => handleToggle(b._pickKey, isDisabled)}
                                                         onClick={(e) => e.stopPropagation()}
                                                     />
                                                 </td>
@@ -272,8 +274,12 @@ export default function IssueCreatePage() {
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams] = useSearchParams();
+    const editId = searchParams.get("id");
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    const isManager = user?.role && !["STAFF", "NV"].includes(user.role);
 
     const [form, setForm] = useState({ date: todayStr(), docno: "", customerId: "", address: "", description: "", docType: "NORMAL" });
+    const [dateDisplay, setDateDisplay] = useState({ docDate: formatDateForDisplay(todayStr()) });
     const [rows, setRows] = useState([newRow()]);
     const [customers, setCustomers] = useState([]);
     const [items, setItems] = useState([]);
@@ -285,6 +291,8 @@ export default function IssueCreatePage() {
     const [stockByItem, setStockByItem] = useState({});
     const [prefilledFromAudit, setPrefilledFromAudit] = useState(false);
     const [prefilledFromClone, setPrefilledFromClone] = useState(false);
+    const [auditSource, setAuditSource] = useState(null);
+    const customerOptions = customers.filter((c) => c.iscustomer);
 
     const loadData = useCallback(async () => {
         setLoadingData(true);
@@ -298,13 +306,82 @@ export default function IssueCreatePage() {
             setCustomers(cList);
             setItems(iList);
             setBatches(bList);
-            setForm((prev) => ({
-                ...prev,
-                docno: prev.docno || buildNextDocno("PX", iDocList),
-            }));
+            if (!editId) {
+                setForm((prev) => ({
+                    ...prev,
+                    docno: prev.docno || buildNextDocno("PX", iDocList),
+                }));
+            }
         } catch { /* non-blocking */ } finally { setLoadingData(false); }
-    }, []);
+    }, [editId]);
     useEffect(() => { loadData(); }, [loadData]);
+
+    useEffect(() => {
+        if (!editId) return;
+        const loadDraft = async () => {
+            setLoadingData(true);
+            try {
+                const draft = await getIssueById(editId);
+                if (draft) {
+                    const toDateOnly = (val) => (val ? String(val).slice(0, 10) : "");
+                    setForm({
+                        date: toDateOnly(draft.docDate),
+                        docno: draft.docno || "",
+                        customerId: String(draft.customerId || ""),
+                        address: draft.address || "",
+                        description: draft.description || "",
+                        docType: draft.docType || "NORMAL"
+                    });
+                    setDateDisplay({
+                        docDate: formatDateForDisplay(toDateOnly(draft.docDate))
+                    });
+
+                    // Group details by itemId
+                    const grouped = {};
+                    (draft.details || []).forEach((d) => {
+                        const key = String(d.itemId);
+                        if (!grouped[key]) {
+                            grouped[key] = {
+                                _id: ++_rowKey,
+                                itemId: String(d.itemId),
+                                itemcode: d.itemcode || "",
+                                itemname: d.itemname || "",
+                                unitof: d.unitof || "",
+                                quantity: 0,
+                                price: d.unitprice != null ? String(d.unitprice) : "",
+                                inventoryAuditDetailId: d.inventoryAuditDetailId || "",
+                                batchEntries: []
+                            };
+                        }
+                        grouped[key].quantity += Number(d.quantity || 0);
+                        grouped[key].batchEntries.push({
+                            _id: ++_rowKey,
+                            _pickKey: `${d.batchId || ""}-${d.locationId || ""}`,
+                            batchId: d.batchId,
+                            batchCode: d.batchCode || "",
+                            locationId: d.locationId || "",
+                            locationcode: d.locationcode || "",
+                            remainingStock: Number(d.quantity) || 0,
+                            quantity: String(d.quantity || ""),
+                            unitCost: d.unitprice || 0
+                        });
+                    });
+
+                    const rowsFromIssue = Object.values(grouped).map(r => ({
+                        ...r,
+                        quantity: String(r.quantity)
+                    }));
+                    
+                    setRows(rowsFromIssue.length > 0 ? rowsFromIssue : [newRow()]);
+                }
+            } catch (err) {
+                showToast("error", "Không thể tải chi tiết phiếu xuất nháp.");
+            } finally {
+                setLoadingData(false);
+            }
+        };
+        loadDraft();
+    }, [editId]);
 
     useEffect(() => {
         const paramType = searchParams.get("docType");
@@ -340,6 +417,7 @@ export default function IssueCreatePage() {
             if (d.batchId) {
                 grouped[key].batchEntries.push({
                     _id: ++_rowKey,
+                    _pickKey: `${d.batchId || ""}-${d.locationId || ""}`,
                     batchId: d.batchId,
                     batchCode: d.batchCode || d.nameBatch || String(d.batchId),
                     locationId: d.locationId || "",
@@ -356,14 +434,16 @@ export default function IssueCreatePage() {
         }));
 
         if (rowsFromClone.length > 0) setRows(rowsFromClone);
+        const cloneDocDate = toDateOnly(clone.docDate);
         setForm((prev) => ({
             ...prev,
-            date: toDateOnly(clone.docDate) || prev.date,
+            date: cloneDocDate || prev.date,
             customerId: clone.customerId || "",
             address: clone.address || "",
             description: clone.description || "",
             docType: clone.docType || prev.docType || "NORMAL",
         }));
+        setDateDisplay({ docDate: formatDateForDisplay(cloneDocDate || form.date) });
         setPrefilledFromClone(true);
         setPrefilledFromAudit(true);
     }, [location.state, prefilledFromClone]);
@@ -371,28 +451,31 @@ export default function IssueCreatePage() {
     // ── Audit prefill ──
     useEffect(() => {
         const auditId = searchParams.get("auditId");
+        const auditDetailId = searchParams.get("auditDetailId");
         if (!auditId || prefilledFromAudit) return;
         const fillFromAudit = async () => {
             try {
                 const [data, batchList] = await Promise.all([getAuditById(auditId), getAllBatches()]);
-                const batchByItem = {};
+                const batchById = {};
                 (batchList || []).forEach((b) => {
-                    const key = String(b.itemId);
-                    if (!batchByItem[key] && Number(b.quantityRemaining) > 0) batchByItem[key] = b;
+                    batchById[String(b.id)] = b;
                 });
                 const rowsFromAudit = (data.details || [])
                     .filter((d) => Number(d.diffquantity) < 0)
+                    .filter((d) => !auditDetailId || String(d.id) === String(auditDetailId))
                     .map((d) => {
                         const diff = Math.abs(Number(d.diffquantity || 0));
-                        const batch = batchByItem[String(d.itemId)];
-                        const batchEntries = batch ? [{
+                        const batch = batchById[String(d.batchId)] || {};
+                        const batchEntries = d.batchId ? [{
                             _id: ++_rowKey,
-                            batchId: batch.id,
-                            batchCode: batch.batchCode || "",
-                            locationId: "",
-                            locationcode: "",
-                            remainingStock: Number(batch.quantityRemaining) || diff,
+                            _pickKey: `${d.batchId || ""}-${d.locationId || ""}`,
+                            batchId: d.batchId,
+                            batchCode: d.batchCode || batch.batchCode || "",
+                            locationId: d.locationId || "",
+                            locationcode: d.locationcode || d.locationname || "",
+                            remainingStock: Number(d.bookquantity ?? batch.quantityRemaining) || diff,
                             quantity: String(diff),
+                            unitCost: batch.unitCost || "",
                         }] : [];
                         return {
                             ...newRow(),
@@ -402,6 +485,7 @@ export default function IssueCreatePage() {
                             unitof: d.unitof,
                             quantity: String(diff),
                             price: calcSalePrice(batch?.unitCost),
+                            inventoryAuditDetailId: d.id,
                             batchEntries,
                         };
                     });
@@ -411,8 +495,9 @@ export default function IssueCreatePage() {
                 setForm((prev) => ({
                     ...prev,
                     docType: "ADJUSTMENT",
-                    description: prev.description || `Điều chỉnh từ kiểm kê ${data.docno}`,
+                    description: prev.description || `Nguồn tạo từ phiếu kiểm kê ${data.docno}`,
                 }));
+                setAuditSource({ id: data.id, docno: data.docno });
                 setPrefilledFromAudit(true);
             } catch {
                 setPrefilledFromAudit(true);
@@ -421,12 +506,19 @@ export default function IssueCreatePage() {
         fillFromAudit();
     }, [searchParams, prefilledFromAudit]);
 
+    const isAdjustment = form.docType === "ADJUSTMENT";
+
     const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3500); };
 
     const handleFormChange = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+    const handleDocDateChange = (value) => {
+        const display = normalizeDateDisplayInput(value);
+        setDateDisplay({ docDate: display });
+        setForm((prev) => ({ ...prev, date: parseDisplayDateToIso(display) }));
+    };
 
     const handleCustomerChange = (customerId) => {
-        const found = customers.find((c) => String(c.id) === String(customerId));
+        const found = customerOptions.find((c) => String(c.id) === String(customerId));
         setForm((prev) => ({ ...prev, customerId, address: found?.address || "" }));
     };
 
@@ -478,7 +570,6 @@ export default function IssueCreatePage() {
         setBatchModal({ open: true, rowIdx: idx, batches: [], loading: true });
         try {
             const locations = await getAvailableLocations(row.itemId);
-            // Build batch map: pick the highest remaining stock per batch
             const batchMap = {};
             (locations || []).forEach((loc) => {
                 const item = (loc.items || []).find((it) => String(it.itemId) === String(row.itemId));
@@ -486,16 +577,16 @@ export default function IssueCreatePage() {
                 batchList.forEach((batch) => {
                     const remaining = Number(batch.quantityRemaining ?? batch.remainingStock ?? 0);
                     if (!batch.batchId || remaining <= 0) return;
-                    const bId = String(batch.batchId);
-                    if (!batchMap[bId] || remaining > batchMap[bId].remainingStock) {
-                        batchMap[bId] = {
-                            batchId: batch.batchId,
-                            batchCode: batch.batchCode || "",
-                            locationId: batch.locationId || loc.locationId,
-                            locationcode: batch.locationcode || loc.locationcode,
-                            remainingStock: remaining,
-                        };
-                    }
+                    const locationId = batch.locationId || loc.locationId;
+                    const pickKey = `${batch.batchId}-${locationId || ""}`;
+                    batchMap[pickKey] = {
+                        _pickKey: pickKey,
+                        batchId: batch.batchId,
+                        batchCode: batch.batchCode || "",
+                        locationId,
+                        locationcode: batch.locationcode || loc.locationcode,
+                        remainingStock: remaining,
+                    };
                 });
             });
             // Enrich batchCode from local batches list if missing
@@ -537,6 +628,7 @@ export default function IssueCreatePage() {
                 remaining = Math.max(0, remaining - autoQty);
                 return {
                     _id: ++_rowKey,
+                    _pickKey: batch._pickKey,
                     batchId: batch.batchId,
                     batchCode: batch.batchCode,
                     locationId: batch.locationId,
@@ -586,16 +678,47 @@ export default function IssueCreatePage() {
         return sum + rowTotal;
     }, 0);
 
+    const buildDetailsPayload = (sourceRows = rows) => sourceRows.flatMap((r) => {
+        if (!r.itemId) return [];
+        return (r.batchEntries || [])
+            .filter((e) => e.batchId && e.locationId && Number(e.quantity) > 0)
+            .map((e) => ({
+                itemId: Number(r.itemId),
+                batchId: Number(e.batchId),
+                locationId: Number(e.locationId),
+                quantity: Number(e.quantity),
+                unitprice: Number(e.unitCost) || Number(r.price) || 0,
+                ...(isAdjustment && r.inventoryAuditDetailId ? { inventoryAuditDetailId: Number(r.inventoryAuditDetailId) } : {}),
+            }));
+    });
+
+    const buildIssuePayload = (details = buildDetailsPayload()) => {
+        const adjAuditId = searchParams.get("auditId");
+        const payload = {
+            docno: form.docno.trim(),
+            docDate: form.date,
+            description: form.description.trim(),
+            doctype: form.docType,
+            ...(adjAuditId ? { inventoryAuditId: Number(adjAuditId) } : {}),
+            details,
+        };
+        if (!isAdjustment) {
+            payload.customerId = form.customerId ? Number(form.customerId) : undefined;
+        }
+        return payload;
+    };
+
     const handleSave = async () => {
         if (!form.date) { showToast("error", "Vui lòng chọn ngày."); return; }
         if (!form.docno.trim()) { showToast("error", "Vui lòng nhập số chứng từ."); return; }
-        if (!form.customerId) { showToast("error", "Vui lòng chọn đối tượng."); return; }
+        if (!isAdjustment && !form.customerId) { showToast("error", "Vui lòng chọn đối tượng."); return; }
         if (rows.length === 0) { showToast("error", "Vui lòng thêm ít nhất một dòng vật tư."); return; }
 
         for (let i = 0; i < rows.length; i++) {
             const r = rows[i];
             if (!r.itemId) { showToast("error", `Dòng ${i + 1}: Vui lòng chọn mặt hàng.`); return; }
             if (!r.quantity || Number(r.quantity) <= 0) { showToast("error", `Dòng ${i + 1}: Số lượng yêu cầu không hợp lệ.`); return; }
+            if (isAdjustment && !r.inventoryAuditDetailId) { showToast("error", `Dòng ${i + 1}: Thiếu liên kết chi tiết kiểm kê.`); return; }
 
             const requiredQty = Number(r.quantity);
 
@@ -604,10 +727,9 @@ export default function IssueCreatePage() {
                 return;
             }
 
-            // No duplicate batches within the same row
-            const batchIds = r.batchEntries.map((e) => String(e.batchId));
-            if (new Set(batchIds).size !== batchIds.length) {
-                showToast("error", `Dòng ${i + 1}: Có mã lô bị trùng lặp.`);
+            const batchLocationKeys = r.batchEntries.map((e) => `${e.batchId || ""}-${e.locationId || ""}`);
+            if (new Set(batchLocationKeys).size !== batchLocationKeys.length) {
+                showToast("error", `Dòng ${i + 1}: Có mã lô và vị trí bị trùng lặp.`);
                 return;
             }
 
@@ -618,7 +740,8 @@ export default function IssueCreatePage() {
                     return;
                 }
                 if (Number(e.quantity) > e.remainingStock) {
-                    showToast("error", `Dòng ${i + 1}, lô ${e.batchCode}: Số lượng xuất (${e.quantity}) vượt tồn lô (${e.remainingStock}).`);
+                    const shortfall = Number(e.quantity) - Number(e.remainingStock || 0);
+                    showToast("error", `Dòng ${i + 1}, lô ${e.batchCode} tại ${e.locationcode || "vị trí đã chọn"} chỉ còn ${e.remainingStock}, thiếu ${shortfall}.`);
                     return;
                 }
             }
@@ -631,51 +754,71 @@ export default function IssueCreatePage() {
 
             const totalStock = stockByItem[String(r.itemId)]?.total;
             if (totalStock !== undefined && totalBatch > totalStock) {
-                showToast("error", `Dòng ${i + 1}: Số lượng yêu cầu (${totalBatch}) vượt tồn hiện tại (${totalStock}).`);
+                const shortfall = totalBatch - totalStock;
+                showToast("error", `Dòng ${i + 1}: Tồn hiện tại chỉ còn ${totalStock}, thiếu ${shortfall}.`);
                 return;
             }
         }
 
-        const details = rows.flatMap((r) =>
-            r.batchEntries.map((e) => ({
-                itemId: Number(r.itemId),
-                batchId: e.batchId ? Number(e.batchId) : undefined,
-                locationId: e.locationId ? Number(e.locationId) : null,
-                quantity: Number(e.quantity),
-                unitprice: Number(e.unitCost) || Number(r.price) || 0,
-            }))
-        );
+        const details = buildDetailsPayload();
 
         setSaving(true);
         const adjAuditId = searchParams.get("auditId");
+        const adjAuditDetailId = searchParams.get("auditDetailId");
         try {
-            const result = await createIssue({
-                docno: form.docno.trim(),
-                docDate: form.date,
-                description: form.description.trim(),
-                customerId: Number(form.customerId),
-                doctype: form.docType,
-                ...(adjAuditId ? { inventoryAuditId: Number(adjAuditId) } : {}),
-                details,
-            });
+            const payload = buildIssuePayload(details);
+            const result = editId ? await updateIssue(editId, payload) : await createIssue(payload);
             if (result?.success) {
-                showToast("success", "Tạo phiếu xuất kho thành công!");
-                const newId = result?.data?.id;
+                const newId = editId || result?.data?.id;
+                if (isManager && newId) {
+                    const confirmed = await confirmIssue(newId);
+                    if (!confirmed?.success) {
+                        showToast("error", confirmed?.message || "Đã lưu nháp nhưng xác nhận thất bại.");
+                        return;
+                    }
+                }
+                showToast("success", editId 
+                    ? (isManager ? "Cập nhật và xác nhận phiếu xuất kho thành công!" : "Đã cập nhật phiếu xuất kho.")
+                    : (isManager ? "Tạo và xác nhận phiếu xuất kho thành công!" : "Đã lưu nháp phiếu xuất kho.")
+                );
                 if (adjAuditId && form.docType === "ADJUSTMENT" && newId) {
                     localStorage.setItem(`audit_adj_issue_id_${adjAuditId}`, String(newId));
+                    if (adjAuditDetailId) {
+                        localStorage.setItem(`audit_adj_issue_detail_${adjAuditId}_${adjAuditDetailId}`, "1");
+                        localStorage.setItem(`audit_adj_issue_detail_doc_${adjAuditId}_${adjAuditDetailId}`, String(newId));
+                    }
                 }
                 setTimeout(() => navigate(newId ? `/issues/${newId}` : "/issues"), 1200);
             } else {
-                showToast("error", result?.message || "Tạo phiếu thất bại.");
+                showToast("error", result?.message || (editId ? "Cập nhật phiếu thất bại." : "Tạo phiếu thất bại."));
             }
         } catch (err) {
-            showToast("error", err?.response?.data?.message || "Có lỗi xảy ra khi tạo phiếu xuất kho.");
+            showToast("error", err?.response?.data?.message || (editId ? "Có lỗi xảy ra khi cập nhật phiếu xuất kho." : "Có lỗi xảy ra khi tạo phiếu xuất kho."));
+        } finally { setSaving(false); }
+    };
+
+    const handleSaveDraft = async () => {
+        if (!form.date) { showToast("error", "Vui lòng nhập ngày theo định dạng dd/mm/yyyy."); return; }
+        if (!form.docno.trim()) { showToast("error", "Vui lòng nhập số chứng từ."); return; }
+        setSaving(true);
+        try {
+            const payload = buildIssuePayload();
+            const result = editId ? await updateIssue(editId, payload) : await createIssue(payload);
+            if (result?.success) {
+                showToast("success", editId ? "Đã cập nhật phiếu xuất kho." : "Đã lưu nháp phiếu xuất kho.");
+                const newId = editId || result?.data?.id;
+                setTimeout(() => navigate(newId ? `/issues/${newId}` : "/issues"), 900);
+            } else {
+                showToast("error", result?.message || (editId ? "Cập nhật nháp thất bại." : "Lưu nháp thất bại."));
+            }
+        } catch (err) {
+            showToast("error", err?.response?.data?.message || (editId ? "Có lỗi xảy ra khi cập nhật nháp phiếu xuất kho." : "Có lỗi xảy ra khi lưu nháp phiếu xuất kho."));
         } finally { setSaving(false); }
     };
 
     const currentBatchRow = batchModal.rowIdx !== null ? rows[batchModal.rowIdx] : null;
     const alreadySelectedBatchIds = new Set(
-        (currentBatchRow?.batchEntries || []).map((e) => String(e.batchId))
+        (currentBatchRow?.batchEntries || []).map((e) => String(e._pickKey || `${e.batchId || ""}-${e.locationId || ""}`))
     );
 
     return (
@@ -711,8 +854,14 @@ export default function IssueCreatePage() {
 
                         {/* ── Header row ── */}
                         <div className="rc-header-row">
-                            <label className="rc-form-label">Ngày</label>
-                            <input type="date" className="rc-form-input" style={{ minWidth: 150 }} value={form.date} onChange={(e) => handleFormChange("date", e.target.value)} />
+                            <label className="rc-form-label" style={{ minWidth: 110 }}>Ngày</label>
+                            <input
+                                className="rc-form-input"
+                                style={{ minWidth: 150 }}
+                                placeholder="dd/mm/yyyy"
+                                value={dateDisplay.docDate}
+                                onChange={(e) => handleDocDateChange(e.target.value)}
+                            />
                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Số</label>
                             <input className="rc-form-input" style={{ minWidth: 200 }} placeholder="Nhập số chứng từ" value={form.docno} onChange={(e) => handleFormChange("docno", e.target.value)} />
                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Loại</label>
@@ -720,28 +869,38 @@ export default function IssueCreatePage() {
                                 <option value="NORMAL">Thông thường</option>
                                 <option value="ADJUSTMENT">Điều chỉnh</option>
                             </select>
+                            {isAdjustment && auditSource?.docno && (
+                                <>
+                                    <label className="rc-form-label" style={{ marginLeft: 16 }}>Phiếu kiểm kê</label>
+                                    <input className="rc-form-input" style={{ minWidth: 160 }} value={auditSource.docno} readOnly />
+                                </>
+                            )}
                         </div>
 
                         {/* ── Đối tượng ── */}
-                        <div className="rc-form-row">
-                            <label className="rc-form-label">Đối tượng</label>
-                            <select className="rc-form-select rc-form-full" value={form.customerId} onChange={(e) => handleCustomerChange(e.target.value)} disabled={loadingData}>
-                                <option value="">Chọn đối tượng</option>
-                                {customers.map((c) => (
-                                    <option key={c.id} value={c.id}>{c.customercode ? `${c.customercode}: ` : ""}{c.customername}</option>
-                                ))}
-                            </select>
-                        </div>
+                        {!isAdjustment && (
+                            <div className="rc-form-row">
+                                <label className="rc-form-label" style={{ minWidth: 110 }}>Đối tượng</label>
+                                <select className="rc-form-select rc-form-full" value={form.customerId} onChange={(e) => handleCustomerChange(e.target.value)} disabled={loadingData}>
+                                    <option value="">Chọn đối tượng</option>
+                                    {customerOptions.map((c) => (
+                                        <option key={c.id} value={c.id}>{c.customercode ? `${c.customercode}: ` : ""}{c.customername}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
 
                         {/* ── Địa chỉ ── */}
-                        <div className="rc-form-row">
-                            <label className="rc-form-label">Địa chỉ</label>
-                            <input className="rc-form-input rc-form-full" placeholder="Nhập địa chỉ" value={form.address} onChange={(e) => handleFormChange("address", e.target.value)} />
-                        </div>
+                        {!isAdjustment && (
+                            <div className="rc-form-row">
+                                <label className="rc-form-label" style={{ minWidth: 110 }}>Địa chỉ</label>
+                                <input className="rc-form-input rc-form-full" placeholder="Nhập địa chỉ" value={form.address} onChange={(e) => handleFormChange("address", e.target.value)} />
+                            </div>
+                        )}
 
                         {/* ── Diễn giải ── */}
                         <div className="rc-form-row">
-                            <label className="rc-form-label">Diễn giải</label>
+                            <label className="rc-form-label" style={{ minWidth: 110 }}>Diễn giải</label>
                             <input className="rc-form-input rc-form-full" placeholder="Nhập diễn giải" value={form.description} onChange={(e) => handleFormChange("description", e.target.value)} />
                         </div>
 
@@ -755,9 +914,8 @@ export default function IssueCreatePage() {
                                         <th style={{ width: "17%" }}>Tên vật tư hàng hóa</th>
                                         <th style={{ width: "6%" }}>ĐVT</th>
                                         <th style={{ width: "8%" }}>SL yêu cầu</th>
-                                        <th style={{ width: "9%" }}>Tồn hiện tại</th>
-                                        <th style={{ width: "13%" }}>Đơn giá xuất</th>
-                                        <th style={{ width: "10%" }}>Thành tiền</th>
+                                        {!isAdjustment && <th style={{ width: "9%", textAlign: "right", paddingRight: "12px" }}>Tồn hiện tại</th>}
+                                        <th style={{ width: "10%", textAlign: "right", paddingRight: "12px" }}>Thành tiền</th>
                                         <th style={{ width: "4%" }}></th>
                                     </tr>
                                 </thead>
@@ -801,27 +959,18 @@ export default function IssueCreatePage() {
                                                             onChange={(e) => handleRowChange(idx, "quantity", e.target.value)}
                                                         />
                                                     </td>
-                                                    <td className="rc-td-num" style={{ color: Number(row.quantity) > (stockByItem[row.itemId]?.total ?? Number.POSITIVE_INFINITY) ? "#c62828" : "#4c6152" }}>
-                                                        {!row.itemId
-                                                            ? "—"
-                                                            : stockByItem[row.itemId]?.loading
-                                                                ? "Đang tải..."
-                                                                : stockByItem[row.itemId]?.error
-                                                                    ? "Lỗi"
-                                                                    : (stockByItem[row.itemId]?.total ?? 0)}
-                                                    </td>
-                                                    <td>
-                                                        <input
-                                                            className="rc-td-input rc-td-num"
-                                                            style={{ background: row.price ? "#f0faf4" : undefined, fontWeight: row.price ? 600 : undefined, color: "#1E3A2F" }}
-                                                            type="number"
-                                                            min="0"
-                                                            value={row.price}
-                                                            onChange={(e) => handleRowChange(idx, "price", e.target.value)}
-                                                            placeholder="0"
-                                                        />
-                                                    </td>
-                                                    <td className="rc-td-num">
+                                                    {!isAdjustment && (
+                                                        <td className="rc-td-num" style={{ color: Number(row.quantity) > (stockByItem[row.itemId]?.total ?? Number.POSITIVE_INFINITY) ? "#c62828" : "#4c6152", textAlign: "right", paddingRight: "12px" }}>
+                                                            {!row.itemId
+                                                                ? "—"
+                                                                : stockByItem[row.itemId]?.loading
+                                                                    ? "Đang tải..."
+                                                                    : stockByItem[row.itemId]?.error
+                                                                        ? "Lỗi"
+                                                                        : (stockByItem[row.itemId]?.total ?? 0)}
+                                                        </td>
+                                                    )}
+                                                    <td className="rc-td-num" style={{ textAlign: "right", paddingRight: "12px" }}>
                                                         {formatMoney((Number(row.quantity) || 0) * (Number(row.price) || 0))}
                                                     </td>
                                                     <td>
@@ -835,7 +984,7 @@ export default function IssueCreatePage() {
 
                                                 {/* ── Batch entries sub-row ── */}
                                                 <tr>
-                                                    <td colSpan={9} style={{ padding: "0 0 10px 32px", background: "#fafcfb" }}>
+                                                    <td colSpan={isAdjustment ? 7 : 8} style={{ padding: "0 0 10px 32px", background: "#fafcfb" }}>
                                                         <div style={{ borderLeft: "3px solid #c6dfd0", paddingLeft: 12, paddingTop: 6 }}>
 
                                                             {/* Batch entries table */}
@@ -878,7 +1027,7 @@ export default function IssueCreatePage() {
                                                                                         />
                                                                                         {exceedsStock && (
                                                                                             <div style={{ fontSize: "0.75rem", color: "#c62828", marginTop: 2 }}>
-                                                                                                Vượt tồn lô ({entry.remainingStock})
+                                                                                                Thiếu {entryQty - entry.remainingStock}
                                                                                             </div>
                                                                                         )}
                                                                                     </td>
@@ -944,19 +1093,13 @@ export default function IssueCreatePage() {
                                         );
                                     })}
                                     <tr className="rc-add-row" onClick={handleAddRow}>
-                                        <td colSpan={9}>
+                                        <td colSpan={isAdjustment ? 7 : 8}>
                                             <button className="rc-add-row-btn" type="button">
                                                 <IconPlus size={13} /> Thêm mới dữ liệu
                                             </button>
                                         </td>
                                     </tr>
-                                    {totalAmount > 0 && (
-                                        <tr className="rc-total-row">
-                                            <td colSpan={7} style={{ textAlign: "right", paddingRight: 12 }}>Tổng cộng</td>
-                                            <td className="rc-td-num" style={{ textAlign: "right" }}>{formatMoney(totalAmount)}</td>
-                                            <td />
-                                        </tr>
-                                    )}
+
                                 </tbody>
                             </table>
                         </div>
@@ -964,8 +1107,13 @@ export default function IssueCreatePage() {
                         {/* ── Actions ── */}
                         <div className="rc-form-actions">
                             <button className="sp-btn-outline" onClick={() => navigate("/issues")}>Hủy bỏ</button>
+                            {!isAdjustment && (
+                                <button className="sp-btn-outline" onClick={handleSaveDraft} disabled={saving}>
+                                    {saving ? "Đang lưu..." : "Lưu nháp"}
+                                </button>
+                            )}
                             <button className="sp-btn-primary" onClick={handleSave} disabled={saving}>
-                                {saving ? "Đang lưu..." : "Lưu phiếu"}
+                                {saving ? "Đang lưu..." : isManager ? "Lưu và xác nhận" : "Lưu phiếu"}
                             </button>
                         </div>
                     </div>

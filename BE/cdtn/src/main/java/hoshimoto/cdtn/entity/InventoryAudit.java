@@ -36,6 +36,12 @@ public class InventoryAudit {
     @Column(name = "docdate")
     private LocalDate docDate;
 
+    @Column(name = "startdate")
+    private LocalDate startDate;
+
+    @Column(name = "enddate")
+    private LocalDate endDate;
+
     @Column(columnDefinition = "TEXT")
     private String description;
 

@@ -9,10 +9,10 @@ import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
 
 const STATUS_LABELS = {
-    DRAFT: "Chờ duyệt",
-    CONFIRMED: "Đã duyệt",
-    CANCELLED: "Hủy",
-    REJECTED: "Đã từ chối",
+    DRAFT: "Nháp",
+    CONFIRMED: "Đã xác nhận",
+    CANCELLED: "Đã hủy",
+    REJECTED: "Bị từ chối",
 };
 const STATUS_BADGE = {
     DRAFT: "rc-badge rc-badge-draft",
@@ -20,8 +20,8 @@ const STATUS_BADGE = {
     CANCELLED: "rc-badge rc-badge-cancelled",
     REJECTED: "rc-badge rc-badge-rejected",
 };
-const TABS = ["Tất cả", "Chờ duyệt", "Đã duyệt", "Đã từ chối"];
-const TAB_STATUS = { "Chờ duyệt": "DRAFT", "Đã duyệt": "CONFIRMED", "Đã từ chối": "REJECTED" };
+const TABS = ["Tất cả", "Nháp", "Đã xác nhận", "Bị từ chối"];
+const TAB_STATUS = { "Nháp": "DRAFT", "Đã xác nhận": "CONFIRMED", "Bị từ chối": "REJECTED" };
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
 function formatDate(str) {
@@ -278,7 +278,7 @@ export default function IssuesPage() {
                             {!loading && !error && pageData.map((r) => (
                                 <tr
                                     key={r.id}
-                                    className={`sp-row-clickable${selected.has(r.id) ? " sp-row-selected" : ""}`}
+                                    className={`sp-row-clickable${r.docstatus === "DRAFT" ? " rc-row-draft" : ""}${selected.has(r.id) ? " sp-row-selected" : ""}`}
                                     onClick={() => navigate(`/issues/${r.id}`)}
                                 >
                                     <td className="sp-td-cb" onClick={(e) => { e.stopPropagation(); toggleOne(r.id); }}>

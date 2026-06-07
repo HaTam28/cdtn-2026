@@ -13,6 +13,10 @@ public class InventoryAuditRequest {
 
     private LocalDate docDate;
 
+    private LocalDate startDate;
+
+    private LocalDate endDate;
+
     private String description;
 
     // Nếu gửi request tới nhân viên

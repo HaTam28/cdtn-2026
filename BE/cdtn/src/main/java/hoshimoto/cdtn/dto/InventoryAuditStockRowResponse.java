@@ -5,19 +5,15 @@ import java.math.BigDecimal;
 import lombok.Data;
 
 @Data
-public class GoodsReceiptDetailResponse {
-    private Long id;
+public class InventoryAuditStockRowResponse {
     private Long itemId;
     private String itemcode;
     private String itemname;
     private String unitof;
-    private BigDecimal quantity;
-    private BigDecimal unitprice;
-    private BigDecimal amount;
+    private Long batchId;
+    private String batchCode;
     private Long locationId;
     private String locationcode;
     private String locationname;
-    private Long batchId;
-    private String batchCode;
-    private Long inventoryAuditDetailId;
+    private BigDecimal bookquantity;
 }

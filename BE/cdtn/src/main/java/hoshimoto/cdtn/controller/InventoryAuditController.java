@@ -11,10 +11,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import hoshimoto.cdtn.dto.ApiResponse;
 import hoshimoto.cdtn.dto.InventoryAuditResponse;
+import hoshimoto.cdtn.dto.InventoryAuditStockRowResponse;
 import hoshimoto.cdtn.dto.request.InventoryAuditRequest;
 import hoshimoto.cdtn.dto.request.RejectRequest;
 import hoshimoto.cdtn.service.InventoryAuditService;
@@ -44,6 +46,15 @@ public class InventoryAuditController {
     }
 
     /** Tạo phiếu kiểm kê nháp */
+    @GetMapping("/stock-rows")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'STAFF')")
+    public ResponseEntity<ApiResponse<List<InventoryAuditStockRowResponse>>> getStockRows(
+            @RequestParam(required = false) Long itemId,
+            @RequestParam(required = false) Long locationId) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Lấy dữ liệu kiểm kê theo mã lô thành công",
+                inventoryAuditService.getStockRows(itemId, locationId)));
+    }
+
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<ApiResponse<InventoryAuditResponse>> create(
@@ -85,6 +96,16 @@ public class InventoryAuditController {
     @PreAuthorize("hasRole('STAFF')")
     public ResponseEntity<ApiResponse<InventoryAuditResponse>> submitAssigned(@PathVariable Long id) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Gửi kết quả kiểm kê thành công", inventoryAuditService.submitFromStaff(id)));
+    }
+
+    /** Quản lý gửi yêu cầu kiểm kê từ phiếu nháp cho nhân viên */
+    @PostMapping("/{id}/request")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<ApiResponse<InventoryAuditResponse>> sendRequest(
+            @PathVariable Long id,
+            @RequestBody(required = false) InventoryAuditRequest request) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Gửi yêu cầu kiểm kê thành công",
+                inventoryAuditService.sendRequestToStaff(id, request)));
     }
 
     /** Cập nhật phiếu kiểm kê nháp */

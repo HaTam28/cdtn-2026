@@ -2,12 +2,13 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import "../../styles/shared.css";
 import "./receipts.css";
-import { createReceipt, getAvailableLocations, getAllReceipts } from "../../api/receiptApi";
+import { confirmReceipt, createReceipt, getAvailableLocations, getAllReceipts, getReceiptById, updateReceipt } from "../../api/receiptApi";
 import { getAuditById } from "../../api/auditApi";
 import { getAllCustomers } from "../../api/customerApi";
 import { getAllItems } from "../../api/itemApi";
 import { getAllBatches } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
+import { formatDateForDisplay, normalizeDateDisplayInput, parseDisplayDateToIso } from "../../utils/dateInput";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 let _rowKey = 0;
@@ -20,6 +21,9 @@ const newRow = () => ({
     quantity: "",
     price: "",
     nameBatch: "",
+    batchId: "",
+    sourceBatchCode: "",
+    inventoryAuditDetailId: "",
     selectedLocations: [], // [{locationId, locationcode, allocQty}]
 });
 
@@ -137,7 +141,7 @@ function IconWarn() {
 }
 
 // ─── Location Picker Modal ────────────────────────────────────────────────────
-function LocationModal({ open, onClose, onConfirm, loading, suggestions, quantity, rowName }) {
+function LocationModal({ open, onClose, onConfirm, loading, suggestions, quantity, rowName, currentLocations = [] }) {
     const [search, setSearch] = useState("");
     const [rackFilter, setRackFilter] = useState("Tất cả dãy");
     const [selected, setSelected] = useState(new Map()); // Map<locationId, allocQty>
@@ -145,6 +149,24 @@ function LocationModal({ open, onClose, onConfirm, loading, suggestions, quantit
     useEffect(() => {
         if (open) { setSearch(""); setRackFilter("Tất cả dãy"); setSelected(new Map()); }
     }, [open]);
+
+    useEffect(() => {
+        if (!open || loading || suggestions.length === 0 || currentLocations.length === 0) return;
+        const next = new Map();
+        let remainingQty = Number(quantity) || 0;
+        currentLocations.forEach((loc) => {
+            if (remainingQty <= 0) return;
+            const found = suggestions.find((s) => String(s.locationId) === String(loc.locationId));
+            if (!found) return;
+            const cap = Number(found.remainingCapacity) || 0;
+            const alloc = Math.min(Number(loc.allocQty) || 0, cap, remainingQty);
+            if (alloc > 0) {
+                next.set(found.locationId, alloc);
+                remainingQty -= alloc;
+            }
+        });
+        setSelected(next);
+    }, [open, loading, suggestions, currentLocations, quantity]);
 
     if (!open) return null;
 
@@ -155,6 +177,24 @@ function LocationModal({ open, onClose, onConfirm, loading, suggestions, quantit
     const partialLocs = suggestions.filter((s) => s.type === "PARTIAL");
     const totalAllocated = Array.from(selected.values()).reduce((a, b) => a + b, 0);
     const remaining = Math.max(0, qty - totalAllocated);
+    const totalAvailable = suggestions.reduce((sum, s) => sum + (Number(s.remainingCapacity) || 0), 0);
+    const totalShortfall = Math.max(0, qty - totalAvailable);
+    const currentShortfalls = currentLocations
+        .map((loc) => {
+            const found = suggestions.find((s) => String(s.locationId) === String(loc.locationId));
+            if (!found) return null;
+            const requested = Number(loc.allocQty) || 0;
+            const available = Number(found.remainingCapacity) || 0;
+            const shortfall = Math.max(0, requested - available);
+            if (shortfall <= 0) return null;
+            return {
+                code: found.locationcode || loc.locationcode || loc.locationId,
+                requested,
+                available,
+                shortfall,
+            };
+        })
+        .filter(Boolean);
     const pct = qty > 0 ? Math.min(100, Math.round((totalAllocated / qty) * 100)) : 0;
 
     const racks = ["Tất cả dãy", ...Array.from(new Set(
@@ -229,9 +269,19 @@ function LocationModal({ open, onClose, onConfirm, loading, suggestions, quantit
                         <div style={{ background: "#d4edda", borderRadius: 4, height: 8, overflow: "hidden" }}>
                             <div style={{ background: remaining === 0 ? "#2DBE60" : "#f9a825", width: `${pct}%`, height: "100%", borderRadius: 4, transition: "width 0.2s" }} />
                         </div>
-                        {remaining > 0 && qty > 0 && suggestions.length > 0 && !suggestions.some((s) => (Number(s.remainingCapacity) || 0) >= qty) && (
+                        {totalShortfall > 0 && qty > 0 && suggestions.length > 0 && (
                             <div style={{ marginTop: 6, fontSize: "0.8rem", color: "#e65100", display: "flex", alignItems: "center", gap: 4 }}>
-                                <IconWarn /> Số lượng vượt sức chứa 1 vị trí — vui lòng chọn nhiều vị trí để phân bổ đủ.
+                                <IconWarn /> Tổng sức chứa còn trống chỉ {formatMoney(totalAvailable)} — còn thiếu {formatMoney(totalShortfall)}.
+                            </div>
+                        )}
+                        {totalShortfall === 0 && currentShortfalls.map((item) => (
+                            <div key={item.code} style={{ marginTop: 6, fontSize: "0.8rem", color: "#e65100", display: "flex", alignItems: "center", gap: 4 }}>
+                                <IconWarn /> Vị trí {item.code} chỉ còn trống {formatMoney(item.available)}, thiếu {formatMoney(item.shortfall)} so với số lượng cần nhập {formatMoney(item.requested)}. Có thể chọn thêm vị trí khác, mã lô điều chỉnh vẫn giữ nguyên.
+                            </div>
+                        ))}
+                        {totalShortfall === 0 && remaining > 0 && qty > 0 && suggestions.length > 0 && !suggestions.some((s) => (Number(s.remainingCapacity) || 0) >= qty) && (
+                            <div style={{ marginTop: 6, fontSize: "0.8rem", color: "#e65100", display: "flex", alignItems: "center", gap: 4 }}>
+                                <IconWarn /> Không có một vị trí đủ chứa toàn bộ — vui lòng chọn nhiều vị trí để phân bổ đủ.
                             </div>
                         )}
                     </div>
@@ -325,10 +375,15 @@ export default function ReceiptCreatePage() {
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams] = useSearchParams();
+    const editId = searchParams.get("id");
 
     const [form, setForm] = useState({ date: todayStr(), docno: "", customerId: "", address: "", description: "", docType: "NORMAL" });
     const [rows, setRows] = useState([newRow()]);
     const [invoice, setInvoice] = useState({ date: "", taxcode: "", number: "", supplierId: "" });
+    const [dateDisplay, setDateDisplay] = useState({
+        docDate: formatDateForDisplay(todayStr()),
+        invoiceDate: "",
+    });
     const [customers, setCustomers] = useState([]);
     const [items, setItems] = useState([]);
     const [loadingData, setLoadingData] = useState(true);
@@ -338,19 +393,96 @@ export default function ReceiptCreatePage() {
     const [prefilledFromAudit, setPrefilledFromAudit] = useState(false);
     const [prefilledFromClone, setPrefilledFromClone] = useState(false);
     const [prefilledFromOverview, setPrefilledFromOverview] = useState(false);
+    const [auditSource, setAuditSource] = useState(null);
+    const supplierOptions = customers.filter((c) => c.issupplier);
     const loadData = useCallback(async () => {
         setLoadingData(true);
         try {
             const [cList, iList, rList] = await Promise.all([getAllCustomers(), getAllItems(), getAllReceipts()]);
             setCustomers(cList);
             setItems(iList);
-            setForm((prev) => ({
-                ...prev,
-                docno: prev.docno || buildNextDocno("PN", rList),
-            }));
+            if (!editId) {
+                setForm((prev) => ({
+                    ...prev,
+                    docno: prev.docno || buildNextDocno("PN", rList),
+                }));
+            }
         } catch { /* non-blocking */ } finally { setLoadingData(false); }
-    }, []);
+    }, [editId]);
     useEffect(() => { loadData(); }, [loadData]);
+
+    useEffect(() => {
+        if (!editId) return;
+        const loadDraft = async () => {
+            setLoadingData(true);
+            try {
+                const draft = await getReceiptById(editId);
+                if (draft) {
+                    const toDateOnly = (val) => (val ? String(val).slice(0, 10) : "");
+                    setForm({
+                        date: toDateOnly(draft.docDate),
+                        docno: draft.docno || "",
+                        customerId: String(draft.customerId || draft.supplierId || ""),
+                        address: draft.address || "",
+                        description: draft.description || "",
+                        docType: draft.docType || "NORMAL"
+                    });
+                    
+                    setInvoice({
+                        date: toDateOnly(draft.invoiceDate),
+                        taxcode: draft.taxcode || draft.customerTaxcode || "",
+                        number: draft.invoiceNo || draft.invoiceNumber || "",
+                        supplierId: String(draft.supplierId || draft.customerId || "")
+                    });
+                    
+                    setDateDisplay({
+                        docDate: formatDateForDisplay(toDateOnly(draft.docDate)),
+                        invoiceDate: formatDateForDisplay(toDateOnly(draft.invoiceDate))
+                    });
+
+                    // Group details by itemId
+                    const grouped = {};
+                    (draft.details || []).forEach((d) => {
+                        const key = String(d.itemId);
+                        if (!grouped[key]) {
+                            grouped[key] = {
+                                _id: ++_rowKey,
+                                itemId: String(d.itemId),
+                                itemcode: d.itemcode || "",
+                                itemname: d.itemname || "",
+                                unitof: d.unitof || "",
+                                quantity: 0,
+                                price: d.unitprice != null ? String(d.unitprice) : "",
+                                nameBatch: d.batchCode || d.nameBatch || "L",
+                                batchId: d.batchId || "",
+                                sourceBatchCode: d.batchCode || "",
+                                inventoryAuditDetailId: d.inventoryAuditDetailId || "",
+                                selectedLocations: []
+                            };
+                        }
+                        grouped[key].quantity += Number(d.quantity || 0);
+                        grouped[key].selectedLocations.push({
+                            locationId: d.locationId,
+                            locationcode: d.locationcode || String(d.locationId),
+                            allocQty: Number(d.quantity || 0)
+                        });
+                    });
+
+                    const rowsFromReceipt = Object.values(grouped).map(r => ({
+                        ...r,
+                        quantity: String(r.quantity)
+                    }));
+                    
+                    setRows(rowsFromReceipt.length > 0 ? rowsFromReceipt : [newRow()]);
+                }
+            } catch (err) {
+                showToast("error", "Không thể tải chi tiết phiếu nhập nháp.");
+            } finally {
+                setLoadingData(false);
+            }
+        };
+        loadDraft();
+    }, [editId]);
 
     useEffect(() => {
         const paramType = searchParams.get("docType");
@@ -398,9 +530,11 @@ export default function ReceiptCreatePage() {
             selectedLocations: [],
         }));
         if (rowsFromClone.length > 0) setRows(rowsFromClone);
+        const cloneDocDate = toDateOnly(clone.docDate);
+        const cloneInvoiceDate = toDateOnly(clone.invoiceDate);
         setForm((prev) => ({
             ...prev,
-            date: toDateOnly(clone.docDate) || prev.date,
+            date: cloneDocDate || prev.date,
             customerId: clone.customerId || "",
             address: clone.address || "",
             description: clone.description || "",
@@ -408,10 +542,15 @@ export default function ReceiptCreatePage() {
         }));
         setInvoice((prev) => ({
             ...prev,
-            date: toDateOnly(clone.invoiceDate),
+            date: cloneInvoiceDate,
             taxcode: clone.taxcode || clone.customerTaxcode || prev.taxcode,
             number: clone.invoiceNo || clone.invoiceNumber || "",
             supplierId: clone.customerId || prev.supplierId,
+        }));
+        setDateDisplay((prev) => ({
+            ...prev,
+            docDate: formatDateForDisplay(cloneDocDate || form.date),
+            invoiceDate: formatDateForDisplay(cloneInvoiceDate),
         }));
         setPrefilledFromClone(true);
         setPrefilledFromAudit(true);
@@ -419,6 +558,7 @@ export default function ReceiptCreatePage() {
 
     useEffect(() => {
         const auditId = searchParams.get("auditId");
+        const auditDetailId = searchParams.get("auditDetailId");
         if (!auditId || prefilledFromAudit) return;
         const fillFromAudit = async () => {
             try {
@@ -431,10 +571,13 @@ export default function ReceiptCreatePage() {
                 });
                 const rowsFromAudit = (data.details || [])
                     .filter((d) => Number(d.diffquantity) > 0)
+                    .filter((d) => !auditDetailId || String(d.id) === String(auditDetailId))
                     .map((d) => {
                         const diff = Number(d.diffquantity || 0);
                         const entries = d.locationEntries || [];
-                        const selectedLocations = entries.length > 0 ? buildAllocations(entries, diff) : [];
+                        const selectedLocations = d.locationId
+                            ? [{ locationId: d.locationId, locationcode: d.locationcode || d.locationname || "", allocQty: diff }]
+                            : entries.length > 0 ? buildAllocations(entries, diff) : [];
                         return {
                             ...newRow(),
                             itemId: d.itemId,
@@ -443,18 +586,23 @@ export default function ReceiptCreatePage() {
                             unitof: d.unitof,
                             quantity: String(diff),
                             price: unitCostByItem[String(d.itemId)] || "",
-                            nameBatch: "L",
+                            nameBatch: d.batchCode || "L",
+                            batchId: d.batchId || "",
+                            sourceBatchCode: d.batchCode || "",
+                            inventoryAuditDetailId: d.id,
                             selectedLocations,
                         };
                     });
                 if (rowsFromAudit.length > 0) {
                     setRows(rowsFromAudit);
+                    validateAdjustmentCapacity(rowsFromAudit);
                 }
                 setForm((prev) => ({
                     ...prev,
                     docType: "ADJUSTMENT",
-                    description: prev.description || `Điều chỉnh từ kiểm kê ${data.docno}`,
+                    description: prev.description || `Nguồn tạo từ phiếu kiểm kê ${data.docno}`,
                 }));
+                setAuditSource({ id: data.id, docno: data.docno });
                 setPrefilledFromAudit(true);
             } catch {
                 setPrefilledFromAudit(true);
@@ -464,19 +612,30 @@ export default function ReceiptCreatePage() {
     }, [searchParams, prefilledFromAudit]);
 
     const user = JSON.parse(localStorage.getItem("user") || "{}");
-    const isManager = user?.role && user.role !== "STAFF";
+    const isManager = user?.role && !["STAFF", "NV"].includes(user.role);
+    const isAdjustment = form.docType === "ADJUSTMENT";
 
     const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3500); };
 
     const handleFormChange = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+    const handleDocDateChange = (value) => {
+        const display = normalizeDateDisplayInput(value);
+        setDateDisplay((prev) => ({ ...prev, docDate: display }));
+        setForm((prev) => ({ ...prev, date: parseDisplayDateToIso(display) }));
+    };
 
     const handleCustomerChange = (customerId) => {
-        const found = customers.find((c) => String(c.id) === String(customerId));
+        const found = supplierOptions.find((c) => String(c.id) === String(customerId));
         setForm((prev) => ({ ...prev, customerId, address: found?.address || "" }));
         if (found) setInvoice((prev) => ({ ...prev, taxcode: found.taxcode || "", supplierId: customerId }));
     };
 
     const handleInvoiceChange = (field, value) => setInvoice((prev) => ({ ...prev, [field]: value }));
+    const handleInvoiceDateChange = (value) => {
+        const display = normalizeDateDisplayInput(value);
+        setDateDisplay((prev) => ({ ...prev, invoiceDate: display }));
+        setInvoice((prev) => ({ ...prev, date: parseDisplayDateToIso(display) }));
+    };
 
     const handleRowChange = (idx, field, value) => {
         setRows((prev) => {
@@ -489,6 +648,8 @@ export default function ReceiptCreatePage() {
                 next[idx].unitof = found?.unitof || "";
                 // Default batch name per requirement: 'L'
                 next[idx].nameBatch = "L";
+                next[idx].batchId = "";
+                next[idx].sourceBatchCode = "";
                 next[idx].selectedLocations = [];
             }
             return next;
@@ -532,12 +693,86 @@ export default function ReceiptCreatePage() {
 
     const totalAmount = rows.reduce((sum, r) => sum + (Number(r.quantity) || 0) * (Number(r.price) || 0), 0);
 
+    const buildDetailsPayload = (sourceRows = rows) => sourceRows.flatMap((r) => {
+        if (!r.itemId) return [];
+        return (r.selectedLocations || [])
+            .filter((loc) => loc.locationId && Number(loc.allocQty) > 0)
+            .map((loc) => ({
+                itemId: Number(r.itemId),
+                locationId: Number(loc.locationId),
+                quantity: Number(loc.allocQty),
+                unitprice: Number(r.price) || 0,
+                ...(isAdjustment && r.batchId ? { batchId: Number(r.batchId) } : {}),
+                ...(isAdjustment && r.inventoryAuditDetailId ? { inventoryAuditDetailId: Number(r.inventoryAuditDetailId) } : {}),
+            }));
+    });
+
+    const buildReceiptPayload = (details = buildDetailsPayload()) => {
+        const adjAuditId = searchParams.get("auditId");
+        const payload = {
+            docno: form.docno.trim(),
+            docDate: form.date,
+            description: form.description.trim(),
+            doctype: form.docType,
+            ...(adjAuditId ? { inventoryAuditId: Number(adjAuditId) } : {}),
+            details,
+        };
+        if (!isAdjustment) {
+            payload.customerId = form.customerId ? Number(form.customerId) : undefined;
+            payload.invoiceDate = invoice.date || undefined;
+            payload.taxcode = invoice.taxcode || undefined;
+            payload.invoiceNumber = invoice.number || undefined;
+            payload.supplierId = invoice.supplierId ? Number(invoice.supplierId) : undefined;
+        }
+        return payload;
+    };
+
+    const validateAdjustmentCapacity = async (targetRows = rows) => {
+        const allocationsByItem = new Map();
+        targetRows.forEach((row) => {
+            (row.selectedLocations || []).forEach((loc) => {
+                const key = String(row.itemId);
+                const list = allocationsByItem.get(key) || [];
+                list.push({
+                    locationId: loc.locationId,
+                    locationcode: loc.locationcode,
+                    quantity: Number(loc.allocQty) || 0,
+                });
+                allocationsByItem.set(key, list);
+            });
+        });
+
+        for (const [itemId, allocations] of allocationsByItem.entries()) {
+            const locations = await getAvailableLocations(itemId);
+            const availableByLocation = new Map((locations || []).map((loc) => [String(loc.locationId), loc]));
+            const totalsByLocation = new Map();
+            allocations.forEach((loc) => {
+                const key = String(loc.locationId);
+                const current = totalsByLocation.get(key) || { ...loc, quantity: 0 };
+                current.quantity += loc.quantity;
+                totalsByLocation.set(key, current);
+            });
+
+            for (const loc of totalsByLocation.values()) {
+                const available = availableByLocation.get(String(loc.locationId));
+                const remaining = available?.remainingCapacity;
+                if (remaining !== null && remaining !== undefined && Number(remaining) < loc.quantity) {
+                    const code = loc.locationcode || available?.locationcode || loc.locationId;
+                    const shortfall = Math.max(0, loc.quantity - Number(remaining || 0));
+                    showToast("error", `Vị trí ${code} chỉ còn trống ${formatMoney(remaining || 0)}, thiếu ${formatMoney(shortfall)} sản phẩm.`);
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+
     const handleSave = async () => {
         if (!form.date) { showToast("error", "Vui lòng chọn ngày."); return; }
         if (!form.docno.trim()) { showToast("error", "Vui lòng nhập số chứng từ."); return; }
-        if (!form.customerId) { showToast("error", "Vui lòng chọn đối tượng."); return; }
-        if (!invoice.date) { showToast("error", "Vui lòng chọn ngày hóa đơn."); return; }
-        if (!invoice.number || !String(invoice.number).trim()) { showToast("error", "Vui lòng nhập số hóa đơn."); return; }
+        if (!isAdjustment && !form.customerId) { showToast("error", "Vui lòng chọn đối tượng."); return; }
+        if (!isAdjustment && !invoice.date) { showToast("error", "Vui lòng chọn ngày hóa đơn."); return; }
+        if (!isAdjustment && (!invoice.number || !String(invoice.number).trim())) { showToast("error", "Vui lòng nhập số hóa đơn."); return; }
         if (rows.length === 0) { showToast("error", "Vui lòng thêm ít nhất một dòng vật tư."); return; }
         for (let i = 0; i < rows.length; i++) {
             const r = rows[i];
@@ -545,44 +780,63 @@ export default function ReceiptCreatePage() {
             if (!r.quantity || Number(r.quantity) <= 0) { showToast("error", `Dòng ${i + 1}: Số lượng không hợp lệ.`); return; }
             if (!r.price || Number(r.price) <= 0) { showToast("error", `Dòng ${i + 1}: Đơn giá phải lớn hơn 0.`); return; }
             if (r.selectedLocations.length === 0) { showToast("error", `Dòng ${i + 1}: Vui lòng chọn vị trí lưu trữ.`); return; }
+            if (isAdjustment && !r.batchId) { showToast("error", `Dòng ${i + 1}: Thiếu mã lô điều chỉnh từ kiểm kê.`); return; }
+            if (isAdjustment && !r.inventoryAuditDetailId) { showToast("error", `Dòng ${i + 1}: Thiếu liên kết chi tiết kiểm kê.`); return; }
         }
-        const details = rows.flatMap((r) =>
-            r.selectedLocations.map((loc) => ({
-                itemId: Number(r.itemId),
-                locationId: Number(loc.locationId),
-                quantity: Number(loc.allocQty),
-                unitprice: Number(r.price),
-            }))
-        );
+        if (isAdjustment && !(await validateAdjustmentCapacity())) return;
+        const details = buildDetailsPayload();
         setSaving(true);
         const adjAuditId = searchParams.get("auditId");
+        const adjAuditDetailId = searchParams.get("auditDetailId");
         try {
-            const result = await createReceipt({
-                docno: form.docno.trim(),
-                docDate: form.date,
-                description: form.description.trim(),
-                customerId: Number(form.customerId),
-                docType: form.docType,
-                docstatus: isManager ? "CONFIRMED" : "DRAFT",
-                invoiceDate: invoice.date || undefined,
-                taxcode: invoice.taxcode || undefined,
-                invoiceNumber: invoice.number || undefined,
-                supplierId: invoice.supplierId ? Number(invoice.supplierId) : undefined,
-                ...(adjAuditId ? { inventoryAuditId: Number(adjAuditId) } : {}),
-                details,
-            });
+            const payload = buildReceiptPayload(details);
+            const result = editId ? await updateReceipt(editId, payload) : await createReceipt(payload);
             if (result?.success) {
-                showToast("success", "Tạo phiếu nhập kho thành công!");
-                // Lưu ID phiếu để AuditDetailPage kiểm tra status sau này
-                if (adjAuditId && form.docType === "ADJUSTMENT" && result?.data?.id) {
-                    localStorage.setItem(`audit_adj_receipt_id_${adjAuditId}`, String(result.data.id));
+                const newId = editId || result?.data?.id;
+                if (isManager && newId) {
+                    const confirmed = await confirmReceipt(newId);
+                    if (!confirmed?.success) {
+                        showToast("error", confirmed?.message || "Đã lưu nháp nhưng xác nhận thất bại.");
+                        return;
+                    }
                 }
-                setTimeout(() => navigate("/receipts"), 1200);
+                showToast("success", editId 
+                    ? (isManager ? "Cập nhật và xác nhận phiếu nhập kho thành công!" : "Đã cập nhật phiếu nhập kho.")
+                    : (isManager ? "Tạo và xác nhận phiếu nhập kho thành công!" : "Đã lưu nháp phiếu nhập kho.")
+                );
+                // Lưu ID phiếu để AuditDetailPage kiểm tra status sau này
+                if (adjAuditId && form.docType === "ADJUSTMENT" && newId) {
+                    localStorage.setItem(`audit_adj_receipt_id_${adjAuditId}`, String(newId));
+                    if (adjAuditDetailId) {
+                        localStorage.setItem(`audit_adj_receipt_detail_${adjAuditId}_${adjAuditDetailId}`, "1");
+                        localStorage.setItem(`audit_adj_receipt_detail_doc_${adjAuditId}_${adjAuditDetailId}`, String(newId));
+                    }
+                }
+                setTimeout(() => navigate(newId ? `/receipts/${newId}` : "/receipts"), 1200);
             } else {
-                showToast("error", result?.message || "Tạo phiếu thất bại.");
+                showToast("error", result?.message || (editId ? "Cập nhật phiếu thất bại." : "Tạo phiếu thất bại."));
             }
         } catch (err) {
-            showToast("error", err?.response?.data?.message || "Có lỗi xảy ra khi tạo phiếu nhập kho.");
+            showToast("error", err?.response?.data?.message || (editId ? "Có lỗi xảy ra khi cập nhật phiếu nhập kho." : "Có lỗi xảy ra khi tạo phiếu nhập kho."));
+        } finally { setSaving(false); }
+    };
+
+    const handleSaveDraft = async () => {
+        if (!form.date) { showToast("error", "Vui lòng nhập ngày theo định dạng dd/mm/yyyy."); return; }
+        if (!form.docno.trim()) { showToast("error", "Vui lòng nhập số chứng từ."); return; }
+        setSaving(true);
+        try {
+            const payload = buildReceiptPayload();
+            const result = editId ? await updateReceipt(editId, payload) : await createReceipt(payload);
+            if (result?.success) {
+                showToast("success", editId ? "Đã cập nhật phiếu nhập kho." : "Đã lưu nháp phiếu nhập kho.");
+                const newId = editId || result?.data?.id;
+                setTimeout(() => navigate(newId ? `/receipts/${newId}` : "/receipts"), 900);
+            } else {
+                showToast("error", result?.message || (editId ? "Cập nhật nháp thất bại." : "Lưu nháp thất bại."));
+            }
+        } catch (err) {
+            showToast("error", err?.response?.data?.message || (editId ? "Có lỗi xảy ra khi cập nhật nháp phiếu nhập kho." : "Có lỗi xảy ra khi lưu nháp phiếu nhập kho."));
         } finally { setSaving(false); }
     };
 
@@ -598,20 +852,26 @@ export default function ReceiptCreatePage() {
                             Chứng từ &rsaquo;{" "}
                             <span className="sp-breadcrumb-link" onClick={() => navigate("/receipts")}>Phiếu nhập kho</span>
                             {" "}&rsaquo;{" "}
-                            <span className="sp-breadcrumb-active">Thêm mới phiếu nhập kho</span>
+                            <span className="sp-breadcrumb-active">{editId ? "Cập nhật phiếu nhập kho" : "Thêm mới phiếu nhập kho"}</span>
                         </div>
                     </div>
                     <TopbarRight />
                 </div>
 
                 <div className="sp-content">
-                    <h1 className="sp-title">Phiếu nhập kho</h1>
+                    <h1 className="sp-title">{editId ? "Cập nhật phiếu nhập kho" : "Phiếu nhập kho"}</h1>
                     <div className="rc-form-card">
 
                         {/* ── Header row ── */}
                         <div className="rc-header-row">
                             <label className="rc-form-label">Ngày<span className="rc-required">*</span></label>
-                            <input type="date" className="rc-form-input" style={{ minWidth: 150 }} value={form.date} onChange={(e) => handleFormChange("date", e.target.value)} />
+                            <input
+                                className="rc-form-input"
+                                style={{ minWidth: 150 }}
+                                placeholder="dd/mm/yyyy"
+                                value={dateDisplay.docDate}
+                                onChange={(e) => handleDocDateChange(e.target.value)}
+                            />
                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Số<span className="rc-required">*</span></label>
                             <input className="rc-form-input" style={{ minWidth: 200 }} placeholder="Nhập số chứng từ" value={form.docno} onChange={(e) => handleFormChange("docno", e.target.value)} />
                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Loại</label>
@@ -619,24 +879,34 @@ export default function ReceiptCreatePage() {
                                 <option value="NORMAL">Thông thường</option>
                                 <option value="ADJUSTMENT">Điều chỉnh</option>
                             </select>
+                            {isAdjustment && auditSource?.docno && (
+                                <>
+                                    <label className="rc-form-label" style={{ marginLeft: 16 }}>Phiếu kiểm kê</label>
+                                    <input className="rc-form-input" style={{ minWidth: 160 }} value={auditSource.docno} readOnly />
+                                </>
+                            )}
                         </div>
 
                         {/* ── Đối tượng ── */}
-                        <div className="rc-form-row">
-                            <label className="rc-form-label">Đối tượng<span className="rc-required">*</span></label>
-                            <select className="rc-form-select rc-form-full" value={form.customerId} onChange={(e) => handleCustomerChange(e.target.value)} disabled={loadingData}>
-                                <option value="">Chọn đối tượng</option>
-                                {customers.map((c) => (
-                                    <option key={c.id} value={c.id}>{c.customercode ? `${c.customercode}: ` : ""}{c.customername}</option>
-                                ))}
-                            </select>
-                        </div>
+                        {!isAdjustment && (
+                            <div className="rc-form-row">
+                                <label className="rc-form-label">Đối tượng<span className="rc-required">*</span></label>
+                                <select className="rc-form-select rc-form-full" value={form.customerId} onChange={(e) => handleCustomerChange(e.target.value)} disabled={loadingData}>
+                                    <option value="">Chọn đối tượng</option>
+                                    {supplierOptions.map((c) => (
+                                        <option key={c.id} value={c.id}>{c.customercode ? `${c.customercode}: ` : ""}{c.customername}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
 
                         {/* ── Địa chỉ ── */}
-                        <div className="rc-form-row">
-                            <label className="rc-form-label">Địa chỉ</label>
-                            <input className="rc-form-input rc-form-full" placeholder="Nhập địa chỉ" value={form.address} onChange={(e) => handleFormChange("address", e.target.value)} />
-                        </div>
+                        {!isAdjustment && (
+                            <div className="rc-form-row">
+                                <label className="rc-form-label">Địa chỉ</label>
+                                <input className="rc-form-input rc-form-full" placeholder="Nhập địa chỉ" value={form.address} onChange={(e) => handleFormChange("address", e.target.value)} />
+                            </div>
+                        )}
 
                         {/* ── Diễn giải ── */}
                         <div className="rc-form-row">
@@ -681,7 +951,7 @@ export default function ReceiptCreatePage() {
                                                     <input
                                                         className="rc-td-input rc-batch-code-preview"
                                                         readOnly
-                                                        value={buildBatchCode(row.nameBatch, form.date, row.itemcode)}
+                                                        value={isAdjustment ? (row.sourceBatchCode || row.nameBatch || "—") : buildBatchCode(row.nameBatch, form.date, row.itemcode)}
                                                         placeholder="Auto"
                                                     />
                                                 </td>
@@ -735,40 +1005,54 @@ export default function ReceiptCreatePage() {
                             </table>
                         </div>
 
-                        {/* ── Invoice section ── */}
-                        <div className="rc-section-hd">Chi tiết</div>
-                        <div className="rc-section-sub">Thông tin hóa đơn</div>
-                        <div className="rc-form-2col">
-                            <div className="rc-form-field">
-                                <label className="rc-form-label">Ngày HD<span className="rc-required">*</span></label>
-                                <input type="date" className="rc-form-input" value={invoice.date} onChange={(e) => handleInvoiceChange("date", e.target.value)} />
-                            </div>
-                            <div className="rc-form-field">
-                                <label className="rc-form-label">MST</label>
-                                <input className="rc-form-input" placeholder="Nhập mã số thuế" value={invoice.taxcode} onChange={(e) => handleInvoiceChange("taxcode", e.target.value)} />
-                            </div>
-                        </div>
-                        <div className="rc-form-2col">
-                            <div className="rc-form-field">
-                                <label className="rc-form-label">Số hóa đơn<span className="rc-required">*</span></label>
-                                <input className="rc-form-input" placeholder="Nhập số hóa đơn" value={invoice.number} onChange={(e) => handleInvoiceChange("number", e.target.value)} />
-                            </div>
-                            <div className="rc-form-field">
-                                <label className="rc-form-label">Tên NCC</label>
-                                <select className="rc-form-select" value={invoice.supplierId} onChange={(e) => handleInvoiceChange("supplierId", e.target.value)}>
-                                    <option value="">Chọn tên nhà cung cấp</option>
-                                    {customers.filter((c) => c.issupplier).map((c) => (
-                                        <option key={c.id} value={c.id}>{c.customername}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
+                        {!isAdjustment && (
+                            <>
+                                {/* ── Invoice section ── */}
+                                <div className="rc-section-hd">Chi tiết</div>
+                                <div className="rc-section-sub">Thông tin hóa đơn</div>
+                                <div className="rc-form-2col">
+                                    <div className="rc-form-field">
+                                        <label className="rc-form-label">Ngày HD<span className="rc-required">*</span></label>
+                                        <input
+                                            className="rc-form-input"
+                                            placeholder="dd/mm/yyyy"
+                                            value={dateDisplay.invoiceDate}
+                                            onChange={(e) => handleInvoiceDateChange(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="rc-form-field">
+                                        <label className="rc-form-label">MST</label>
+                                        <input className="rc-form-input" placeholder="Nhập mã số thuế" value={invoice.taxcode} onChange={(e) => handleInvoiceChange("taxcode", e.target.value)} />
+                                    </div>
+                                </div>
+                                <div className="rc-form-2col">
+                                    <div className="rc-form-field">
+                                        <label className="rc-form-label">Số hóa đơn<span className="rc-required">*</span></label>
+                                        <input className="rc-form-input" placeholder="Nhập số hóa đơn" value={invoice.number} onChange={(e) => handleInvoiceChange("number", e.target.value)} />
+                                    </div>
+                                    <div className="rc-form-field">
+                                        <label className="rc-form-label">Tên NCC</label>
+                                        <select className="rc-form-select" value={invoice.supplierId} onChange={(e) => handleInvoiceChange("supplierId", e.target.value)}>
+                                            <option value="">Chọn tên nhà cung cấp</option>
+                                            {supplierOptions.map((c) => (
+                                                <option key={c.id} value={c.id}>{c.customername}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                            </>
+                        )}
 
                         {/* ── Actions ── */}
                         <div className="rc-form-actions">
                             <button className="sp-btn-outline" onClick={() => navigate("/receipts")} disabled={saving}>Hủy bỏ</button>
+                            {!isAdjustment && (
+                                <button className="sp-btn-outline" onClick={handleSaveDraft} disabled={saving}>
+                                    {saving ? "Đang lưu..." : "Lưu nháp"}
+                                </button>
+                            )}
                             <button className="sp-btn-primary" onClick={handleSave} disabled={saving}>
-                                {saving ? "Đang lưu..." : "Lưu"}
+                                {saving ? "Đang lưu..." : isManager ? "Lưu và xác nhận" : "Lưu phiếu"}
                             </button>
                         </div>
                     </div>
@@ -783,6 +1067,7 @@ export default function ReceiptCreatePage() {
                 suggestions={locModal.suggestions}
                 quantity={locModal.rowIdx !== null ? rows[locModal.rowIdx]?.quantity || 0 : 0}
                 rowName={locModal.rowIdx !== null ? rows[locModal.rowIdx]?.itemcode || "" : ""}
+                currentLocations={locModal.rowIdx !== null ? rows[locModal.rowIdx]?.selectedLocations || [] : []}
             />
         </>
     );

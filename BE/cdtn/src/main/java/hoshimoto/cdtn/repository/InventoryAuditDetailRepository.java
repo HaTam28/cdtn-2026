@@ -8,5 +8,6 @@ import hoshimoto.cdtn.entity.InventoryAuditDetail;
 
 public interface InventoryAuditDetailRepository extends JpaRepository<InventoryAuditDetail, Long> {
     List<InventoryAuditDetail> findByInventoryAuditId(Long auditId);
+    List<InventoryAuditDetail> findByInventoryAuditIdOrderByIdAsc(Long auditId);
     void deleteByInventoryAuditId(Long auditId);
 }

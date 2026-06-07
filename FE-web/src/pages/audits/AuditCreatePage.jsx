@@ -1,29 +1,14 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import "../../styles/shared.css";
 import "../receipts/receipts.css";
 import "./audits.css";
-import { createAudit, getAllAudits } from "../../api/auditApi";
-import { getAllItems } from "../../api/itemApi";
-import { getAllBatches } from "../../api/batchApi";
+import { createAudit, getAllAudits, getAuditStockRows, getAuditById, updateAudit } from "../../api/auditApi";
 import { getAllEmployees } from "../../api/employeeApi";
-import { getAllLocations } from "../../api/locationApi";
-import { getAvailableLocations } from "../../api/issueApi";
 import TopbarRight from "../../components/TopbarRight";
 import notify from "../../utils/notify";
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-let _rowKey = 0;
-const newRow = () => ({
-    _id: ++_rowKey,
-    itemId: "",
-    itemcode: "",
-    itemname: "",
-    unitof: "",
-    actualquantity: "",
-    bookquantity: null,   // null = chưa load
-    loadingBook: false,
-});
+import { formatDateForDisplay, normalizeDateDisplayInput, parseDisplayDateToIso } from "../../utils/dateInput";
+import { auditDetailPayload, formatNumber, makeRowsFromStockRows, toInputDate, getAuditStartDate, getAuditEndDate, normalizeAuditDetails } from "./auditRowUtils";
 
 function buildNextDocno(prefix, list) {
     const regex = new RegExp(`^${prefix}-(\\d+)$`);
@@ -33,16 +18,27 @@ function buildNextDocno(prefix, list) {
         const n = Number(m[1]);
         return Number.isFinite(n) ? Math.max(max, n) : max;
     }, 0);
-    const next = String(maxNum + 1).padStart(2, "0");
-    return `${prefix}-${next}`;
+    return `${prefix}-${String(maxNum + 1).padStart(2, "0")}`;
 }
 
 function todayStr() {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    return toInputDate(new Date());
 }
 
-// ─── Icons ────────────────────────────────────────────────────────────────────
+let _auditRowKey = 0;
+function newEmptyAuditRow() {
+    _auditRowKey += 1;
+    return {
+        _id: `audit-empty-${_auditRowKey}`,
+        selectedItemId: "",
+        itemId: null,
+        itemcode: "",
+        itemname: "",
+        unitof: "",
+        batchEntries: [],
+    };
+}
+
 function IconPlus({ size = 14 }) {
     return (
         <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -50,6 +46,7 @@ function IconPlus({ size = 14 }) {
         </svg>
     );
 }
+
 function IconTrash() {
     return (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -58,320 +55,644 @@ function IconTrash() {
     );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+function IconClose() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+    );
+}
+
+function IconChevron() {
+    return (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="6 9 12 15 18 9" />
+        </svg>
+    );
+}
+
+function BatchPickerModal({ open, onClose, onConfirm, options }) {
+    const [search, setSearch] = useState("");
+    const [page, setPage] = useState(1);
+    const [selected, setSelected] = useState(new Set());
+    const PAGE_SIZE = 10;
+
+    useEffect(() => {
+        if (open) {
+            setSearch("");
+            setPage(1);
+            setSelected(new Set());
+        }
+    }, [open]);
+
+    if (!open) return null;
+
+    const query = search.trim().toLowerCase();
+    const filtered = (options || []).filter((row) => (
+        !query
+        || (row.batchCode || "").toLowerCase().includes(query)
+        || (row.locationcode || "").toLowerCase().includes(query)
+        || (row.locationname || "").toLowerCase().includes(query)
+    ));
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    const safePage = Math.min(page, totalPages);
+    const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+    const handleToggle = (rowId) => {
+        setSelected((prev) => {
+            const next = new Set(prev);
+            const key = String(rowId);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+        });
+    };
+    const handleConfirm = () => {
+        const picked = filtered.filter((row) => selected.has(String(row._id)));
+        if (picked.length > 0) onConfirm(picked);
+    };
+
+    return (
+        <div className="rc-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+            <div className="rc-modal">
+                <div className="rc-modal-header">
+                    <span className="rc-modal-title">Chọn mã lô kiểm kê</span>
+                    <button className="rc-modal-close" onClick={onClose}><IconClose /></button>
+                </div>
+                <div className="rc-modal-body">
+                    <div className="rc-modal-search-row">
+                        <input
+                            className="rc-modal-search"
+                            placeholder="Tìm kiếm mã lô, vị trí..."
+                            value={search}
+                            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                        />
+                    </div>
+
+                    {filtered.length === 0 ? (
+                        <div style={{ textAlign: "center", color: "#8ba392", padding: "16px 0" }}>Không có mã lô phù hợp.</div>
+                    ) : (
+                        <>
+                            <div className="rc-modal-section-hd">Mã lô có hàng trong kho</div>
+                            <table className="rc-modal-table">
+                                <thead>
+                                    <tr>
+                                        <th style={{ width: 36 }} />
+                                        <th>Mã lô</th>
+                                        <th>Vị trí</th>
+                                        <th style={{ textAlign: "right" }}>SL hệ thống</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {pageItems.map((row) => {
+                                        const isChecked = selected.has(String(row._id));
+                                        return (
+                                            <tr key={row._id} onClick={() => handleToggle(row._id)} style={{ cursor: "pointer" }} className={isChecked ? "rc-row-selected" : ""}>
+                                                <td>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isChecked}
+                                                        onChange={() => handleToggle(row._id)}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    />
+                                                </td>
+                                                <td style={{ fontWeight: 600, color: "#1E854A" }}>{row.batchCode || "Không mã lô"}</td>
+                                                <td>{row.locationcode || row.locationname || "—"}</td>
+                                                <td style={{ textAlign: "right" }}>{formatNumber(row.bookquantity)}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </>
+                    )}
+
+                    {totalPages > 1 && (
+                        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, marginTop: 12 }}>
+                            <button className="sp-page-btn" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1}>‹</button>
+                            <span style={{ fontSize: "0.85rem", color: "#4c6152" }}>{safePage} / {totalPages}</span>
+                            <button className="sp-page-btn" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}>›</button>
+                        </div>
+                    )}
+                </div>
+                <div className="rc-modal-footer">
+                    <span className="rc-modal-selected-info">
+                        {selected.size > 0 ? `Đã chọn: ${selected.size} mã lô` : "Chưa chọn mã lô nào"}
+                    </span>
+                    <button className="sp-btn-outline" onClick={onClose}>Hủy bỏ</button>
+                    <button className="sp-btn-primary" onClick={handleConfirm} disabled={selected.size === 0}>Xác nhận</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export default function AuditCreatePage() {
     const navigate = useNavigate();
+    const location = useLocation();
+    const [searchParams] = useSearchParams();
+    const editId = searchParams.get("id");
     const user = JSON.parse(localStorage.getItem("user") || "{}");
-    const isStaff = user?.role === "STAFF";
+    const isStaff = user?.role === "STAFF" || user?.role === "NV";
 
-    const [form, setForm] = useState({ date: todayStr(), docno: "", description: "", assigneeId: "" });
-    const [rows, setRows] = useState([newRow()]);
-    const [items, setItems] = useState([]);
-    const [stockByItem, setStockByItem] = useState({});
+    const [form, setForm] = useState({
+        startDate: todayStr(),
+        endDate: todayStr(),
+        docno: "",
+        description: "",
+        assigneeId: "",
+    });
+    const [dateDisplay, setDateDisplay] = useState({
+        startDate: formatDateForDisplay(todayStr()),
+        endDate: formatDateForDisplay(todayStr()),
+    });
+    const [rows, setRows] = useState([]);
+    const [stockOptions, setStockOptions] = useState([]);
     const [employees, setEmployees] = useState([]);
-    const [locations, setLocations] = useState([]);
-    const [locationsByRow, setLocationsByRow] = useState({});
     const [loadingData, setLoadingData] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [batchModal, setBatchModal] = useState({ open: false, rowIdx: null, options: [] });
 
     const selectedAssignee = useMemo(
         () => employees.find((e) => String(e.id) === String(form.assigneeId)),
         [employees, form.assigneeId]
     );
 
+    const selectedStockIds = useMemo(
+        () => new Set(rows.flatMap((row) => row.batchEntries || []).map((entry) => entry.selectedStockId).filter(Boolean)),
+        [rows]
+    );
+
+    const selectedItemIds = useMemo(
+        () => new Set(rows.map((row) => row.selectedItemId).filter(Boolean)),
+        [rows]
+    );
+
+    const itemOptions = useMemo(() => {
+        const map = new Map();
+        stockOptions.forEach((row) => {
+            if (!row.itemId || map.has(String(row.itemId))) return;
+            map.set(String(row.itemId), {
+                itemId: row.itemId,
+                itemcode: row.itemcode,
+                itemname: row.itemname,
+                unitof: row.unitof,
+            });
+        });
+        return Array.from(map.values());
+    }, [stockOptions]);
+
     const loadData = useCallback(async () => {
         setLoadingData(true);
         try {
-            const [iList, eList, bList, aList, lList] = await Promise.all([getAllItems(), getAllEmployees(), getAllBatches(), getAllAudits(), getAllLocations()]);
-            setItems(iList);
-            setEmployees(eList);
-            setLocations(lList || []);
-            const stockMap = (bList || []).reduce((acc, batch) => {
-                const key = String(batch.itemId ?? "");
-                if (!key) return acc;
-                const qty = Number(batch.quantityRemaining ?? 0);
-                acc[key] = (acc[key] || 0) + qty;
-                return acc;
-            }, {});
-            setStockByItem(stockMap);
-            setForm((prev) => ({
-                ...prev,
-                docno: prev.docno || buildNextDocno("PKK", aList),
-            }));
-        } catch { /* non-blocking */ } finally { setLoadingData(false); }
-    }, []);
+            const [employeeList, stockRows, auditList] = await Promise.all([
+                getAllEmployees(),
+                getAuditStockRows(),
+                getAllAudits(),
+            ]);
+            const selectableStockRows = makeRowsFromStockRows(stockRows);
+            setEmployees(employeeList || []);
+            setStockOptions(selectableStockRows);
+            if (!editId) {
+                setRows(selectableStockRows.length > 0 ? [newEmptyAuditRow()] : []);
+                const clone = location.state?.clone;
+                const nextStartDate = toInputDate(clone?.startDate || clone?.auditStartDate || clone?.fromDate || clone?.docDate);
+                const nextEndDate = toInputDate(clone?.endDate || clone?.auditEndDate || clone?.toDate || clone?.dueDate || clone?.docDate);
+                setForm((prev) => ({
+                    ...prev,
+                    docno: prev.docno || buildNextDocno("PKK", auditList),
+                    description: clone?.description || prev.description,
+                    startDate: nextStartDate || prev.startDate,
+                    endDate: nextEndDate || prev.endDate,
+                }));
+                setDateDisplay((prev) => ({
+                    startDate: formatDateForDisplay(nextStartDate || form.startDate || prev.startDate),
+                    endDate: formatDateForDisplay(nextEndDate || form.endDate || prev.endDate),
+                }));
+            }
+        } catch {
+            notify("Không thể tải dữ liệu tồn kho theo lô.", { type: "error" });
+        } finally {
+            setLoadingData(false);
+        }
+    }, [location.state, editId]);
+
     useEffect(() => { loadData(); }, [loadData]);
 
     useEffect(() => {
-        setRows((prev) => prev.map((row) => {
-            if (!row.itemId) return row;
-            return {
-                ...row,
-                bookquantity: stockByItem[String(row.itemId)] ?? 0,
-                loadingBook: false,
-            };
-        }));
-    }, [stockByItem]);
+        if (!editId || stockOptions.length === 0) return;
+        const loadDraft = async () => {
+            setLoadingData(true);
+            try {
+                const draft = await getAuditById(editId);
+                if (draft) {
+                    const toDateOnly = (val) => (val ? String(val).slice(0, 10) : "");
+                    setForm({
+                        startDate: toDateOnly(getAuditStartDate(draft)),
+                        endDate: toDateOnly(getAuditEndDate(draft)),
+                        docno: draft.docno || "",
+                        description: draft.description || "",
+                        assigneeId: String(draft.assignedUserId || draft.assignedToUserId || draft.assignedToId || "")
+                    });
+                    
+                    setDateDisplay({
+                        startDate: formatDateForDisplay(toDateOnly(getAuditStartDate(draft))),
+                        endDate: formatDateForDisplay(toDateOnly(getAuditEndDate(draft)))
+                    });
+
+                    const grouped = {};
+                    let currentKey = 0;
+                    const details = normalizeAuditDetails(draft.details);
+                    details.forEach((d) => {
+                        const key = String(d.itemId);
+                        if (!grouped[key]) {
+                            grouped[key] = {
+                                _id: `audit-row-${++currentKey}`,
+                                selectedItemId: String(d.itemId),
+                                itemId: d.itemId,
+                                itemcode: d.itemcode || "",
+                                itemname: d.itemname || "",
+                                unitof: d.unitof || "",
+                                batchEntries: []
+                            };
+                        }
+                        const foundStockOption = stockOptions.find(opt => String(opt.batchId) === String(d.batchId) && String(opt.locationId) === String(d.locationId));
+                        const selectedStockId = foundStockOption ? foundStockOption._id : `${d.batchId ?? ""}-${d.locationId ?? ""}-0`;
+                        grouped[key].batchEntries.push({
+                            _id: `audit-batch-${++currentKey}`,
+                            selectedStockId,
+                            batchId: d.batchId,
+                            batchCode: d.batchCode || "",
+                            locationId: d.locationId,
+                            locationcode: d.locationcode || d.locationname || "",
+                            locationname: d.locationname || "",
+                            bookquantity: d.bookquantity || 0
+                        });
+                    });
+
+                    const rowsFromAudit = Object.values(grouped);
+                    setRows(rowsFromAudit.length > 0 ? rowsFromAudit : [newEmptyAuditRow()]);
+                }
+            } catch (err) {
+                notify("Không thể tải chi tiết phiếu kiểm kê nháp.", { type: "error" });
+            } finally {
+                setLoadingData(false);
+            }
+        };
+        loadDraft();
+    }, [editId, stockOptions]);
 
     useEffect(() => {
-        // Prevent staff from accessing manager create page
         if (isStaff) navigate("/audits/requests");
     }, [isStaff, navigate]);
 
-    const showToast = (type, msg) => { notify(msg, { type: type === 'error' ? 'error' : type === 'success' ? 'success' : 'info' }); };
-
-    const handleFormChange = (field, value) => {
+    const setField = (field, value) => {
         setForm((prev) => ({ ...prev, [field]: value }));
     };
+    const setDateField = (field, value) => {
+        const display = normalizeDateDisplayInput(value);
+        setDateDisplay((prev) => ({ ...prev, [field]: display }));
+        setForm((prev) => ({ ...prev, [field]: parseDisplayDateToIso(display) }));
+    };
 
-    const handleRowChange = (idx, field, value) => {
+    const makeBatchEntry = (stockRow) => {
+        _auditRowKey += 1;
+        return {
+            _id: `audit-batch-${_auditRowKey}`,
+            selectedStockId: stockRow._id,
+            batchId: stockRow.batchId,
+            batchCode: stockRow.batchCode,
+            locationId: stockRow.locationId,
+            locationcode: stockRow.locationcode,
+            locationname: stockRow.locationname,
+            bookquantity: stockRow.bookquantity,
+        };
+    };
+
+    const addBatchEntries = (idx, pickedRows) => {
         setRows((prev) => {
             const next = [...prev];
-            next[idx] = { ...next[idx], [field]: value };
-            if (field === "itemId") {
-                const found = items.find((it) => String(it.id) === String(value));
-                next[idx].itemcode = found?.itemcode || "";
-                next[idx].itemname = found?.itemname || "";
-                next[idx].unitof = found?.unitof || "";
-                next[idx].bookquantity = value ? (stockByItem[String(value)] ?? 0) : null;
-                next[idx].loadingBook = false;
-                // Load locations containing this item
-                if (value) {
-                    const rowId = next[idx]._id;
-                    getAvailableLocations(value).then((locs) => {
-                        setLocationsByRow((prev) => ({ ...prev, [rowId]: locs || [] }));
-                    }).catch(() => {
-                        setLocationsByRow((prev) => ({ ...prev, [rowId]: [] }));
-                    });
-                } else {
-                    const rowId = next[idx]._id;
-                    setLocationsByRow((prev) => { const n = { ...prev }; delete n[rowId]; return n; });
-                }
-            }
+            const row = next[idx];
+            if (!row) return prev;
+            const currentIds = new Set((row.batchEntries || []).map((entry) => entry.selectedStockId));
+            const newEntries = (pickedRows || [])
+                .filter((stockRow) => !currentIds.has(stockRow._id))
+                .map(makeBatchEntry);
+            next[idx] = {
+                ...row,
+                batchEntries: [...(row.batchEntries || []), ...newEntries],
+            };
             return next;
         });
     };
 
-    const handleAddRow = () => setRows((prev) => [...prev, newRow()]);
-    const handleRemoveRow = (idx) => setRows((prev) => prev.filter((_, i) => i !== idx));
+    const openBatchModal = (idx) => {
+        const row = rows[idx];
+        if (!row?.selectedItemId) {
+            notify("Vui lòng chọn mã vật tư trước.", { type: "warning" });
+            return;
+        }
+        const options = stockOptions
+            .filter((option) => String(option.itemId) === String(row.selectedItemId))
+            .filter((option) => !selectedStockIds.has(option._id))
+            .sort((a, b) => String(a.batchCode || "").localeCompare(String(b.batchCode || "")));
+        setBatchModal({ open: true, rowIdx: idx, options });
+    };
+
+    const handleBatchConfirm = (pickedRows) => {
+        if (batchModal.rowIdx === null || !pickedRows?.length) return;
+        addBatchEntries(batchModal.rowIdx, pickedRows);
+        setBatchModal({ open: false, rowIdx: null, options: [] });
+    };
+
+    const handleSelectItem = (idx, itemId) => {
+        setRows((prev) => {
+            const next = [...prev];
+            const found = itemOptions.find((item) => String(item.itemId) === String(itemId));
+            next[idx] = {
+                ...newEmptyAuditRow(),
+                _id: next[idx]?._id || `audit-row-${idx}`,
+                selectedItemId: itemId,
+                itemId: found?.itemId || null,
+                itemcode: found?.itemcode || "",
+                itemname: found?.itemname || "",
+                unitof: found?.unitof || "",
+                batchEntries: [],
+            };
+            return next;
+        });
+    };
+
+    const handleAddRow = () => {
+        setRows((prev) => [...prev, newEmptyAuditRow()]);
+    };
+
+    const handleRemoveRow = (idx) => {
+        setRows((prev) => prev.filter((_, i) => i !== idx));
+    };
+
+    const removeBatchEntry = (rowIdx, entryIdx) => {
+        setRows((prev) => {
+            const next = [...prev];
+            const row = next[rowIdx];
+            if (!row) return prev;
+            next[rowIdx] = {
+                ...row,
+                batchEntries: (row.batchEntries || []).filter((_, i) => i !== entryIdx),
+            };
+            return next;
+        });
+    };
+
+    const validateBase = () => {
+        if (!form.startDate) {
+            notify("Vui lòng chọn ngày bắt đầu kiểm kê.", { type: "error" });
+            return false;
+        }
+        if (!form.endDate) {
+            notify("Vui lòng chọn ngày kết thúc kiểm kê.", { type: "error" });
+            return false;
+        }
+        if (form.endDate < form.startDate) {
+            notify("Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu.", { type: "error" });
+            return false;
+        }
+        if (stockOptions.length === 0) {
+            notify("Không có dòng tồn kho theo mã lô để lập phiếu kiểm kê.", { type: "error" });
+            return false;
+        }
+        if (rows.length === 0) {
+            notify("Vui lòng thêm ít nhất một dòng kiểm kê.", { type: "error" });
+            return false;
+        }
+        for (let i = 0; i < rows.length; i += 1) {
+            if (!rows[i].itemId) {
+                notify(`Dòng ${i + 1}: Vui lòng chọn mã vật tư.`, { type: "error" });
+                return false;
+            }
+            if (!rows[i].batchEntries?.length) {
+                notify(`Dòng ${i + 1}: Vui lòng chọn ít nhất một mã lô kiểm kê.`, { type: "error" });
+                return false;
+            }
+            for (let j = 0; j < rows[i].batchEntries.length; j += 1) {
+                const entry = rows[i].batchEntries[j];
+                if (!entry.batchId || !entry.locationId) {
+                    notify(`Dòng ${i + 1}, lô ${j + 1}: Dữ liệu mã lô hoặc vị trí không hợp lệ.`, { type: "error" });
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+
+    const flattenRowsForPayload = (includeActual) => rows.flatMap((row) => (
+        (row.batchEntries || []).map((entry) => auditDetailPayload({
+            ...row,
+            ...entry,
+            itemId: row.itemId,
+            itemcode: row.itemcode,
+            itemname: row.itemname,
+            unitof: row.unitof,
+        }, includeActual))
+    ));
+
+    const buildPayload = ({ sendToStaff = false, draft = false } = {}) => ({
+        docDate: form.startDate || todayStr(),
+        startDate: form.startDate || todayStr(),
+        endDate: form.endDate || form.startDate || todayStr(),
+        description: form.description.trim() || null,
+        ...(draft ? { docstatus: "DRAFT" } : {}),
+        details: flattenRowsForPayload(false),
+        assignedUserId: form.assigneeId ? Number(form.assigneeId) : null,
+        ...(sendToStaff ? { sendToStaff: true } : {}),
+    });
 
     const handleSaveDraft = async () => {
-        if (!form.date) { showToast("error", "Vui lòng chọn ngày kiểm kê."); return; }
-        if (rows.length === 0 || !rows.some((r) => r.itemId)) {
-            showToast("error", "Vui lòng thêm ít nhất một dòng vật tư."); return;
+        if (form.startDate && form.endDate && form.endDate < form.startDate) {
+            notify("Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu.", { type: "error" });
+            return;
         }
-        const details = rows.filter((r) => r.itemId).map((r) => ({
-            itemId: Number(r.itemId),
-            actualquantity: r.actualquantity === "" || r.actualquantity === null || r.actualquantity === undefined ? null : Number(r.actualquantity),
-        }));
         setSaving(true);
         try {
-            const payload = { docDate: form.date, description: form.description.trim() || null, details };
-            const result = await createAudit(payload);
+            const payload = buildPayload({ draft: true });
+            const result = editId ? await updateAudit(editId, payload) : await createAudit(payload);
             if (result?.success) {
-                showToast("success", "Đã lưu nháp phiếu kiểm kê.");
-                const newId = result?.data?.id;
-                setTimeout(() => navigate(newId ? `/audits/${newId}` : "/audits"), 1200);
+                notify(editId ? "Đã cập nhật phiếu kiểm kê." : "Đã lưu nháp phiếu kiểm kê.", { type: "success" });
+                const newId = editId || result?.data?.id;
+                setTimeout(() => navigate(newId ? `/audits/${newId}` : "/audits"), 800);
             } else {
-                showToast("error", result?.message || "Lưu nháp thất bại.");
+                notify(result?.message || (editId ? "Cập nhật nháp thất bại." : "Lưu nháp thất bại."), { type: "error" });
             }
         } catch (err) {
-            showToast("error", err?.response?.data?.message || "Có lỗi xảy ra khi lưu phiếu.");
-        } finally { setSaving(false); }
+            notify(err?.response?.data?.message || (editId ? "Có lỗi xảy ra khi cập nhật phiếu." : "Có lỗi xảy ra khi lưu phiếu."), { type: "error" });
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleSendRequest = async () => {
-        if (!form.date) { showToast("error", "Vui lòng chọn ngày kiểm kê."); return; }
-        if (!form.assigneeId) { showToast("error", "Vui lòng chọn nhân viên để gửi yêu cầu."); return; }
-        if (rows.length === 0) { showToast("error", "Vui lòng thêm ít nhất một dòng vật tư."); return; }
-        for (let i = 0; i < rows.length; i++) {
-            if (!rows[i].itemId) { showToast("error", `Dòng ${i + 1}: Vui lòng chọn mặt hàng.`); return; }
+        if (!validateBase()) return;
+        if (!form.assigneeId) {
+            notify("Vui lòng chọn nhân viên để gửi yêu cầu.", { type: "error" });
+            return;
         }
-        const itemIds = rows.map((r) => r.itemId);
-        if (new Set(itemIds).size !== itemIds.length) {
-            showToast("error", "Có mặt hàng bị trùng. Mỗi mặt hàng chỉ được nhập một lần."); return;
-        }
-        const details = rows.map((r) => ({
-            itemId: Number(r.itemId),
-            actualquantity: null,
-        }));
         setSaving(true);
         try {
-            const payload = {
-                docDate: form.date,
-                description: form.description.trim() || null,
-                details,
-                assignedUserId: Number(form.assigneeId),
-                sendToStaff: true,
-            };
-            const result = await createAudit(payload);
+            const payload = buildPayload({ sendToStaff: true });
+            const result = editId ? await updateAudit(editId, payload) : await createAudit(payload);
             if (result?.success) {
-                showToast("success", "Đã gửi yêu cầu kiểm kê cho nhân viên.");
-                const newId = result?.data?.id;
-                setTimeout(() => navigate(newId ? `/audits/${newId}` : "/audits"), 1200);
+                notify(editId ? "Đã cập nhật và gửi yêu cầu kiểm kê cho nhân viên." : "Đã gửi yêu cầu kiểm kê cho nhân viên.", { type: "success" });
+                const newId = editId || result?.data?.id;
+                setTimeout(() => navigate(newId ? `/audits/${newId}` : "/audits"), 800);
             } else {
-                showToast("error", result?.message || "Gửi yêu cầu thất bại.");
+                notify(result?.message || (editId ? "Cập nhật và gửi yêu cầu thất bại." : "Gửi yêu cầu thất bại."), { type: "error" });
             }
         } catch (err) {
-            showToast("error", err?.response?.data?.message || "Có lỗi xảy ra khi gửi yêu cầu.");
-        } finally { setSaving(false); }
+            notify(err?.response?.data?.message || (editId ? "Có lỗi xảy ra khi cập nhật và gửi yêu cầu." : "Có lỗi xảy ra khi gửi yêu cầu."), { type: "error" });
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
         <>
-
-            <div className="sp-main">
-                <div className="sp-topbar">
-                    <div>
-                        <div className="sp-breadcrumb">
-                            Chứng từ &rsaquo;{" "}
-                            <span className="sp-breadcrumb-link" onClick={() => navigate("/audits")}>Kiểm kê hàng tồn kho</span>
-                            {" "}&rsaquo;{" "}
-                            <span className="sp-breadcrumb-active">Thêm mới phiếu kiểm kê</span>
-                        </div>
+            <BatchPickerModal
+                open={batchModal.open}
+                onClose={() => setBatchModal({ open: false, rowIdx: null, options: [] })}
+                onConfirm={handleBatchConfirm}
+                options={batchModal.options}
+            />
+        <div className="sp-main">
+            <div className="sp-topbar">
+                <div>
+                    <div className="sp-breadcrumb">
+                        Chứng từ &rsaquo;{" "}
+                        <span className="sp-breadcrumb-link" onClick={() => navigate("/audits")}>Kiểm kê hàng tồn kho</span>
+                        {" "}&rsaquo;{" "}
+                        <span className="sp-breadcrumb-active">{editId ? "Cập nhật phiếu kiểm kê" : "Thêm mới phiếu kiểm kê"}</span>
                     </div>
-                    <TopbarRight />
                 </div>
+                <TopbarRight />
+            </div>
 
-                <div className="sp-content">
-                    <h1 className="sp-title">Phiếu kiểm kê hàng tồn kho</h1>
+            <div className="sp-content">
+                <h1 className="sp-title">{editId ? "Cập nhật phiếu kiểm kê" : "Phiếu kiểm kê hàng tồn kho"}</h1>
 
-                    <div className="rc-form-card">
-                        {/* ── Header row ── */}
-                        <div className="rc-header-row">
-                            <label className="rc-form-label">Ngày</label>
+                <div className="rc-form-card">
+                    <div className="rc-header-row au-header-wrap">
+                        <label className="rc-form-label">Ngày bắt đầu</label>
+                        <input
+                            className="rc-form-input"
+                            style={{ minWidth: 150 }}
+                            placeholder="dd/mm/yyyy"
+                            value={dateDisplay.startDate}
+                            onChange={(e) => setDateField("startDate", e.target.value)}
+                        />
+                        <label className="rc-form-label" style={{ marginLeft: 16 }}>Ngày kết thúc</label>
+                        <input
+                            className="rc-form-input"
+                            style={{ minWidth: 150 }}
+                            placeholder="dd/mm/yyyy"
+                            value={dateDisplay.endDate}
+                            onChange={(e) => setDateField("endDate", e.target.value)}
+                        />
+                        <label className="rc-form-label" style={{ marginLeft: 16 }}>Số</label>
+                        <input
+                            className="rc-form-input"
+                            style={{ minWidth: 180, background: "#f6fbf8", color: "#4c6152" }}
+                            placeholder="Tự động điền"
+                            value={form.docno}
+                            readOnly
+                        />
+                    </div>
+
+                    <div className="rc-form-2col">
+                        <div className="rc-form-field">
+                            <label className="rc-form-label" style={{ minWidth: 110 }}>Mã nhân viên</label>
+                            <select
+                                className="rc-form-select"
+                                value={form.assigneeId}
+                                onChange={(e) => setField("assigneeId", e.target.value)}
+                                disabled={loadingData}
+                            >
+                                <option value="">(Chọn nhân viên kiểm kê)</option>
+                                {employees.filter((e) => e.role === "STAFF" || e.role === "NV").map((emp) => (
+                                    <option key={emp.id} value={emp.id}>
+                                        {emp.usercode || emp.username || emp.id}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="rc-form-field">
+                            <label className="rc-form-label" style={{ minWidth: 110 }}>Tên nhân viên</label>
                             <input
-                                type="date"
                                 className="rc-form-input"
-                                style={{ minWidth: 150 }}
-                                value={form.date}
-                                onChange={(e) => handleFormChange("date", e.target.value)}
-                            />
-                            <label className="rc-form-label" style={{ marginLeft: 16 }}>Số</label>
-                            <input
-                                className="rc-form-input"
-                                style={{ minWidth: 200, background: "#f6fbf8", color: "#4c6152" }}
-                                placeholder="Tự động điền"
-                                value={form.docno}
+                                value={selectedAssignee?.fullname || selectedAssignee?.username || ""}
+                                placeholder="Tự điền khi chọn mã nhân viên"
                                 readOnly
                             />
                         </div>
+                    </div>
 
-                        {/* ── Nhân viên kiểm kê ── */}
-                        <div className="rc-form-2col">
-                            <div className="rc-form-field">
-                                <label className="rc-form-label" style={{ minWidth: 110 }}>Mã nhân viên</label>
-                                <select
-                                    className="rc-form-select"
-                                    value={form.assigneeId}
-                                    onChange={(e) => handleFormChange("assigneeId", e.target.value)}
-                                    disabled={loadingData}
-                                >
-                                    <option value="">(Chọn nhân viên kiểm kê)</option>
-                                    {employees.filter((e) => e.role === "STAFF").map((emp) => (
-                                        <option key={emp.id} value={emp.id}>
-                                            {emp.usercode || emp.username || emp.id}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="rc-form-field">
-                                <label className="rc-form-label" style={{ minWidth: 110 }}>Tên nhân viên</label>
-                                <input
-                                    className="rc-form-input"
-                                    value={selectedAssignee?.fullname || selectedAssignee?.username || ""}
-                                    placeholder="Tự điền khi chọn mã nhân viên"
-                                    readOnly
-                                />
-                            </div>
-                        </div>
+                    <div className="rc-form-row">
+                        <label className="rc-form-label">Diễn giải</label>
+                        <input
+                            className="rc-form-input rc-form-full"
+                            placeholder="Nhập diễn giải"
+                            value={form.description}
+                            onChange={(e) => setField("description", e.target.value)}
+                        />
+                    </div>
 
-                        {/* ── Diễn giải ── */}
-                        <div className="rc-form-row">
-                            <label className="rc-form-label">Diễn giải</label>
-                            <input
-                                className="rc-form-input rc-form-full"
-                                placeholder="Nhập diễn giải (VD: Kiểm kê tháng 5)"
-                                value={form.description}
-                                onChange={(e) => handleFormChange("description", e.target.value)}
-                            />
-                        </div>
-
-                        {/* ── Detail table ── */}
-                        <div style={{ marginTop: 8, marginBottom: 4, color: "#4c6152", fontSize: "0.84rem" }}>
-                            Chọn danh sách hàng hóa và vị trí cần kiểm kê.
-                        </div>
-                        <div className="rc-detail-table-wrap">
-                            <table className="rc-detail-table">
-                                <thead>
-                                    <tr>
-                                        <th style={{ width: "4%" }}>STT</th>
-                                        <th style={{ width: "10%" }}>Mã hàng</th>
-                                        <th>Tên vật tư hàng hóa</th>
-                                        <th style={{ width: "7%" }}>ĐVT</th>
-                                        <th style={{ width: "10%" }}>SL hệ thống</th>
-                                        <th style={{ width: "13%" }}>Vị trí</th>
-                                        <th style={{ width: "4%" }}></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {rows.map((row, idx) => {
-                                        return (
-                                            <tr key={row._id}>
+                    <div className="au-table-note">
+                        Chọn mã vật tư trước, sau đó chọn mã lô cần kiểm kê cho từng dòng. Số lượng hệ thống và vị trí sẽ tự điền theo mã lô.
+                    </div>
+                    <div className="rc-detail-table-wrap">
+                        <table className="rc-detail-table">
+                            <thead>
+                                <tr>
+                                    <th style={{ width: "4%" }}>STT</th>
+                                    <th style={{ width: "10%" }}>Mã vật tư</th>
+                                    <th>Tên vật tư hàng hóa</th>
+                                    <th style={{ width: "7%" }}>ĐVT</th>
+                                    <th style={{ width: "12%", textAlign: "right" }}>SL hệ thống</th>
+                                    <th style={{ width: "12%", textAlign: "right" }}>SL thực tế</th>
+                                    <th style={{ width: "4%" }}></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {loadingData && (
+                                    <tr><td colSpan={7} className="sp-status-row">Đang tải tồn kho theo lô...</td></tr>
+                                )}
+                                {!loadingData && stockOptions.length === 0 && (
+                                    <tr><td colSpan={7} className="sp-status-row">Không có tồn kho theo mã lô.</td></tr>
+                                )}
+                                {!loadingData && rows.map((row, idx) => {
+                                    const rowSystemQty = (row.batchEntries || []).reduce((sum, entry) => sum + Number(entry.bookquantity || 0), 0);
+                                    return (
+                                        <React.Fragment key={row._id}>
+                                            <tr>
                                                 <td className="rc-td-stt">{idx + 1}</td>
                                                 <td>
                                                     <select
                                                         className="rc-td-select"
-                                                        value={row.itemId}
-                                                        onChange={(e) => handleRowChange(idx, "itemId", e.target.value)}
+                                                        value={row.selectedItemId || ""}
+                                                        onChange={(e) => handleSelectItem(idx, e.target.value)}
                                                         disabled={loadingData}
                                                     >
-                                                        <option value="">--</option>
-                                                        {items.map((it) => (
-                                                            <option key={it.id} value={it.id}>{it.itemcode}</option>
-                                                        ))}
+                                                        <option value="">Chọn vật tư</option>
+                                                        {itemOptions
+                                                            .filter((item) => !selectedItemIds.has(String(item.itemId)) || String(item.itemId) === String(row.selectedItemId))
+                                                            .map((item) => (
+                                                                <option key={item.itemId} value={item.itemId}>
+                                                                    {item.itemcode}
+                                                                </option>
+                                                            ))}
                                                     </select>
                                                 </td>
-                                                <td>
-                                                    <input
-                                                        className="rc-td-input"
-                                                        value={row.itemname}
-                                                        readOnly
-                                                        placeholder="Tên vật tư"
-                                                        style={{ background: "#f6fbf8", color: "#4c6152" }}
-                                                    />
-                                                </td>
-                                                <td>
-                                                    <input
-                                                        className="rc-td-input"
-                                                        style={{ background: "#f6fbf8", color: "#4c6152" }}
-                                                        value={row.unitof}
-                                                        readOnly
-                                                    />
-                                                </td>
-                                                <td style={{ textAlign: "center", fontWeight: 600, color: "#1E3A2F" }}>
-                                                    {row.itemId
-                                                        ? (row.bookquantity ?? 0).toLocaleString()
-                                                        : <span style={{ color: "#c5cdc9" }}>—</span>}
-                                                </td>
-                                                <td>
-                                                    {!row.itemId ? (
-                                                        <span style={{ color: "#c5cdc9", fontSize: "0.82rem" }}>—</span>
-                                                    ) : (locationsByRow[row._id] || []).length === 0 ? (
-                                                        <span style={{ color: "#8ba392", fontSize: "0.82rem" }}>Chưa có tồn</span>
-                                                    ) : (
-                                                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                                                            {(locationsByRow[row._id] || []).map((loc) => (
-                                                                <span
-                                                                    key={loc.locationId || loc.id}
-                                                                    style={{ background: "#e8f5e9", color: "#1E3A2F", border: "1px solid #a5d6a7", borderRadius: 4, padding: "1px 7px", fontSize: "0.8rem", fontWeight: 600, whiteSpace: "nowrap" }}
-                                                                >
-                                                                    {loc.locationcode || loc.locationname}
-                                                                </span>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </td>
+                                                <td>{row.itemname}</td>
+                                                <td>{row.unitof || "—"}</td>
+                                                <td className="rc-td-num au-book-qty">{formatNumber(rowSystemQty)}</td>
+                                                <td className="rc-td-num" style={{ color: "#8ba392" }}>-</td>
                                                 <td>
                                                     <button
                                                         className="rc-row-del-btn"
@@ -383,32 +704,89 @@ export default function AuditCreatePage() {
                                                     </button>
                                                 </td>
                                             </tr>
-                                        );
-                                    })}
+                                            <tr>
+                                                <td colSpan={7} style={{ padding: "0 0 10px 32px", background: "#fafcfb" }}>
+                                                    <div style={{ borderLeft: "3px solid #c6dfd0", paddingLeft: 12, paddingTop: 6 }}>
+                                                        {(row.batchEntries || []).length > 0 && (
+                                                            <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8, fontSize: "0.84rem" }}>
+                                                                <thead>
+                                                                    <tr style={{ background: "#edf6f1" }}>
+                                                                        <th style={{ padding: "5px 10px", textAlign: "left", fontWeight: 600, color: "#1E3A2F", width: "34%", borderBottom: "1px solid #c6dfd0" }}>Mã lô</th>
+                                                                        <th style={{ padding: "5px 10px", textAlign: "left", fontWeight: 600, color: "#1E3A2F", width: "36%", borderBottom: "1px solid #c6dfd0" }}>Vị trí</th>
+                                                                        <th style={{ padding: "5px 10px", textAlign: "right", fontWeight: 600, color: "#1E3A2F", width: "18%", borderBottom: "1px solid #c6dfd0" }}>SL hệ thống</th>
+                                                                        <th style={{ width: "4%", borderBottom: "1px solid #c6dfd0" }}></th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {row.batchEntries.map((entry, entryIdx) => (
+                                                                        <tr key={entry._id} style={{ borderBottom: "1px solid #edf6f1" }}>
+                                                                            <td style={{ padding: "5px 10px", fontWeight: 600, color: "#1E854A" }}>{entry.batchCode || "Không mã lô"}</td>
+                                                                            <td style={{ padding: "5px 10px", color: "#4c6152" }}>{entry.locationcode || entry.locationname || "—"}</td>
+                                                                            <td style={{ padding: "5px 10px", textAlign: "right", color: "#4c6152" }}>{formatNumber(entry.bookquantity)}</td>
+                                                                            <td style={{ padding: "5px 8px", textAlign: "center" }}>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => removeBatchEntry(idx, entryIdx)}
+                                                                                    title="Xóa mã lô"
+                                                                                    style={{ background: "none", border: "none", cursor: "pointer", color: "#e57373", padding: 2 }}
+                                                                                >
+                                                                                    <IconTrash />
+                                                                                </button>
+                                                                            </td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        )}
+                                                        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                                                            <button
+                                                                type="button"
+                                                                className={`rc-loc-btn${(row.batchEntries || []).length > 0 ? " rc-loc-btn-set" : ""}`}
+                                                                onClick={() => openBatchModal(idx)}
+                                                                disabled={loadingData || !row.selectedItemId}
+                                                                style={{ opacity: loadingData || !row.selectedItemId ? 0.5 : 1 }}
+                                                            >
+                                                                <IconPlus size={12} />
+                                                                &nbsp;Chọn mã lô <IconChevron />
+                                                            </button>
+                                                            {!row.selectedItemId && (
+                                                                <span style={{ fontSize: "0.82rem", color: "#8ba392" }}>Chọn mã vật tư trước để lọc danh sách mã lô.</span>
+                                                            )}
+                                                            {row.selectedItemId && (row.batchEntries || []).length === 0 && (
+                                                                <span style={{ fontSize: "0.82rem", color: "#8ba392" }}>Có thể chọn nhiều mã lô cho cùng mã vật tư.</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </React.Fragment>
+                                    );
+                                })}
+                                {!loadingData && stockOptions.length > 0 && rows.length < itemOptions.length && (
                                     <tr className="rc-add-row" onClick={handleAddRow}>
                                         <td colSpan={7}>
-                                            <span style={{ display: "flex", alignItems: "center", gap: 6, color: "#2DBE60", fontWeight: 500, fontSize: "0.87rem" }}>
-                                                <IconPlus /> Thêm dòng vật tư
-                                            </span>
+                                            <button className="rc-add-row-btn" type="button">
+                                                <IconPlus size={13} /> Thêm dòng chọn mã vật tư
+                                            </button>
                                         </td>
                                     </tr>
-                                </tbody>
-                            </table>
-                        </div>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
 
-                        {/* ── Actions ── */}
-                        <div className="rc-form-actions">
-                            <button className="sp-btn-outline" onClick={() => navigate("/audits")}>Hủy bỏ</button>
-                            <button className="sp-btn-outline" onClick={handleSaveDraft} disabled={saving}>
-                                {saving ? "Đang lưu..." : "Lưu nháp"}
-                            </button>
-                            <button className="sp-btn-primary" onClick={handleSendRequest} disabled={saving}>
-                                {saving ? "Đang gửi..." : "Gửi yêu cầu"}
-                            </button>
-                        </div>
+                    <div className="rc-form-actions">
+                        <button className="sp-btn-outline" onClick={() => navigate("/audits")}>Hủy bỏ</button>
+                        <button className="sp-btn-outline" onClick={handleSaveDraft} disabled={saving || loadingData}>
+                            {saving ? "Đang lưu..." : "Lưu nháp"}
+                        </button>
+                        <button className="sp-btn-primary" onClick={handleSendRequest} disabled={saving || loadingData}>
+                            {saving ? "Đang gửi..." : "Gửi yêu cầu"}
+                        </button>
                     </div>
                 </div>
             </div>
+        </div>
         </>
     );
 }

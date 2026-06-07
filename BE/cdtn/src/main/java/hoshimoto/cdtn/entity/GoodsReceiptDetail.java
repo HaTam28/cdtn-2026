@@ -52,4 +52,11 @@ public class GoodsReceiptDetail {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "locationid")
     private Location location;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "batchid")
+    private Batch batch;
+
+    @Column(name = "inventory_audit_detail_id")
+    private Long inventoryAuditDetailId;
 }
