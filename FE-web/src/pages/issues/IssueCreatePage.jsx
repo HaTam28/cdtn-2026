@@ -868,12 +868,11 @@ export default function IssueCreatePage() {
                                     <tr>
                                         <th className="rc-td-stt" style={{ width: "4%" }}>STT</th>
                                         <th style={{ width: "9%" }}>Mã hàng</th>
-                                        <th style={{ width: "17%" }}>Tên vật tư hàng hóa</th>
+                                        <th style={{ width: "30%" }}>Tên vật tư hàng hóa</th>
                                         <th style={{ width: "6%" }}>ĐVT</th>
-                                        <th style={{ width: "8%" }}>SL yêu cầu</th>
-                                        {!isAdjustment && <th style={{ width: "9%" }}>Tồn hiện tại</th>}
-                                        <th style={{ width: "13%" }}>Đơn giá xuất</th>
-                                        <th style={{ width: "10%" }}>Thành tiền</th>
+                                        <th style={{ width: "8%", textAlign: "right" }}>SL yêu cầu</th>
+                                        {!isAdjustment && <th style={{ width: "9%", textAlign: "right" }}>Tồn hiện tại</th>}
+                                        <th style={{ width: "10%", textAlign: "right" }}>Thành tiền</th>
                                         <th style={{ width: "4%" }}></th>
                                     </tr>
                                 </thead>
@@ -897,9 +896,14 @@ export default function IssueCreatePage() {
                                                             disabled={loadingData}
                                                         >
                                                             <option value="">Chọn</option>
-                                                            {items.map((it) => (
-                                                                <option key={it.id} value={it.id}>{it.itemcode}</option>
-                                                            ))}
+                                                            {items.map((it) => {
+                                                                const isSelectedElsewhere = rows.some((r, rIdx) => rIdx !== idx && String(r.itemId) === String(it.id));
+                                                                return (
+                                                                    <option key={it.id} value={it.id} disabled={isSelectedElsewhere}>
+                                                                        {it.itemcode} {isSelectedElsewhere ? "(Đã chọn)" : ""}
+                                                                    </option>
+                                                                );
+                                                            })}
                                                         </select>
                                                     </td>
                                                     <td>
@@ -928,17 +932,6 @@ export default function IssueCreatePage() {
                                                                         : (stockByItem[row.itemId]?.total ?? 0)}
                                                         </td>
                                                     )}
-                                                    <td>
-                                                        <input
-                                                            className="rc-td-input rc-td-num"
-                                                            style={{ background: row.price ? "#f0faf4" : undefined, fontWeight: row.price ? 600 : undefined, color: "#1E3A2F" }}
-                                                            type="number"
-                                                            min="0"
-                                                            value={row.price}
-                                                            onChange={(e) => handleRowChange(idx, "price", e.target.value)}
-                                                            placeholder="0"
-                                                        />
-                                                    </td>
                                                     <td className="rc-td-num">
                                                         {formatMoney((Number(row.quantity) || 0) * (Number(row.price) || 0))}
                                                     </td>
@@ -953,7 +946,7 @@ export default function IssueCreatePage() {
 
                                                 {/* ── Batch entries sub-row ── */}
                                                 <tr>
-                                                    <td colSpan={isAdjustment ? 8 : 9} style={{ padding: "0 0 10px 32px", background: "#fafcfb" }}>
+                                                    <td colSpan={isAdjustment ? 7 : 8} style={{ padding: "0 0 10px 32px", background: "#fafcfb" }}>
                                                         <div style={{ borderLeft: "3px solid #c6dfd0", paddingLeft: 12, paddingTop: 6 }}>
 
                                                             {/* Batch entries table */}
@@ -961,9 +954,9 @@ export default function IssueCreatePage() {
                                                                 <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8, fontSize: "0.84rem" }}>
                                                                     <thead>
                                                                         <tr style={{ background: "#edf6f1" }}>
-                                                                            <th style={{ padding: "5px 10px", textAlign: "right", fontWeight: 600, color: "#1E3A2F", width: "18%", borderBottom: "1px solid #c6dfd0" }}>SL xuất</th>
                                                                             <th style={{ padding: "5px 10px", textAlign: "left", fontWeight: 600, color: "#1E3A2F", width: "26%", borderBottom: "1px solid #c6dfd0" }}>Mã lô</th>
                                                                             <th style={{ padding: "5px 10px", textAlign: "left", fontWeight: 600, color: "#1E3A2F", width: "24%", borderBottom: "1px solid #c6dfd0" }}>Vị trí</th>
+                                                                            <th style={{ padding: "5px 10px", textAlign: "right", fontWeight: 600, color: "#1E3A2F", width: "18%", borderBottom: "1px solid #c6dfd0" }}>SL xuất</th>
                                                                             <th style={{ padding: "5px 10px", textAlign: "right", fontWeight: 600, color: "#1E3A2F", width: "16%", borderBottom: "1px solid #c6dfd0" }}>Tồn khả dụng</th>
                                                                             <th style={{ padding: "5px 10px", textAlign: "right", fontWeight: 600, color: "#1E3A2F", width: "12%", borderBottom: "1px solid #c6dfd0" }}>Đơn giá</th>
                                                                             <th style={{ width: "4%", borderBottom: "1px solid #c6dfd0" }}></th>
@@ -975,6 +968,10 @@ export default function IssueCreatePage() {
                                                                             const exceedsStock = entryQty > entry.remainingStock;
                                                                             return (
                                                                                 <tr key={entry._id} style={{ borderBottom: "1px solid #edf6f1" }}>
+                                                                                    <td style={{ padding: "5px 10px", fontWeight: 600, color: "#1E854A" }}>{entry.batchCode}</td>
+                                                                                    <td style={{ padding: "5px 10px", color: "#4c6152" }}>
+                                                                                        {entry.locationcode || <span style={{ color: "#b0c4b8", fontStyle: "italic" }}>Chưa xác định</span>}
+                                                                                    </td>
                                                                                     <td style={{ padding: "5px 10px", textAlign: "right" }}>
                                                                                         <input
                                                                                             type="number"
@@ -999,10 +996,6 @@ export default function IssueCreatePage() {
                                                                                                 Thiếu {entryQty - entry.remainingStock}
                                                                                             </div>
                                                                                         )}
-                                                                                    </td>
-                                                                                    <td style={{ padding: "5px 10px", fontWeight: 600, color: "#1E854A" }}>{entry.batchCode}</td>
-                                                                                    <td style={{ padding: "5px 10px", color: "#4c6152" }}>
-                                                                                        {entry.locationcode || <span style={{ color: "#b0c4b8", fontStyle: "italic" }}>Chưa xác định</span>}
                                                                                     </td>
                                                                                     <td style={{ padding: "5px 10px", textAlign: "right", color: "#4c6152" }}>{entry.remainingStock}</td>
                                                                                     <td style={{ padding: "5px 10px", textAlign: "right", color: "#1E3A2F" }}>{formatMoney(Number(entry.unitCost) || 0)}</td>
@@ -1062,7 +1055,7 @@ export default function IssueCreatePage() {
                                         );
                                     })}
                                     <tr className="rc-add-row" onClick={handleAddRow}>
-                                        <td colSpan={isAdjustment ? 8 : 9}>
+                                        <td colSpan={isAdjustment ? 7 : 8}>
                                             <button className="rc-add-row-btn" type="button">
                                                 <IconPlus size={13} /> Thêm mới dữ liệu
                                             </button>
@@ -1070,7 +1063,7 @@ export default function IssueCreatePage() {
                                     </tr>
                                     {totalAmount > 0 && (
                                         <tr className="rc-total-row">
-                                            <td colSpan={isAdjustment ? 6 : 7} style={{ textAlign: "right", paddingRight: 12 }}>Tổng cộng</td>
+                                            <td colSpan={isAdjustment ? 5 : 6} style={{ textAlign: "right", paddingRight: 12 }}>Tổng cộng</td>
                                             <td className="rc-td-num" style={{ textAlign: "right" }}>{formatMoney(totalAmount)}</td>
                                             <td />
                                         </tr>

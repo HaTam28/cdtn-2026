@@ -217,11 +217,29 @@ export default function AuditCreatePage() {
     const [saving, setSaving] = useState(false);
     const [batchModal, setBatchModal] = useState({ open: false, rowIdx: null, options: [] });
 
-    // Hiển thị banner nháp local khi có nháp và không có clone state
+    // Hiển thị banner nháp hoặc tự động khôi phục nháp nếu được yêu cầu từ trang danh sách
     useEffect(() => {
         const hasCloneState = !!location.state?.clone;
         if (hasDraft && !hasCloneState) {
-            setShowDraftBanner(true);
+            if (location.state?.resumeDraft) {
+                const draft = loadDraft();
+                if (draft) {
+                    if (draft.form) setForm(draft.form);
+                    if (draft.dateDisplay) setDateDisplay(draft.dateDisplay);
+                    if (draft.rows) {
+                        setRows(draft.rows.map((r) => ({
+                            ...r,
+                            _id: `audit-restore-${++_auditRowKey}`,
+                            batchEntries: (r.batchEntries || []).map((entry) => ({
+                                ...entry,
+                                _id: `audit-batch-restore-${++_auditRowKey}`,
+                            })),
+                        })));
+                    }
+                }
+            } else {
+                setShowDraftBanner(true);
+            }
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -453,25 +471,7 @@ export default function AuditCreatePage() {
         ...(sendToStaff ? { assignedUserId: Number(form.assigneeId), sendToStaff: true } : {}),
     });
 
-    const handleSaveDraft = async () => {
-        if (!validateBase()) return;
-        setSaving(true);
-        try {
-            const result = await createAudit(buildPayload());
-            if (result?.success) {
-                clearDraft(); // Xóa nháp local khi lưu nháp BE thành công
-                notify("Đã lưu nháp phiếu kiểm kê.", { type: "success" });
-                const newId = result?.data?.id;
-                setTimeout(() => navigate(newId ? `/audits/${newId}` : "/audits"), 800);
-            } else {
-                notify(result?.message || "Lưu nháp thất bại.", { type: "error" });
-            }
-        } catch (err) {
-            notify(err?.response?.data?.message || "Có lỗi xảy ra khi lưu phiếu.", { type: "error" });
-        } finally {
-            setSaving(false);
-        }
-    };
+
 
     const handleSendRequest = async () => {
         if (!validateBase()) return;
@@ -501,7 +501,8 @@ export default function AuditCreatePage() {
     const handleSaveDraftLocal = () => {
         try {
             saveDraft({ form, rows, dateDisplay });
-            notify("Đã lưu nháp local.", { type: "success" });
+            notify("Đã lưu nháp thành công.", { type: "success" });
+            setTimeout(() => navigate("/audits"), 1000);
         } catch {
             notify("Không thể lưu nháp.", { type: "error" });
         }
@@ -782,11 +783,9 @@ export default function AuditCreatePage() {
                                 <polyline points="17 21 17 13 7 13 7 21" />
                                 <polyline points="7 3 7 8 15 8" />
                             </svg>
-                            Lưu nháp local
+                            Lưu nháp
                         </button>
-                        <button className="sp-btn-outline" onClick={handleSaveDraft} disabled={saving || loadingData}>
-                            {saving ? "Đang lưu..." : "Lưu nháp"}
-                        </button>
+
                         <button className="sp-btn-primary" onClick={handleSendRequest} disabled={saving || loadingData}>
                             {saving ? "Đang gửi..." : "Gửi yêu cầu"}
                         </button>

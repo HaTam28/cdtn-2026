@@ -1,5 +1,5 @@
 export const AUDIT_STATUS_LABELS = {
-    DRAFT: "Nháp",
+    DRAFT: "Chờ gửi",
     REQUESTED: "Chờ kiểm kê",
     IN_PROGRESS: "Đang kiểm kê",
     SUBMITTED: "Chờ duyệt",

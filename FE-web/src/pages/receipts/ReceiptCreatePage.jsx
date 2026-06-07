@@ -925,7 +925,14 @@ export default function ReceiptCreatePage() {
                                                 <td>
                                                     <select className="rc-td-select" value={row.itemId} onChange={(e) => handleRowChange(idx, "itemId", e.target.value)}>
                                                         <option value="">--</option>
-                                                        {items.map((it) => <option key={it.id} value={it.id}>{it.itemcode}</option>)}
+                                                        {items.map((it) => {
+                                                            const isSelectedElsewhere = rows.some((r, rIdx) => rIdx !== idx && String(r.itemId) === String(it.id));
+                                                            return (
+                                                                <option key={it.id} value={it.id} disabled={isSelectedElsewhere}>
+                                                                    {it.itemcode} {isSelectedElsewhere ? "(Đã chọn)" : ""}
+                                                                </option>
+                                                            );
+                                                        })}
                                                     </select>
                                                 </td>
                                                 <td>
