@@ -428,20 +428,24 @@ export default function AuditCreatePage() {
         }, includeActual))
     ));
 
-    const buildPayload = ({ sendToStaff = false } = {}) => ({
-        docDate: form.startDate,
-        startDate: form.startDate,
-        endDate: form.endDate,
+    const buildPayload = ({ sendToStaff = false, draft = false } = {}) => ({
+        docDate: form.startDate || todayStr(),
+        startDate: form.startDate || todayStr(),
+        endDate: form.endDate || form.startDate || todayStr(),
         description: form.description.trim() || null,
+        ...(draft ? { docstatus: "DRAFT" } : {}),
         details: flattenRowsForPayload(false),
         ...(sendToStaff ? { assignedUserId: Number(form.assigneeId), sendToStaff: true } : {}),
     });
 
     const handleSaveDraft = async () => {
-        if (!validateBase()) return;
+        if (form.startDate && form.endDate && form.endDate < form.startDate) {
+            notify("Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu.", { type: "error" });
+            return;
+        }
         setSaving(true);
         try {
-            const result = await createAudit(buildPayload());
+            const result = await createAudit(buildPayload({ draft: true }));
             if (result?.success) {
                 notify("Đã lưu nháp phiếu kiểm kê.", { type: "success" });
                 const newId = result?.data?.id;

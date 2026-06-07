@@ -289,6 +289,7 @@ export default function IssueCreatePage() {
     const [prefilledFromAudit, setPrefilledFromAudit] = useState(false);
     const [prefilledFromClone, setPrefilledFromClone] = useState(false);
     const [auditSource, setAuditSource] = useState(null);
+    const customerOptions = customers.filter((c) => c.iscustomer);
 
     const loadData = useCallback(async () => {
         setLoadingData(true);
@@ -445,7 +446,7 @@ export default function IssueCreatePage() {
     };
 
     const handleCustomerChange = (customerId) => {
-        const found = customers.find((c) => String(c.id) === String(customerId));
+        const found = customerOptions.find((c) => String(c.id) === String(customerId));
         setForm((prev) => ({ ...prev, customerId, address: found?.address || "" }));
     };
 
@@ -605,6 +606,37 @@ export default function IssueCreatePage() {
         return sum + rowTotal;
     }, 0);
 
+    const buildDetailsPayload = (sourceRows = rows) => sourceRows.flatMap((r) => {
+        if (!r.itemId) return [];
+        return (r.batchEntries || [])
+            .filter((e) => e.batchId && e.locationId && Number(e.quantity) > 0)
+            .map((e) => ({
+                itemId: Number(r.itemId),
+                batchId: Number(e.batchId),
+                locationId: Number(e.locationId),
+                quantity: Number(e.quantity),
+                unitprice: Number(e.unitCost) || Number(r.price) || 0,
+                ...(isAdjustment && r.inventoryAuditDetailId ? { inventoryAuditDetailId: Number(r.inventoryAuditDetailId) } : {}),
+            }));
+    });
+
+    const buildIssuePayload = (details = buildDetailsPayload()) => {
+        const adjAuditId = searchParams.get("auditId");
+        const payload = {
+            docno: form.docno.trim(),
+            docDate: form.date,
+            description: form.description.trim(),
+            doctype: form.docType,
+            docstatus: "DRAFT",
+            ...(adjAuditId ? { inventoryAuditId: Number(adjAuditId) } : {}),
+            details,
+        };
+        if (!isAdjustment) {
+            payload.customerId = form.customerId ? Number(form.customerId) : undefined;
+        }
+        return payload;
+    };
+
     const handleSave = async () => {
         if (!form.date) { showToast("error", "Vui lòng chọn ngày."); return; }
         if (!form.docno.trim()) { showToast("error", "Vui lòng nhập số chứng từ."); return; }
@@ -657,32 +689,13 @@ export default function IssueCreatePage() {
             }
         }
 
-        const details = rows.flatMap((r) =>
-            r.batchEntries.map((e) => ({
-                itemId: Number(r.itemId),
-                batchId: e.batchId ? Number(e.batchId) : undefined,
-                locationId: e.locationId ? Number(e.locationId) : null,
-                quantity: Number(e.quantity),
-                unitprice: Number(e.unitCost) || Number(r.price) || 0,
-                ...(isAdjustment && r.inventoryAuditDetailId ? { inventoryAuditDetailId: Number(r.inventoryAuditDetailId) } : {}),
-            }))
-        );
+        const details = buildDetailsPayload();
 
         setSaving(true);
         const adjAuditId = searchParams.get("auditId");
         const adjAuditDetailId = searchParams.get("auditDetailId");
         try {
-            const payload = {
-                docno: form.docno.trim(),
-                docDate: form.date,
-                description: form.description.trim(),
-                doctype: form.docType,
-                ...(adjAuditId ? { inventoryAuditId: Number(adjAuditId) } : {}),
-                details,
-            };
-            if (!isAdjustment) {
-                payload.customerId = Number(form.customerId);
-            }
+            const payload = buildIssuePayload(details);
             const result = await createIssue(payload);
             if (result?.success) {
                 showToast("success", "Tạo phiếu xuất kho thành công!");
@@ -700,6 +713,24 @@ export default function IssueCreatePage() {
             }
         } catch (err) {
             showToast("error", err?.response?.data?.message || "Có lỗi xảy ra khi tạo phiếu xuất kho.");
+        } finally { setSaving(false); }
+    };
+
+    const handleSaveDraft = async () => {
+        if (!form.date) { showToast("error", "Vui lòng nhập ngày theo định dạng dd/mm/yyyy."); return; }
+        if (!form.docno.trim()) { showToast("error", "Vui lòng nhập số chứng từ."); return; }
+        setSaving(true);
+        try {
+            const result = await createIssue(buildIssuePayload());
+            if (result?.success) {
+                showToast("success", "Đã lưu nháp phiếu xuất kho.");
+                const newId = result?.data?.id;
+                setTimeout(() => navigate(newId ? `/issues/${newId}` : "/issues"), 900);
+            } else {
+                showToast("error", result?.message || "Lưu nháp thất bại.");
+            }
+        } catch (err) {
+            showToast("error", err?.response?.data?.message || "Có lỗi xảy ra khi lưu nháp phiếu xuất kho.");
         } finally { setSaving(false); }
     };
 
@@ -770,7 +801,7 @@ export default function IssueCreatePage() {
                                 <label className="rc-form-label">Đối tượng</label>
                                 <select className="rc-form-select rc-form-full" value={form.customerId} onChange={(e) => handleCustomerChange(e.target.value)} disabled={loadingData}>
                                     <option value="">Chọn đối tượng</option>
-                                    {customers.map((c) => (
+                                    {customerOptions.map((c) => (
                                         <option key={c.id} value={c.id}>{c.customercode ? `${c.customercode}: ` : ""}{c.customername}</option>
                                     ))}
                                 </select>
@@ -1012,6 +1043,9 @@ export default function IssueCreatePage() {
                         {/* ── Actions ── */}
                         <div className="rc-form-actions">
                             <button className="sp-btn-outline" onClick={() => navigate("/issues")}>Hủy bỏ</button>
+                            <button className="sp-btn-outline" onClick={handleSaveDraft} disabled={saving}>
+                                {saving ? "Đang lưu..." : "Lưu nháp"}
+                            </button>
                             <button className="sp-btn-primary" onClick={handleSave} disabled={saving}>
                                 {saving ? "Đang lưu..." : "Lưu phiếu"}
                             </button>

@@ -10,7 +10,7 @@ const COMPANY_NAME = "CÔNG TY TNHH HOSHIMOTO VIỆT NAM";
 const COMPANY_ADDRESS_LINE1 = "Căn số 49-TT5, Khu nhà ở Đài phát sóng phát thanh Mễ Trì,";
 const COMPANY_ADDRESS_LINE2 = "Phường Đại Mỗ, TP Hà Nội";
 
-const STATUS_LABELS = { DRAFT: "Chờ duyệt", CONFIRMED: "Đã duyệt", CANCELLED: "Hủy", REJECTED: "Đã từ chối" };
+const STATUS_LABELS = { DRAFT: "Nháp", CONFIRMED: "Đã duyệt", CANCELLED: "Hủy", REJECTED: "Đã từ chối" };
 const STATUS_CLASS = {
     DRAFT: "rc-status-pill rc-status-pill-draft",
     CONFIRMED: "rc-status-pill rc-status-pill-confirmed",

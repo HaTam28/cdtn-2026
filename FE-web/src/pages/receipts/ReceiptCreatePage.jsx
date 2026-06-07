@@ -393,6 +393,7 @@ export default function ReceiptCreatePage() {
     const [prefilledFromClone, setPrefilledFromClone] = useState(false);
     const [prefilledFromOverview, setPrefilledFromOverview] = useState(false);
     const [auditSource, setAuditSource] = useState(null);
+    const supplierOptions = customers.filter((c) => c.issupplier);
     const loadData = useCallback(async () => {
         setLoadingData(true);
         try {
@@ -548,7 +549,7 @@ export default function ReceiptCreatePage() {
     };
 
     const handleCustomerChange = (customerId) => {
-        const found = customers.find((c) => String(c.id) === String(customerId));
+        const found = supplierOptions.find((c) => String(c.id) === String(customerId));
         setForm((prev) => ({ ...prev, customerId, address: found?.address || "" }));
         if (found) setInvoice((prev) => ({ ...prev, taxcode: found.taxcode || "", supplierId: customerId }));
     };
@@ -616,6 +617,41 @@ export default function ReceiptCreatePage() {
 
     const totalAmount = rows.reduce((sum, r) => sum + (Number(r.quantity) || 0) * (Number(r.price) || 0), 0);
 
+    const buildDetailsPayload = (sourceRows = rows) => sourceRows.flatMap((r) => {
+        if (!r.itemId) return [];
+        return (r.selectedLocations || [])
+            .filter((loc) => loc.locationId && Number(loc.allocQty) > 0)
+            .map((loc) => ({
+                itemId: Number(r.itemId),
+                locationId: Number(loc.locationId),
+                quantity: Number(loc.allocQty),
+                unitprice: Number(r.price) || 0,
+                ...(isAdjustment && r.batchId ? { batchId: Number(r.batchId) } : {}),
+                ...(isAdjustment && r.inventoryAuditDetailId ? { inventoryAuditDetailId: Number(r.inventoryAuditDetailId) } : {}),
+            }));
+    });
+
+    const buildReceiptPayload = (docstatus, details = buildDetailsPayload()) => {
+        const adjAuditId = searchParams.get("auditId");
+        const payload = {
+            docno: form.docno.trim(),
+            docDate: form.date,
+            description: form.description.trim(),
+            doctype: form.docType,
+            docstatus,
+            ...(adjAuditId ? { inventoryAuditId: Number(adjAuditId) } : {}),
+            details,
+        };
+        if (!isAdjustment) {
+            payload.customerId = form.customerId ? Number(form.customerId) : undefined;
+            payload.invoiceDate = invoice.date || undefined;
+            payload.taxcode = invoice.taxcode || undefined;
+            payload.invoiceNumber = invoice.number || undefined;
+            payload.supplierId = invoice.supplierId ? Number(invoice.supplierId) : undefined;
+        }
+        return payload;
+    };
+
     const validateAdjustmentCapacity = async (targetRows = rows) => {
         const allocationsByItem = new Map();
         targetRows.forEach((row) => {
@@ -673,36 +709,12 @@ export default function ReceiptCreatePage() {
             if (isAdjustment && !r.inventoryAuditDetailId) { showToast("error", `Dòng ${i + 1}: Thiếu liên kết chi tiết kiểm kê.`); return; }
         }
         if (isAdjustment && !(await validateAdjustmentCapacity())) return;
-        const details = rows.flatMap((r) =>
-            r.selectedLocations.map((loc) => ({
-                itemId: Number(r.itemId),
-                locationId: Number(loc.locationId),
-                quantity: Number(loc.allocQty),
-                unitprice: Number(r.price),
-                ...(isAdjustment && r.batchId ? { batchId: Number(r.batchId) } : {}),
-                ...(isAdjustment && r.inventoryAuditDetailId ? { inventoryAuditDetailId: Number(r.inventoryAuditDetailId) } : {}),
-            }))
-        );
+        const details = buildDetailsPayload();
         setSaving(true);
         const adjAuditId = searchParams.get("auditId");
         const adjAuditDetailId = searchParams.get("auditDetailId");
         try {
-            const payload = {
-                docno: form.docno.trim(),
-                docDate: form.date,
-                description: form.description.trim(),
-                doctype: form.docType,
-                docstatus: isManager ? "CONFIRMED" : "DRAFT",
-                ...(adjAuditId ? { inventoryAuditId: Number(adjAuditId) } : {}),
-                details,
-            };
-            if (!isAdjustment) {
-                payload.customerId = Number(form.customerId);
-                payload.invoiceDate = invoice.date || undefined;
-                payload.taxcode = invoice.taxcode || undefined;
-                payload.invoiceNumber = invoice.number || undefined;
-                payload.supplierId = invoice.supplierId ? Number(invoice.supplierId) : undefined;
-            }
+            const payload = buildReceiptPayload(isManager ? "CONFIRMED" : "DRAFT", details);
             const result = await createReceipt(payload);
             if (result?.success) {
                 showToast("success", "Tạo phiếu nhập kho thành công!");
@@ -720,6 +732,24 @@ export default function ReceiptCreatePage() {
             }
         } catch (err) {
             showToast("error", err?.response?.data?.message || "Có lỗi xảy ra khi tạo phiếu nhập kho.");
+        } finally { setSaving(false); }
+    };
+
+    const handleSaveDraft = async () => {
+        if (!form.date) { showToast("error", "Vui lòng nhập ngày theo định dạng dd/mm/yyyy."); return; }
+        if (!form.docno.trim()) { showToast("error", "Vui lòng nhập số chứng từ."); return; }
+        setSaving(true);
+        try {
+            const result = await createReceipt(buildReceiptPayload("DRAFT"));
+            if (result?.success) {
+                showToast("success", "Đã lưu nháp phiếu nhập kho.");
+                const newId = result?.data?.id;
+                setTimeout(() => navigate(newId ? `/receipts/${newId}` : "/receipts"), 900);
+            } else {
+                showToast("error", result?.message || "Lưu nháp thất bại.");
+            }
+        } catch (err) {
+            showToast("error", err?.response?.data?.message || "Có lỗi xảy ra khi lưu nháp phiếu nhập kho.");
         } finally { setSaving(false); }
     };
 
@@ -776,7 +806,7 @@ export default function ReceiptCreatePage() {
                                 <label className="rc-form-label">Đối tượng<span className="rc-required">*</span></label>
                                 <select className="rc-form-select rc-form-full" value={form.customerId} onChange={(e) => handleCustomerChange(e.target.value)} disabled={loadingData}>
                                     <option value="">Chọn đối tượng</option>
-                                    {customers.map((c) => (
+                                    {supplierOptions.map((c) => (
                                         <option key={c.id} value={c.id}>{c.customercode ? `${c.customercode}: ` : ""}{c.customername}</option>
                                     ))}
                                 </select>
@@ -917,7 +947,7 @@ export default function ReceiptCreatePage() {
                                         <label className="rc-form-label">Tên NCC</label>
                                         <select className="rc-form-select" value={invoice.supplierId} onChange={(e) => handleInvoiceChange("supplierId", e.target.value)}>
                                             <option value="">Chọn tên nhà cung cấp</option>
-                                            {customers.filter((c) => c.issupplier).map((c) => (
+                                            {supplierOptions.map((c) => (
                                                 <option key={c.id} value={c.id}>{c.customername}</option>
                                             ))}
                                         </select>
@@ -929,6 +959,9 @@ export default function ReceiptCreatePage() {
                         {/* ── Actions ── */}
                         <div className="rc-form-actions">
                             <button className="sp-btn-outline" onClick={() => navigate("/receipts")} disabled={saving}>Hủy bỏ</button>
+                            <button className="sp-btn-outline" onClick={handleSaveDraft} disabled={saving}>
+                                {saving ? "Đang lưu..." : "Lưu nháp"}
+                            </button>
                             <button className="sp-btn-primary" onClick={handleSave} disabled={saving}>
                                 {saving ? "Đang lưu..." : "Lưu"}
                             </button>
