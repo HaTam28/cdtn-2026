@@ -113,7 +113,7 @@ function TopbarRightContent() {
         if (t.includes("GOODS_ISSUE")) return `/issues/${id}`;
         // Match any audit-related targetType (INVENTORY_AUDIT, INVENTORY_AUDIT_REQUEST, etc.)
         if (t.includes("AUDIT")) {
-            if (user?.role === "STAFF") return `/audits/requests?id=${id}`;
+            if (user?.role === "STAFF" || user?.role === "NV") return `/audits/requests?id=${id}`;
             return `/audits/${id}`;
         }
         return "/overview";
