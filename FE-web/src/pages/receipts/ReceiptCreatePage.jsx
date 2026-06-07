@@ -140,7 +140,7 @@ function IconWarn() {
 }
 
 // ─── Location Picker Modal ────────────────────────────────────────────────────
-function LocationModal({ open, onClose, onConfirm, loading, suggestions, quantity, rowName }) {
+function LocationModal({ open, onClose, onConfirm, loading, suggestions, quantity, rowName, currentLocations = [] }) {
     const [search, setSearch] = useState("");
     const [rackFilter, setRackFilter] = useState("Tất cả dãy");
     const [selected, setSelected] = useState(new Map()); // Map<locationId, allocQty>
@@ -148,6 +148,24 @@ function LocationModal({ open, onClose, onConfirm, loading, suggestions, quantit
     useEffect(() => {
         if (open) { setSearch(""); setRackFilter("Tất cả dãy"); setSelected(new Map()); }
     }, [open]);
+
+    useEffect(() => {
+        if (!open || loading || suggestions.length === 0 || currentLocations.length === 0) return;
+        const next = new Map();
+        let remainingQty = Number(quantity) || 0;
+        currentLocations.forEach((loc) => {
+            if (remainingQty <= 0) return;
+            const found = suggestions.find((s) => String(s.locationId) === String(loc.locationId));
+            if (!found) return;
+            const cap = Number(found.remainingCapacity) || 0;
+            const alloc = Math.min(Number(loc.allocQty) || 0, cap, remainingQty);
+            if (alloc > 0) {
+                next.set(found.locationId, alloc);
+                remainingQty -= alloc;
+            }
+        });
+        setSelected(next);
+    }, [open, loading, suggestions, currentLocations, quantity]);
 
     if (!open) return null;
 
@@ -865,6 +883,7 @@ export default function ReceiptCreatePage() {
                 suggestions={locModal.suggestions}
                 quantity={locModal.rowIdx !== null ? rows[locModal.rowIdx]?.quantity || 0 : 0}
                 rowName={locModal.rowIdx !== null ? rows[locModal.rowIdx]?.itemcode || "" : ""}
+                currentLocations={locModal.rowIdx !== null ? rows[locModal.rowIdx]?.selectedLocations || [] : []}
             />
         </>
     );

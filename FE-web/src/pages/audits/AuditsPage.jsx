@@ -9,7 +9,7 @@ import { getAllIssues } from "../../api/issueApi";
 import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
-import { AUDIT_STATUS_BADGE, AUDIT_STATUS_LABELS, formatDisplayDate, getAuditEndDate, getAuditRowTone, getAuditStartDate, getAuditWorkflowStatus, toNumber } from "./auditRowUtils";
+import { AUDIT_STATUS_BADGE, AUDIT_STATUS_LABELS, formatDisplayDate, getAuditEndDate, getAuditRowTone, getAuditStartDate, getAuditWorkflowStatus, normalizeAuditDetails, toNumber } from "./auditRowUtils";
 
 const TABS = ["Tất cả", "Nháp", "Chờ kiểm kê", , "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Quá hạn"];
 const STAFF_TABS = ["Tất cả", "Chờ kiểm kê", , "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Quá hạn"];
@@ -22,6 +22,8 @@ const TAB_STATUS = {
     "Quá hạn": "OVERDUE",
 };
 const ROWS_OPTIONS = [10, 15, 20, 50];
+const APPROVED_AUDIT_STATUSES = new Set(["CONFIRMED", "PROCESSED"]);
+const ADJUSTMENT_APPROVED_STATUSES = new Set(["CONFIRMED", "APPROVED", "PROCESSED"]);
 const ADJUSTMENT_PENDING_STATUSES = new Set(["DRAFT", "REQUESTED", "IN_PROGRESS", "SUBMITTED", "PENDING_PROCESS"]);
 const ADJUSTMENT_FAILED_STATUSES = new Set(["CANCELLED", "REJECTED"]);
 
@@ -40,6 +42,53 @@ function getDocAuditId(doc) {
 
 function getDetailAuditId(detail) {
     return detail?.inventoryAuditDetailId ?? detail?.inventoryauditdetailid ?? null;
+}
+
+function sameNumber(a, b) {
+    return Math.abs(toNumber(a) - toNumber(b)) < 0.0001;
+}
+
+function getDetailItemId(detail) {
+    return detail?.itemId ?? detail?.itemid ?? detail?.item?.id ?? null;
+}
+
+function getDetailLocationId(detail) {
+    return detail?.locationId ?? detail?.locationid ?? detail?.location?.id ?? null;
+}
+
+function getDetailBatchId(detail) {
+    return detail?.batchId ?? detail?.batchid ?? detail?.batch?.id ?? null;
+}
+
+function getDetailBatchCode(detail) {
+    return detail?.batchCode ?? detail?.batchcode ?? detail?.batch?.batchCode ?? detail?.batch?.batchcode ?? "";
+}
+
+function getDetailQuantity(detail) {
+    return detail?.quantity ?? detail?.qty ?? detail?.actualquantity ?? detail?.bookquantity ?? 0;
+}
+
+function docDetailsMatchRow(doc, row, diff) {
+    const details = doc?.details || [];
+    if (details.length === 0) return false;
+    if (row.id && details.some((detail) => isSameId(getDetailAuditId(detail), row.id))) return true;
+
+    const targetQty = Math.abs(toNumber(diff));
+    const totalQty = details.reduce((sum, detail) => sum + toNumber(getDetailQuantity(detail)), 0);
+    const hasSameItem = details.some((detail) => isSameId(getDetailItemId(detail), row.itemId));
+    const hasSameLocation = details.some((detail) => isSameId(getDetailLocationId(detail), row.locationId));
+    const hasSameBatch = !row.batchId || details.some((detail) => (
+        isSameId(getDetailBatchId(detail), row.batchId)
+        || String(getDetailBatchCode(detail)) === String(row.batchCode || "")
+    ));
+
+    return hasSameItem && hasSameLocation && hasSameBatch && sameNumber(totalQty, targetQty);
+}
+
+function getStoredAdjustmentDocId(auditId, row, diff) {
+    if (typeof localStorage === "undefined" || !auditId || !row?.id) return null;
+    const type = diff > 0 ? "receipt" : diff < 0 ? "issue" : null;
+    return type ? localStorage.getItem(`audit_adj_${type}_detail_doc_${auditId}_${row.id}`) : null;
 }
 
 function IconPlus() {
@@ -89,7 +138,7 @@ export default function AuditsPage() {
     const navigate = useNavigate();
 
     const getDetailRowsForStatus = useCallback((audit) => (
-        (audit.details || []).map((d) => ({
+        normalizeAuditDetails(audit.details || []).map((d) => ({
             ...d,
             diffquantity: d.diffquantity ?? (d.actualquantity == null ? 0 : toNumber(d.actualquantity) - toNumber(d.bookquantity)),
         }))
@@ -99,36 +148,39 @@ export default function AuditsPage() {
         getAuditWorkflowStatus(audit, getDetailRowsForStatus(audit))
     ), [getDetailRowsForStatus]);
 
-    const hasAdjustmentInProgress = useCallback((audit, detailRows) => {
-        if (!["CONFIRMED", "PROCESSED"].includes(audit?.docstatus)) return false;
+    const hasUnresolvedAdjustment = useCallback((audit, detailRows) => {
+        if (!APPROVED_AUDIT_STATUSES.has(audit?.docstatus)) return false;
         const diffRows = (detailRows || []).filter((row) => toNumber(row.diffquantity, 0) !== 0);
         if (diffRows.length === 0) return false;
 
         const docs = adjustmentDocs.filter((doc) => isSameId(getDocAuditId(doc), audit.id));
-        if (docs.length === 0) return false;
-
-        const docsHaveDetailLinks = docs.some((doc) =>
-            (doc.details || []).some((detail) => getDetailAuditId(detail))
-        );
-
-        if (!docsHaveDetailLinks) {
-            return docs.some((doc) => ADJUSTMENT_PENDING_STATUSES.has(doc.docstatus));
-        }
+        if (docs.length === 0) return true;
 
         const states = diffRows.map((row) => {
+            const diff = toNumber(row.diffquantity, 0);
+            const storedDocId = getStoredAdjustmentDocId(audit.id, row, diff);
+            if (storedDocId) {
+                const storedDoc = docs.find((doc) => isSameId(doc.id, storedDocId));
+                if (storedDoc) {
+                    if (ADJUSTMENT_APPROVED_STATUSES.has(storedDoc.docstatus)) return "APPROVED";
+                    if (ADJUSTMENT_FAILED_STATUSES.has(storedDoc.docstatus)) return "FAILED";
+                    if (ADJUSTMENT_PENDING_STATUSES.has(storedDoc.docstatus)) return "PENDING";
+                    return "PENDING";
+                }
+                return "PENDING";
+            }
+
             const doc = docs.find((candidate) =>
-                (candidate.details || []).some((detail) => isSameId(getDetailAuditId(detail), row.id))
+                docDetailsMatchRow(candidate, row, diff)
             );
             if (!doc) return "NOT_CREATED";
-            if (doc.docstatus === "CONFIRMED") return "APPROVED";
+            if (ADJUSTMENT_APPROVED_STATUSES.has(doc.docstatus)) return "APPROVED";
             if (ADJUSTMENT_FAILED_STATUSES.has(doc.docstatus)) return "FAILED";
             if (ADJUSTMENT_PENDING_STATUSES.has(doc.docstatus)) return "PENDING";
             return "PENDING";
         });
 
-        const hasPending = states.some((state) => state === "PENDING");
-        const hasMissingOrFailed = states.some((state) => state === "NOT_CREATED" || state === "FAILED");
-        return hasPending && !hasMissingOrFailed;
+        return states.some((state) => state !== "APPROVED");
     }, [adjustmentDocs]);
 
     const fetchAudits = useCallback(async () => {
@@ -311,7 +363,7 @@ export default function AuditsPage() {
                             )}
                             {!loading && !error && pageData.map((r) => {
                                 const detailRows = getDetailRowsForStatus(r);
-                                const pendingAdjustment = hasAdjustmentInProgress(r, detailRows);
+                                const pendingAdjustment = hasUnresolvedAdjustment(r, detailRows);
                                 const rowDisplayStatus = getStatusForAudit(r);
                                 const rowTone = getAuditRowTone(rowDisplayStatus, pendingAdjustment);
                                 return (

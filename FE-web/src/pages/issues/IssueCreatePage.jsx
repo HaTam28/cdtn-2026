@@ -117,7 +117,7 @@ function BatchModal({ open, onClose, onConfirm, loading, batches, alreadySelecte
             if (remaining <= 0) return;
             const available = Number(b.remainingStock || 0);
             if (available <= 0) return;
-            next.add(String(b.batchId));
+            next.add(String(b._pickKey));
             remaining -= available;
         });
         setSelected(next);
@@ -125,7 +125,7 @@ function BatchModal({ open, onClose, onConfirm, loading, batches, alreadySelecte
 
     if (!open) return null;
 
-    const available = batches.filter((b) => !alreadySelectedIds.has(String(b.batchId)));
+    const available = batches.filter((b) => !alreadySelectedIds.has(String(b._pickKey)));
     const filtered = available.filter((b) => {
         const q = search.trim().toLowerCase();
         return !q
@@ -136,11 +136,11 @@ function BatchModal({ open, onClose, onConfirm, loading, batches, alreadySelecte
     const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
     const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-    const handleToggle = (batchId, disabled) => {
+    const handleToggle = (pickKey, disabled) => {
         if (disabled) return;
         setSelected((prev) => {
             const next = new Set(prev);
-            const key = String(batchId);
+            const key = String(pickKey);
             if (next.has(key)) next.delete(key);
             else next.add(key);
             return next;
@@ -150,7 +150,7 @@ function BatchModal({ open, onClose, onConfirm, loading, batches, alreadySelecte
     const handleConfirm = () => {
         const picked = pageItems.length === 0
             ? []
-            : filtered.filter((b) => selected.has(String(b.batchId)));
+            : filtered.filter((b) => selected.has(String(b._pickKey)));
         if (picked.length > 0) onConfirm(picked);
     };
 
@@ -206,17 +206,17 @@ function BatchModal({ open, onClose, onConfirm, loading, batches, alreadySelecte
                                 </thead>
                                 <tbody>
                                     {pageItems.map((b) => {
-                                        const isChecked = selected.has(String(b.batchId));
+                                        const isChecked = selected.has(String(b._pickKey));
                                         const selectedTotal = Array.from(selected).reduce((sum, id) => {
-                                            const found = batches.find((x) => String(x.batchId) === String(id));
+                                            const found = batches.find((x) => String(x._pickKey) === String(id));
                                             return sum + Number(found?.remainingStock || 0);
                                         }, 0);
                                         const reached = Number(requiredQty || 0) > 0 && selectedTotal >= Number(requiredQty || 0);
                                         const isDisabled = !isChecked && reached;
                                         return (
                                             <tr
-                                                key={b.batchId}
-                                                onClick={() => handleToggle(b.batchId, isDisabled)}
+                                                key={b._pickKey}
+                                                onClick={() => handleToggle(b._pickKey, isDisabled)}
                                                 style={{ cursor: isDisabled ? "not-allowed" : "pointer", opacity: isDisabled ? 0.4 : 1 }}
                                                 className={isChecked ? "rc-row-selected" : ""}
                                             >
@@ -225,7 +225,7 @@ function BatchModal({ open, onClose, onConfirm, loading, batches, alreadySelecte
                                                         type="checkbox"
                                                         checked={isChecked}
                                                         disabled={isDisabled}
-                                                        onChange={() => handleToggle(b.batchId, isDisabled)}
+                                                        onChange={() => handleToggle(b._pickKey, isDisabled)}
                                                         onClick={(e) => e.stopPropagation()}
                                                     />
                                                 </td>
@@ -342,6 +342,7 @@ export default function IssueCreatePage() {
             if (d.batchId) {
                 grouped[key].batchEntries.push({
                     _id: ++_rowKey,
+                    _pickKey: `${d.batchId || ""}-${d.locationId || ""}`,
                     batchId: d.batchId,
                     batchCode: d.batchCode || d.nameBatch || String(d.batchId),
                     locationId: d.locationId || "",
@@ -390,6 +391,7 @@ export default function IssueCreatePage() {
                         const batch = batchById[String(d.batchId)] || {};
                         const batchEntries = d.batchId ? [{
                             _id: ++_rowKey,
+                            _pickKey: `${d.batchId || ""}-${d.locationId || ""}`,
                             batchId: d.batchId,
                             batchCode: d.batchCode || batch.batchCode || "",
                             locationId: d.locationId || "",
@@ -486,7 +488,6 @@ export default function IssueCreatePage() {
         setBatchModal({ open: true, rowIdx: idx, batches: [], loading: true });
         try {
             const locations = await getAvailableLocations(row.itemId);
-            // Build batch map: pick the highest remaining stock per batch
             const batchMap = {};
             (locations || []).forEach((loc) => {
                 const item = (loc.items || []).find((it) => String(it.itemId) === String(row.itemId));
@@ -494,16 +495,16 @@ export default function IssueCreatePage() {
                 batchList.forEach((batch) => {
                     const remaining = Number(batch.quantityRemaining ?? batch.remainingStock ?? 0);
                     if (!batch.batchId || remaining <= 0) return;
-                    const bId = String(batch.batchId);
-                    if (!batchMap[bId] || remaining > batchMap[bId].remainingStock) {
-                        batchMap[bId] = {
-                            batchId: batch.batchId,
-                            batchCode: batch.batchCode || "",
-                            locationId: batch.locationId || loc.locationId,
-                            locationcode: batch.locationcode || loc.locationcode,
-                            remainingStock: remaining,
-                        };
-                    }
+                    const locationId = batch.locationId || loc.locationId;
+                    const pickKey = `${batch.batchId}-${locationId || ""}`;
+                    batchMap[pickKey] = {
+                        _pickKey: pickKey,
+                        batchId: batch.batchId,
+                        batchCode: batch.batchCode || "",
+                        locationId,
+                        locationcode: batch.locationcode || loc.locationcode,
+                        remainingStock: remaining,
+                    };
                 });
             });
             // Enrich batchCode from local batches list if missing
@@ -545,6 +546,7 @@ export default function IssueCreatePage() {
                 remaining = Math.max(0, remaining - autoQty);
                 return {
                     _id: ++_rowKey,
+                    _pickKey: batch._pickKey,
                     batchId: batch.batchId,
                     batchCode: batch.batchCode,
                     locationId: batch.locationId,
@@ -613,10 +615,9 @@ export default function IssueCreatePage() {
                 return;
             }
 
-            // No duplicate batches within the same row
-            const batchIds = r.batchEntries.map((e) => String(e.batchId));
-            if (new Set(batchIds).size !== batchIds.length) {
-                showToast("error", `Dòng ${i + 1}: Có mã lô bị trùng lặp.`);
+            const batchLocationKeys = r.batchEntries.map((e) => `${e.batchId || ""}-${e.locationId || ""}`);
+            if (new Set(batchLocationKeys).size !== batchLocationKeys.length) {
+                showToast("error", `Dòng ${i + 1}: Có mã lô và vị trí bị trùng lặp.`);
                 return;
             }
 
@@ -693,7 +694,7 @@ export default function IssueCreatePage() {
 
     const currentBatchRow = batchModal.rowIdx !== null ? rows[batchModal.rowIdx] : null;
     const alreadySelectedBatchIds = new Set(
-        (currentBatchRow?.batchEntries || []).map((e) => String(e.batchId))
+        (currentBatchRow?.batchEntries || []).map((e) => String(e._pickKey || `${e.batchId || ""}-${e.locationId || ""}`))
     );
 
     return (

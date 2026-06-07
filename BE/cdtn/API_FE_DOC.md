@@ -1012,14 +1012,14 @@ Response (200) example:
 |--------|----------|-------|
 | `invoiceNumber` | ❌ | Số hóa đơn / chứng từ bán hàng từ nhà cung cấp (tách riêng với `docno`). |
 | `doctype` | ✅ | Loại phiếu nhập. Giá trị gợi ý: `NORMAL`, `ADJUSTMENT`. |
-| `inventoryAuditId` | ❌ / ✅ khi điều chỉnh | ID phiếu kiểm kê nguồn. Khi gửi trường này, BE tự set `doctype = ADJUSTMENT`. |
+ZZZa| `inventoryAuditId` | ❌ / ✅ khi điều chỉnh | ID phiếu kiểm kê nguồn. Khi gửi trường này, BE tự set `doctype = ADJUSTMENT`. |
 | `details[].batchId` | ❌ / ✅ khi điều chỉnh | ID mã lô đã auto-fill từ dòng kiểm kê. Phiếu nhập điều chỉnh phải dùng batch này, BE không sinh mã lô mới. |
 | `details[].inventoryAuditDetailId` | ❌ / ✅ khi điều chỉnh | ID dòng chi tiết kiểm kê nguồn, dùng để truy vết và chặn tạo trùng điều chỉnh. |
 
 > `locationId` có thể để `null` khi tạo DRAFT; phải gán trước khi confirm.
 > `batchId` / `batchCode` trong response chỉ xuất hiện sau khi phiếu được **CONFIRMED** — BE tự động tạo lô khi xác nhận, FE **không cần** gọi `POST /api/batches` trong luồng nhập kho thông thường.
 >
-> **Phiếu nhập điều chỉnh từ kiểm kê:** FE không cần gửi `invoiceNumber`, `customerId`, thông tin hóa đơn/đối tượng. Nếu FE gửi thừa, BE sẽ không lưu các trường này. Mỗi dòng bắt buộc có `batchId`, `locationId`, `quantity > 0`, `inventoryAuditDetailId`; `batchId` phải là mã lô auto-fill từ dòng kiểm kê. Khi confirm, BE cộng số lượng vào batch hiện có, **không sinh batchCode mới**. BE kiểm tra sức chứa ngay khi lưu DRAFT/cập nhật và kiểm tra lại khi confirm. Nếu không đủ chỗ, BE trả `"Vị trí không đủ sức chứa."`.
+> **Phiếu nhập điều chỉnh từ kiểm kê:** FE không cần gửi `invoiceNumber`, `customerId`, thông tin hóa đơn/đối tượng. Nếu FE gửi thừa, BE sẽ không lưu các trường này. Mỗi dòng bắt buộc có `batchId`, `locationId`, `quantity > 0`, `inventoryAuditDetailId`; `batchId` phải là mã lô auto-fill từ dòng kiểm kê. `locationId` là vị trí nhận hàng điều chỉnh do người dùng chọn, **không bắt buộc trùng vị trí gốc của mã lô**. Khi confirm, BE cộng số lượng vào batch hiện có, **không sinh batchCode mới**. BE kiểm tra sức chứa ngay khi lưu DRAFT/cập nhật và kiểm tra lại khi confirm. Nếu không đủ chỗ, BE trả `"Vị trí không đủ sức chứa."`.
 >
 > **LƯU Ý VỀ LÔ HÀNG (BATCH):**
 > - **Tự động tạo khi confirm:** Khi phiếu nhập được xác nhận, BE tự sinh batch theo từng dòng chi tiết gắn vị trí. Nếu cùng 1 mã hàng được nhập ở nhiều vị trí khác nhau, mỗi vị trí sẽ có `batchCode` riêng.
@@ -1114,7 +1114,6 @@ BE thực hiện:
 - `"Phiếu nhập điều chỉnh phải liên kết chi tiết phiếu kiểm kê"`
 - `"Phiếu nhập điều chỉnh phải có mã lô"`
 - `"Mã lô không khớp với chi tiết phiếu kiểm kê"`
-- `"Vị trí không khớp với mã lô"`
 - `"Chi tiết phiếu kiểm kê đã được tạo phiếu điều chỉnh"`
 
 ### 7.4 API hỗ trợ chọn vị trí
@@ -1838,7 +1837,7 @@ Sau khi phiếu kiểm kê được confirm (`CONFIRMED` hoặc `PROCESSED`):
 - Header có `inventoryAuditId` thì BE tự set `doctype = ADJUSTMENT`.
 - BE lưu `inventoryAuditId` ở phiếu và `inventoryAuditDetailId` ở từng dòng detail; response `GoodsReceiptDetailResponse`/`GoodsIssueDetailResponse` cũng trả lại `inventoryAuditDetailId`.
 - Không gửi/không lưu thông tin mua bán: `customerId`, `taxcode`, `invoiceNumber` và các field hóa đơn liên quan.
-- Phiếu nhập điều chỉnh: FE gửi `batchId` auto-fill từ dòng kiểm kê; BE kiểm tra batch khớp dòng kiểm kê/vị trí và khi confirm cộng số lượng vào batch hiện có, không sinh `batchCode` mới. BE kiểm tra sức chứa vị trí lúc tạo/cập nhật DRAFT và lúc confirm; lỗi chuẩn là `"Vị trí không đủ sức chứa."`.
+- Phiếu nhập điều chỉnh: FE gửi `batchId` auto-fill từ dòng kiểm kê; BE kiểm tra batch khớp dòng kiểm kê và vật tư, nhưng `locationId` được chọn độc lập với vị trí gốc của mã lô. Khi confirm BE cộng số lượng vào batch hiện có, không sinh `batchCode` mới. BE kiểm tra sức chứa vị trí lúc tạo/cập nhật DRAFT và lúc confirm; lỗi chuẩn là `"Vị trí không đủ sức chứa."`.
 - Phiếu xuất điều chỉnh: BE không kiểm tra sức chứa; BE kiểm tra tồn kho đủ, mã lô tồn tại, vị trí tồn tại, lô khớp vị trí và số lượng hợp lệ.
 - Nếu cùng `inventoryAuditDetailId` đã được dùng ở một phiếu nhập/xuất điều chỉnh còn hiệu lực (`DRAFT`/`CONFIRMED`...), BE trả `"Chi tiết phiếu kiểm kê đã được tạo phiếu điều chỉnh"`.
 

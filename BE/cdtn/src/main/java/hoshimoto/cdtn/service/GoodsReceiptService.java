@@ -676,12 +676,6 @@ public class GoodsReceiptService {
             if (auditBatch.getItem() != null && !auditBatch.getItem().getId().equals(req.getItemId())) {
                 throw new RuntimeException("Mã lô không khớp với vật tư");
             }
-            if (auditBatch.getReceiptDetail() != null
-                    && auditBatch.getReceiptDetail().getLocation() != null
-                    && !auditBatch.getReceiptDetail().getLocation().getId().equals(req.getLocationId())) {
-                throw new RuntimeException("Vị trí không khớp với mã lô");
-            }
-
             boolean usedByReceipt = detailRepository.existsActiveAdjustmentByAuditDetailId(
                     req.getInventoryAuditDetailId(), receipt.getId());
             boolean usedByIssue = issueDetailRepository.existsActiveAdjustmentByAuditDetailId(
