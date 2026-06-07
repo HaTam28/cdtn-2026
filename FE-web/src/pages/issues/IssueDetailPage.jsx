@@ -407,12 +407,22 @@ export default function IssueDetailPage() {
                                 </div>
                             ) : null}
 
-                            <div className="rc-form-row">
-                                <label className="rc-form-label">Người lập</label>
-                                <input className="rc-form-input rc-input-auto" value={issue.createdByFullname || issue.createdByName || ""} readOnly />
-                                <label className="rc-form-label" style={{ marginLeft: 16 }}>Đối tượng</label>
-                                <input className="rc-form-input" style={{ flex: 1, minWidth: 260 }} value={issue.customerName || ""} readOnly />
-                            </div>
+                            {/* Define isAdjustment helper */}
+                            {(() => {
+                                const isAdjustment = issue && String(issue.docType || issue.doctype || "").toUpperCase() === "ADJUSTMENT";
+                                return (
+                                    <div className="rc-form-row">
+                                        <label className="rc-form-label">Người lập</label>
+                                        <input className="rc-form-input rc-input-auto" value={issue.createdByFullname || issue.createdByName || ""} readOnly />
+                                        {!isAdjustment && (
+                                            <>
+                                                <label className="rc-form-label" style={{ marginLeft: 16 }}>Đối tượng</label>
+                                                <input className="rc-form-input" style={{ flex: 1, minWidth: 260 }} value={issue.customerName || ""} readOnly />
+                                            </>
+                                        )}
+                                    </div>
+                                );
+                            })()}
 
                             {/* ── Diễn giải ── */}
                             <div className="rc-form-row">

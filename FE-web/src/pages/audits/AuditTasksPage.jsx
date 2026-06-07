@@ -19,7 +19,24 @@ import {
     toNumber,
 } from "./auditRowUtils";
 
-const STATUS_FILTERS = ["ALL", "REQUESTED", "IN_PROGRESS", "SUBMITTED", "PENDING_PROCESS", "CONFIRMED", "PROCESSED", "OVERDUE", "REJECTED"];
+const STATUS_FILTERS = ["ALL", "WAITING_AUDIT", "SUBMITTED", "APPROVED", "OVERDUE", "REJECTED"];
+
+const TASK_STATUS_LABELS = {
+    ALL: "Tất cả",
+    WAITING_AUDIT: "Chờ kiểm kê",
+    SUBMITTED: "Chờ duyệt",
+    APPROVED: "Đã duyệt",
+    OVERDUE: "Quá hạn",
+    REJECTED: "Bị từ chối",
+};
+
+const TASK_STATUS_MAPPING = {
+    WAITING_AUDIT: ["REQUESTED", "IN_PROGRESS"],
+    SUBMITTED: ["SUBMITTED"],
+    APPROVED: ["PENDING_PROCESS", "PROCESSED", "CONFIRMED", "APPROVED"],
+    OVERDUE: ["OVERDUE"],
+    REJECTED: ["REJECTED"],
+};
 
 function DiffCell({ diff }) {
     if (diff === null || diff === undefined) return <td className="rc-td-num">—</td>;
@@ -87,7 +104,11 @@ export default function AuditTasksPage() {
         STATUS_FILTERS.forEach((s) => { if (s !== "ALL") counts[s] = 0; });
         audits.forEach((a) => {
             const st = getAuditWorkflowStatus(a);
-            if (st) counts[st] = (counts[st] || 0) + 1;
+            Object.entries(TASK_STATUS_MAPPING).forEach(([k, list]) => {
+                if (list.includes(st)) {
+                    counts[k] = (counts[k] || 0) + 1;
+                }
+            });
         });
         return counts;
     }, [audits]);
@@ -102,7 +123,8 @@ export default function AuditTasksPage() {
 
     const filteredAudits = useMemo(() => {
         if (statusFilter === "ALL") return audits;
-        return audits.filter((a) => getAuditWorkflowStatus(a) === statusFilter);
+        const allowed = TASK_STATUS_MAPPING[statusFilter] || [];
+        return audits.filter((a) => allowed.includes(getAuditWorkflowStatus(a)));
     }, [audits, statusFilter]);
 
     const totals = useMemo(() => {
@@ -218,7 +240,7 @@ export default function AuditTasksPage() {
                                     onClick={() => setStatusFilter(status)}
                                     type="button"
                                 >
-                                    {status === "ALL" ? "Tất cả" : AUDIT_STATUS_LABELS[status] || status}
+                                    TASK_STATUS_LABELS[status] || status
                                     <span className="au-status-count">{statusCounts[status] || 0}</span>
                                 </button>
                             ))}

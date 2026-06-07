@@ -515,12 +515,22 @@ export default function ReceiptDetailPage() {
                                 </div>
                             ) : null}
 
-                            <div className="rc-form-row">
-                                <label className="rc-form-label">Người lập</label>
-                                <input className="rc-form-input rc-input-auto" value={receipt.createdByFullname || receipt.createdByName || ""} readOnly />
-                                <label className="rc-form-label" style={{ marginLeft: 16 }}>Đối tượng</label>
-                                <input className="rc-form-input" style={{ flex: 1, minWidth: 260 }} value={receipt.customerName || ""} readOnly />
-                            </div>
+                            {/* Define isAdjustment helper */}
+                            {(() => {
+                                const isAdjustment = receipt && String(receipt.docType || receipt.doctype || "").toUpperCase() === "ADJUSTMENT";
+                                return (
+                                    <div className="rc-form-row">
+                                        <label className="rc-form-label">Người lập</label>
+                                        <input className="rc-form-input rc-input-auto" value={receipt.createdByFullname || receipt.createdByName || ""} readOnly />
+                                        {!isAdjustment && (
+                                            <>
+                                                <label className="rc-form-label" style={{ marginLeft: 16 }}>Đối tượng</label>
+                                                <input className="rc-form-input" style={{ flex: 1, minWidth: 260 }} value={receipt.customerName || ""} readOnly />
+                                            </>
+                                        )}
+                                    </div>
+                                );
+                            })()}
 
                             {/* ── Diễn giải ── */}
                             <div className="rc-form-row">
@@ -619,28 +629,36 @@ export default function ReceiptDetailPage() {
                                 </table>
                             </div>
                             {/* ── Invoice section (display only) ── */}
-                            <div className="rc-section-hd">Chi tiết</div>
-                            <div className="rc-section-sub">Thông tin hóa đơn</div>
-                            <div className="rc-form-2col">
-                                <div className="rc-form-field">
-                                    <label className="rc-form-label">MST</label>
-                                    <input className="rc-form-input" value={receipt.customerTaxcode || receipt.taxcode || ""} readOnly />
-                                </div>
-                                <div className="rc-form-field">
-                                    <label className="rc-form-label">Ngày HD</label>
-                                    <input className="rc-form-input" value={formatDate(receipt.invoiceDate || receipt.docDate || "")} readOnly />
-                                </div>
-                            </div>
-                            <div className="rc-form-2col">
-                                <div className="rc-form-field">
-                                    <label className="rc-form-label">Số hóa đơn</label>
-                                    <input className="rc-form-input" value={receipt.invoiceNo || receipt.invoiceNumber || receipt.invoiceNum || ""} readOnly />
-                                </div>
-                                <div className="rc-form-field">
-                                    <label className="rc-form-label">Tên NCC/Khách hàng</label>
-                                    <input className="rc-form-input" value={receipt.supplierName || receipt.customerName || ""} readOnly />
-                                </div>
-                            </div>
+                            {(() => {
+                                const isAdjustment = receipt && String(receipt.docType || receipt.doctype || "").toUpperCase() === "ADJUSTMENT";
+                                if (isAdjustment) return null;
+                                return (
+                                    <>
+                                        <div className="rc-section-hd">Chi tiết</div>
+                                        <div className="rc-section-sub">Thông tin hóa đơn</div>
+                                        <div className="rc-form-2col">
+                                            <div className="rc-form-field">
+                                                <label className="rc-form-label">MST</label>
+                                                <input className="rc-form-input" value={receipt.customerTaxcode || receipt.taxcode || ""} readOnly />
+                                            </div>
+                                            <div className="rc-form-field">
+                                                <label className="rc-form-label">Ngày HD</label>
+                                                <input className="rc-form-input" value={formatDate(receipt.invoiceDate || receipt.docDate || "")} readOnly />
+                                            </div>
+                                        </div>
+                                        <div className="rc-form-2col">
+                                            <div className="rc-form-field">
+                                                <label className="rc-form-label">Số hóa đơn</label>
+                                                <input className="rc-form-input" value={receipt.invoiceNo || receipt.invoiceNumber || receipt.invoiceNum || ""} readOnly />
+                                            </div>
+                                            <div className="rc-form-field">
+                                                <label className="rc-form-label">Tên NCC/Khách hàng</label>
+                                                <input className="rc-form-input" value={receipt.supplierName || receipt.customerName || ""} readOnly />
+                                            </div>
+                                        </div>
+                                    </>
+                                );
+                            })()}
 
                             {/* ── Actions ── */}
                             <div className="rc-form-actions">

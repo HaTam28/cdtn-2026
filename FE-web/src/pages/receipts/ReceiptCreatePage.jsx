@@ -1046,9 +1046,11 @@ export default function ReceiptCreatePage() {
                         {/* ── Actions ── */}
                         <div className="rc-form-actions">
                             <button className="sp-btn-outline" onClick={() => navigate("/receipts")} disabled={saving}>Hủy bỏ</button>
-                            <button className="sp-btn-outline" onClick={handleSaveDraft} disabled={saving}>
-                                {saving ? "Đang lưu..." : "Lưu nháp"}
-                            </button>
+                            {!isAdjustment && (
+                                <button className="sp-btn-outline" onClick={handleSaveDraft} disabled={saving}>
+                                    {saving ? "Đang lưu..." : "Lưu nháp"}
+                                </button>
+                            )}
                             <button className="sp-btn-primary" onClick={handleSave} disabled={saving}>
                                 {saving ? "Đang lưu..." : isManager ? "Lưu và xác nhận" : "Lưu phiếu"}
                             </button>

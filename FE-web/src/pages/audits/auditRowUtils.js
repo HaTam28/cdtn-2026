@@ -1,12 +1,12 @@
 export const AUDIT_STATUS_LABELS = {
     DRAFT: "Nháp",
-    REQUESTED: "Đã giao",
-    IN_PROGRESS: "Đang kiểm kê",
+    REQUESTED: "Chờ kiểm kê",
+    IN_PROGRESS: "Chờ kiểm kê",
     SUBMITTED: "Chờ duyệt",
-    PENDING_PROCESS: "Có chênh lệch",
-    PROCESSED: "Đã xử lý chênh lệch",
-    CONFIRMED: "Đã xác nhận",
-    APPROVED: "Đã xác nhận",
+    PENDING_PROCESS: "Đã duyệt",
+    PROCESSED: "Đã duyệt",
+    CONFIRMED: "Đã duyệt",
+    APPROVED: "Đã duyệt",
     CANCELLED: "Đã hủy",
     REJECTED: "Bị từ chối",
     OVERDUE: "Quá hạn",
@@ -80,13 +80,7 @@ export function getAuditEndDate(audit) {
 }
 
 export function getDisplayStatus(audit) {
-    const status = audit?.docstatus || audit?.status || "";
-    const end = toInputDate(getAuditEndDate(audit));
-    if (end && OVERDUE_ELIGIBLE_STATUSES.has(status)) {
-        const today = toInputDate(new Date());
-        if (end < today) return "OVERDUE";
-    }
-    return status;
+    return audit?.docstatus || audit?.status || "";
 }
 
 export function getAuditWorkflowStatus(audit, details = audit?.details || []) {
