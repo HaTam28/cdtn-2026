@@ -153,9 +153,30 @@ public class GoodsIssueService {
             // Kiểm tra & trừ ItemLocation
             ItemLocation il = itemLocationRepository
                     .findByItemIdAndLocationId(item.getId(), location.getId())
-                    .orElseThrow(() -> new RuntimeException(
-                            "Không tìm thấy tồn kho của '" + item.getItemcode()
-                                    + "' tại vị trí '" + location.getLocationcode() + "'"));
+                    .orElseGet(() -> {
+                        BigDecimal batchSum = batchRepository.findAllByReceiptDetailLocationIdAndItemId(
+                                location.getId(), item.getId())
+                                .stream()
+                                .map(b -> b.getQuantityRemaining() != null ? b.getQuantityRemaining() : BigDecimal.ZERO)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                        ItemLocation newIl = new ItemLocation();
+                        newIl.setItem(item);
+                        newIl.setLocation(location);
+                        newIl.setQuantity(batchSum);
+                        newIl.setIsActive(batchSum.compareTo(BigDecimal.ZERO) > 0);
+                        return itemLocationRepository.save(newIl);
+                    });
+
+            if (il.getQuantity() == null || il.getQuantity().compareTo(qty) < 0) {
+                BigDecimal batchSum = batchRepository.findAllByReceiptDetailLocationIdAndItemId(
+                        location.getId(), item.getId())
+                        .stream()
+                        .map(b -> b.getQuantityRemaining() != null ? b.getQuantityRemaining() : BigDecimal.ZERO)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                il.setQuantity(batchSum);
+                il.setIsActive(batchSum.compareTo(BigDecimal.ZERO) > 0);
+                itemLocationRepository.save(il);
+            }
 
             if (il.getQuantity().compareTo(qty) < 0) {
                 throw new RuntimeException(
@@ -613,7 +634,31 @@ public class GoodsIssueService {
 
             ItemLocation il = itemLocationRepository
                     .findByItemIdAndLocationId(detail.getItem().getId(), detail.getLocation().getId())
-                    .orElseThrow(() -> new RuntimeException("Không có tồn kho tại vị trí này cho mã hàng: " + detail.getItemcode()));
+                    .orElseGet(() -> {
+                        BigDecimal batchSum = batchRepository.findAllByReceiptDetailLocationIdAndItemId(
+                                detail.getLocation().getId(), detail.getItem().getId())
+                                .stream()
+                                .map(b -> b.getQuantityRemaining() != null ? b.getQuantityRemaining() : BigDecimal.ZERO)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                        ItemLocation newIl = new ItemLocation();
+                        newIl.setItem(detail.getItem());
+                        newIl.setLocation(detail.getLocation());
+                        newIl.setQuantity(batchSum);
+                        newIl.setIsActive(batchSum.compareTo(BigDecimal.ZERO) > 0);
+                        return itemLocationRepository.save(newIl);
+                    });
+
+            if (il.getQuantity() == null || il.getQuantity().compareTo(detail.getQuantity()) < 0) {
+                BigDecimal batchSum = batchRepository.findAllByReceiptDetailLocationIdAndItemId(
+                        detail.getLocation().getId(), detail.getItem().getId())
+                        .stream()
+                        .map(b -> b.getQuantityRemaining() != null ? b.getQuantityRemaining() : BigDecimal.ZERO)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                il.setQuantity(batchSum);
+                il.setIsActive(batchSum.compareTo(BigDecimal.ZERO) > 0);
+                itemLocationRepository.save(il);
+            }
+
             if (il.getQuantity() == null || il.getQuantity().compareTo(detail.getQuantity()) < 0) {
                 throw new RuntimeException(
                         "Số lượng tại vị trí không đủ để xuất cho mã hàng '" + detail.getItemcode() + "'");
