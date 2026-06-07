@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import "../../styles/shared.css";
 import "../receipts/receipts.css";
 import "./issues.css";
-import { confirmIssue, createIssue, getAvailableLocations, getAllIssues } from "../../api/issueApi";
+import { confirmIssue, createIssue, getAvailableLocations, getAllIssues, getIssueById, updateIssue } from "../../api/issueApi";
 import { getAuditById } from "../../api/auditApi";
 import { getAllCustomers } from "../../api/customerApi";
 import { getAllItems } from "../../api/itemApi";
@@ -274,6 +274,7 @@ export default function IssueCreatePage() {
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams] = useSearchParams();
+    const editId = searchParams.get("id");
     const user = JSON.parse(localStorage.getItem("user") || "{}");
     const isManager = user?.role && !["STAFF", "NV"].includes(user.role);
 
@@ -305,13 +306,82 @@ export default function IssueCreatePage() {
             setCustomers(cList);
             setItems(iList);
             setBatches(bList);
-            setForm((prev) => ({
-                ...prev,
-                docno: prev.docno || buildNextDocno("PX", iDocList),
-            }));
+            if (!editId) {
+                setForm((prev) => ({
+                    ...prev,
+                    docno: prev.docno || buildNextDocno("PX", iDocList),
+                }));
+            }
         } catch { /* non-blocking */ } finally { setLoadingData(false); }
-    }, []);
+    }, [editId]);
     useEffect(() => { loadData(); }, [loadData]);
+
+    useEffect(() => {
+        if (!editId) return;
+        const loadDraft = async () => {
+            setLoadingData(true);
+            try {
+                const draft = await getIssueById(editId);
+                if (draft) {
+                    const toDateOnly = (val) => (val ? String(val).slice(0, 10) : "");
+                    setForm({
+                        date: toDateOnly(draft.docDate),
+                        docno: draft.docno || "",
+                        customerId: String(draft.customerId || ""),
+                        address: draft.address || "",
+                        description: draft.description || "",
+                        docType: draft.docType || "NORMAL"
+                    });
+                    setDateDisplay({
+                        docDate: formatDateForDisplay(toDateOnly(draft.docDate))
+                    });
+
+                    // Group details by itemId
+                    const grouped = {};
+                    (draft.details || []).forEach((d) => {
+                        const key = String(d.itemId);
+                        if (!grouped[key]) {
+                            grouped[key] = {
+                                _id: ++_rowKey,
+                                itemId: String(d.itemId),
+                                itemcode: d.itemcode || "",
+                                itemname: d.itemname || "",
+                                unitof: d.unitof || "",
+                                quantity: 0,
+                                price: d.unitprice != null ? String(d.unitprice) : "",
+                                inventoryAuditDetailId: d.inventoryAuditDetailId || "",
+                                batchEntries: []
+                            };
+                        }
+                        grouped[key].quantity += Number(d.quantity || 0);
+                        grouped[key].batchEntries.push({
+                            _id: ++_rowKey,
+                            _pickKey: `${d.batchId || ""}-${d.locationId || ""}`,
+                            batchId: d.batchId,
+                            batchCode: d.batchCode || "",
+                            locationId: d.locationId || "",
+                            locationcode: d.locationcode || "",
+                            remainingStock: Number(d.quantity) || 0,
+                            quantity: String(d.quantity || ""),
+                            unitCost: d.unitprice || 0
+                        });
+                    });
+
+                    const rowsFromIssue = Object.values(grouped).map(r => ({
+                        ...r,
+                        quantity: String(r.quantity)
+                    }));
+                    
+                    setRows(rowsFromIssue.length > 0 ? rowsFromIssue : [newRow()]);
+                }
+            } catch (err) {
+                showToast("error", "Không thể tải chi tiết phiếu xuất nháp.");
+            } finally {
+                setLoadingData(false);
+            }
+        };
+        loadDraft();
+    }, [editId]);
 
     useEffect(() => {
         const paramType = searchParams.get("docType");
@@ -697,9 +767,9 @@ export default function IssueCreatePage() {
         const adjAuditDetailId = searchParams.get("auditDetailId");
         try {
             const payload = buildIssuePayload(details);
-            const result = await createIssue(payload);
+            const result = editId ? await updateIssue(editId, payload) : await createIssue(payload);
             if (result?.success) {
-                const newId = result?.data?.id;
+                const newId = editId || result?.data?.id;
                 if (isManager && newId) {
                     const confirmed = await confirmIssue(newId);
                     if (!confirmed?.success) {
@@ -707,7 +777,10 @@ export default function IssueCreatePage() {
                         return;
                     }
                 }
-                showToast("success", isManager ? "Tạo và xác nhận phiếu xuất kho thành công!" : "Đã lưu nháp phiếu xuất kho.");
+                showToast("success", editId 
+                    ? (isManager ? "Cập nhật và xác nhận phiếu xuất kho thành công!" : "Đã cập nhật phiếu xuất kho.")
+                    : (isManager ? "Tạo và xác nhận phiếu xuất kho thành công!" : "Đã lưu nháp phiếu xuất kho.")
+                );
                 if (adjAuditId && form.docType === "ADJUSTMENT" && newId) {
                     localStorage.setItem(`audit_adj_issue_id_${adjAuditId}`, String(newId));
                     if (adjAuditDetailId) {
@@ -717,10 +790,10 @@ export default function IssueCreatePage() {
                 }
                 setTimeout(() => navigate(newId ? `/issues/${newId}` : "/issues"), 1200);
             } else {
-                showToast("error", result?.message || "Tạo phiếu thất bại.");
+                showToast("error", result?.message || (editId ? "Cập nhật phiếu thất bại." : "Tạo phiếu thất bại."));
             }
         } catch (err) {
-            showToast("error", err?.response?.data?.message || "Có lỗi xảy ra khi tạo phiếu xuất kho.");
+            showToast("error", err?.response?.data?.message || (editId ? "Có lỗi xảy ra khi cập nhật phiếu xuất kho." : "Có lỗi xảy ra khi tạo phiếu xuất kho."));
         } finally { setSaving(false); }
     };
 
@@ -729,16 +802,17 @@ export default function IssueCreatePage() {
         if (!form.docno.trim()) { showToast("error", "Vui lòng nhập số chứng từ."); return; }
         setSaving(true);
         try {
-            const result = await createIssue(buildIssuePayload());
+            const payload = buildIssuePayload();
+            const result = editId ? await updateIssue(editId, payload) : await createIssue(payload);
             if (result?.success) {
-                showToast("success", "Đã lưu nháp phiếu xuất kho.");
-                const newId = result?.data?.id;
+                showToast("success", editId ? "Đã cập nhật phiếu xuất kho." : "Đã lưu nháp phiếu xuất kho.");
+                const newId = editId || result?.data?.id;
                 setTimeout(() => navigate(newId ? `/issues/${newId}` : "/issues"), 900);
             } else {
-                showToast("error", result?.message || "Lưu nháp thất bại.");
+                showToast("error", result?.message || (editId ? "Cập nhật nháp thất bại." : "Lưu nháp thất bại."));
             }
         } catch (err) {
-            showToast("error", err?.response?.data?.message || "Có lỗi xảy ra khi lưu nháp phiếu xuất kho.");
+            showToast("error", err?.response?.data?.message || (editId ? "Có lỗi xảy ra khi cập nhật nháp phiếu xuất kho." : "Có lỗi xảy ra khi lưu nháp phiếu xuất kho."));
         } finally { setSaving(false); }
     };
 

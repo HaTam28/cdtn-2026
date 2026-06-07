@@ -480,15 +480,10 @@ export default function IssueDetailPage() {
                             <div className="rc-form-actions">
                                 <button className="rc-btn-template" onClick={handleExportPdf}>Xuất PDF</button>
                                 <button className="sp-btn-outline" onClick={() => navigate("/issues")}>Quay lại</button>
-                                {issue.docstatus === "DRAFT" && canConfirmCancel && (
-                                    <>
-                                        <button className="sp-btn-danger-outline" onClick={() => setRejectModal(true)} disabled={actionLoading}>
-                                            Từ chối
-                                        </button>
-                                        <button className="sp-btn-primary" onClick={() => setConfirmModal(true)} disabled={actionLoading}>
-                                            Xác nhận
-                                        </button>
-                                    </>
+                                {issue.docstatus === "DRAFT" && (
+                                    <button className="sp-btn-primary" onClick={() => navigate(`/issues/create?id=${issue.id}`)}>
+                                        Cập nhật
+                                    </button>
                                 )}
                             </div>
                         </div>

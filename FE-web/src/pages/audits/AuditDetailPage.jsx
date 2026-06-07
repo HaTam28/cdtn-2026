@@ -518,6 +518,11 @@ export default function AuditDetailPage() {
 
                             <div className="rc-form-actions">
                                 <button className="sp-btn-outline" onClick={() => navigate("/audits")}>Quay lại</button>
+                                {audit.docstatus === "DRAFT" && !isStaff && (
+                                    <button className="sp-btn-primary" onClick={() => navigate(`/audits/create?id=${audit.id}`)}>
+                                        Cập nhật
+                                    </button>
+                                )}
                                 {canReject && (
                                     <button className="sp-btn-danger-outline" onClick={() => setRejectModal(true)} disabled={actionLoading}>Từ chối</button>
                                 )}

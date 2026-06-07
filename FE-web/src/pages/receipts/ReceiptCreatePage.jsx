@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import "../../styles/shared.css";
 import "./receipts.css";
-import { confirmReceipt, createReceipt, getAvailableLocations, getAllReceipts } from "../../api/receiptApi";
+import { confirmReceipt, createReceipt, getAvailableLocations, getAllReceipts, getReceiptById, updateReceipt } from "../../api/receiptApi";
 import { getAuditById } from "../../api/auditApi";
 import { getAllCustomers } from "../../api/customerApi";
 import { getAllItems } from "../../api/itemApi";
@@ -375,6 +375,7 @@ export default function ReceiptCreatePage() {
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams] = useSearchParams();
+    const editId = searchParams.get("id");
 
     const [form, setForm] = useState({ date: todayStr(), docno: "", customerId: "", address: "", description: "", docType: "NORMAL" });
     const [rows, setRows] = useState([newRow()]);
@@ -400,13 +401,88 @@ export default function ReceiptCreatePage() {
             const [cList, iList, rList] = await Promise.all([getAllCustomers(), getAllItems(), getAllReceipts()]);
             setCustomers(cList);
             setItems(iList);
-            setForm((prev) => ({
-                ...prev,
-                docno: prev.docno || buildNextDocno("PN", rList),
-            }));
+            if (!editId) {
+                setForm((prev) => ({
+                    ...prev,
+                    docno: prev.docno || buildNextDocno("PN", rList),
+                }));
+            }
         } catch { /* non-blocking */ } finally { setLoadingData(false); }
-    }, []);
+    }, [editId]);
     useEffect(() => { loadData(); }, [loadData]);
+
+    useEffect(() => {
+        if (!editId) return;
+        const loadDraft = async () => {
+            setLoadingData(true);
+            try {
+                const draft = await getReceiptById(editId);
+                if (draft) {
+                    const toDateOnly = (val) => (val ? String(val).slice(0, 10) : "");
+                    setForm({
+                        date: toDateOnly(draft.docDate),
+                        docno: draft.docno || "",
+                        customerId: String(draft.customerId || draft.supplierId || ""),
+                        address: draft.address || "",
+                        description: draft.description || "",
+                        docType: draft.docType || "NORMAL"
+                    });
+                    
+                    setInvoice({
+                        date: toDateOnly(draft.invoiceDate),
+                        taxcode: draft.taxcode || draft.customerTaxcode || "",
+                        number: draft.invoiceNo || draft.invoiceNumber || "",
+                        supplierId: String(draft.supplierId || draft.customerId || "")
+                    });
+                    
+                    setDateDisplay({
+                        docDate: formatDateForDisplay(toDateOnly(draft.docDate)),
+                        invoiceDate: formatDateForDisplay(toDateOnly(draft.invoiceDate))
+                    });
+
+                    // Group details by itemId
+                    const grouped = {};
+                    (draft.details || []).forEach((d) => {
+                        const key = String(d.itemId);
+                        if (!grouped[key]) {
+                            grouped[key] = {
+                                _id: ++_rowKey,
+                                itemId: String(d.itemId),
+                                itemcode: d.itemcode || "",
+                                itemname: d.itemname || "",
+                                unitof: d.unitof || "",
+                                quantity: 0,
+                                price: d.unitprice != null ? String(d.unitprice) : "",
+                                nameBatch: d.batchCode || d.nameBatch || "L",
+                                batchId: d.batchId || "",
+                                sourceBatchCode: d.batchCode || "",
+                                inventoryAuditDetailId: d.inventoryAuditDetailId || "",
+                                selectedLocations: []
+                            };
+                        }
+                        grouped[key].quantity += Number(d.quantity || 0);
+                        grouped[key].selectedLocations.push({
+                            locationId: d.locationId,
+                            locationcode: d.locationcode || String(d.locationId),
+                            allocQty: Number(d.quantity || 0)
+                        });
+                    });
+
+                    const rowsFromReceipt = Object.values(grouped).map(r => ({
+                        ...r,
+                        quantity: String(r.quantity)
+                    }));
+                    
+                    setRows(rowsFromReceipt.length > 0 ? rowsFromReceipt : [newRow()]);
+                }
+            } catch (err) {
+                showToast("error", "Không thể tải chi tiết phiếu nhập nháp.");
+            } finally {
+                setLoadingData(false);
+            }
+        };
+        loadDraft();
+    }, [editId]);
 
     useEffect(() => {
         const paramType = searchParams.get("docType");
@@ -714,9 +790,9 @@ export default function ReceiptCreatePage() {
         const adjAuditDetailId = searchParams.get("auditDetailId");
         try {
             const payload = buildReceiptPayload(details);
-            const result = await createReceipt(payload);
+            const result = editId ? await updateReceipt(editId, payload) : await createReceipt(payload);
             if (result?.success) {
-                const newId = result?.data?.id;
+                const newId = editId || result?.data?.id;
                 if (isManager && newId) {
                     const confirmed = await confirmReceipt(newId);
                     if (!confirmed?.success) {
@@ -724,7 +800,10 @@ export default function ReceiptCreatePage() {
                         return;
                     }
                 }
-                showToast("success", isManager ? "Tạo và xác nhận phiếu nhập kho thành công!" : "Đã lưu nháp phiếu nhập kho.");
+                showToast("success", editId 
+                    ? (isManager ? "Cập nhật và xác nhận phiếu nhập kho thành công!" : "Đã cập nhật phiếu nhập kho.")
+                    : (isManager ? "Tạo và xác nhận phiếu nhập kho thành công!" : "Đã lưu nháp phiếu nhập kho.")
+                );
                 // Lưu ID phiếu để AuditDetailPage kiểm tra status sau này
                 if (adjAuditId && form.docType === "ADJUSTMENT" && newId) {
                     localStorage.setItem(`audit_adj_receipt_id_${adjAuditId}`, String(newId));
@@ -735,10 +814,10 @@ export default function ReceiptCreatePage() {
                 }
                 setTimeout(() => navigate(newId ? `/receipts/${newId}` : "/receipts"), 1200);
             } else {
-                showToast("error", result?.message || "Tạo phiếu thất bại.");
+                showToast("error", result?.message || (editId ? "Cập nhật phiếu thất bại." : "Tạo phiếu thất bại."));
             }
         } catch (err) {
-            showToast("error", err?.response?.data?.message || "Có lỗi xảy ra khi tạo phiếu nhập kho.");
+            showToast("error", err?.response?.data?.message || (editId ? "Có lỗi xảy ra khi cập nhật phiếu nhập kho." : "Có lỗi xảy ra khi tạo phiếu nhập kho."));
         } finally { setSaving(false); }
     };
 
@@ -747,16 +826,17 @@ export default function ReceiptCreatePage() {
         if (!form.docno.trim()) { showToast("error", "Vui lòng nhập số chứng từ."); return; }
         setSaving(true);
         try {
-            const result = await createReceipt(buildReceiptPayload());
+            const payload = buildReceiptPayload();
+            const result = editId ? await updateReceipt(editId, payload) : await createReceipt(payload);
             if (result?.success) {
-                showToast("success", "Đã lưu nháp phiếu nhập kho.");
-                const newId = result?.data?.id;
+                showToast("success", editId ? "Đã cập nhật phiếu nhập kho." : "Đã lưu nháp phiếu nhập kho.");
+                const newId = editId || result?.data?.id;
                 setTimeout(() => navigate(newId ? `/receipts/${newId}` : "/receipts"), 900);
             } else {
-                showToast("error", result?.message || "Lưu nháp thất bại.");
+                showToast("error", result?.message || (editId ? "Cập nhật nháp thất bại." : "Lưu nháp thất bại."));
             }
         } catch (err) {
-            showToast("error", err?.response?.data?.message || "Có lỗi xảy ra khi lưu nháp phiếu nhập kho.");
+            showToast("error", err?.response?.data?.message || (editId ? "Có lỗi xảy ra khi cập nhật nháp phiếu nhập kho." : "Có lỗi xảy ra khi lưu nháp phiếu nhập kho."));
         } finally { setSaving(false); }
     };
 
@@ -772,14 +852,14 @@ export default function ReceiptCreatePage() {
                             Chứng từ &rsaquo;{" "}
                             <span className="sp-breadcrumb-link" onClick={() => navigate("/receipts")}>Phiếu nhập kho</span>
                             {" "}&rsaquo;{" "}
-                            <span className="sp-breadcrumb-active">Thêm mới phiếu nhập kho</span>
+                            <span className="sp-breadcrumb-active">{editId ? "Cập nhật phiếu nhập kho" : "Thêm mới phiếu nhập kho"}</span>
                         </div>
                     </div>
                     <TopbarRight />
                 </div>
 
                 <div className="sp-content">
-                    <h1 className="sp-title">Phiếu nhập kho</h1>
+                    <h1 className="sp-title">{editId ? "Cập nhật phiếu nhập kho" : "Phiếu nhập kho"}</h1>
                     <div className="rc-form-card">
 
                         {/* ── Header row ── */}

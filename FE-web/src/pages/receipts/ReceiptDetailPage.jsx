@@ -646,15 +646,10 @@ export default function ReceiptDetailPage() {
                             <div className="rc-form-actions">
                                 <button className="rc-btn-template" onClick={handleExportPdf}>Xuất PDF</button>
                                 <button className="sp-btn-outline" onClick={() => navigate("/receipts")}>Quay lại</button>
-                                {receipt.docstatus === "DRAFT" && canConfirmCancel && (
-                                    <>
-                                        <button className="sp-btn-danger-outline" onClick={() => setRejectModal(true)} disabled={actionLoading}>
-                                            {actionLoading ? "Đang xử lý..." : "Từ chối"}
-                                        </button>
-                                        <button className="sp-btn-primary" onClick={() => setConfirmModal(true)} disabled={actionLoading}>
-                                            Xác nhận
-                                        </button>
-                                    </>
+                                {receipt.docstatus === "DRAFT" && (
+                                    <button className="sp-btn-primary" onClick={() => navigate(`/receipts/create?id=${receipt.id}`)}>
+                                        Cập nhật
+                                    </button>
                                 )}
                             </div>
                         </div>
