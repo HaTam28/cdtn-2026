@@ -19,7 +19,7 @@ import {
     toNumber,
 } from "./auditRowUtils";
 
-const STATUS_FILTERS = ["ALL", "REQUESTED", "IN_PROGRESS", "SUBMITTED", "APPROVED", "PROCESSED", "OVERDUE", "REJECTED"];
+const STATUS_FILTERS = ["ALL", "REQUESTED", "IN_PROGRESS", "SUBMITTED", "PENDING_PROCESS", "CONFIRMED", "PROCESSED", "OVERDUE", "REJECTED"];
 
 function DiffCell({ diff }) {
     if (diff === null || diff === undefined) return <td className="rc-td-num">—</td>;

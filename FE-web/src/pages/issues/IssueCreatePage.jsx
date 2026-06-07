@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import "../../styles/shared.css";
 import "../receipts/receipts.css";
 import "./issues.css";
-import { createIssue, getAvailableLocations, getAllIssues } from "../../api/issueApi";
+import { confirmIssue, createIssue, getAvailableLocations, getAllIssues } from "../../api/issueApi";
 import { getAuditById } from "../../api/auditApi";
 import { getAllCustomers } from "../../api/customerApi";
 import { getAllItems } from "../../api/itemApi";
@@ -274,6 +274,8 @@ export default function IssueCreatePage() {
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams] = useSearchParams();
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    const isManager = user?.role && !["STAFF", "NV"].includes(user.role);
 
     const [form, setForm] = useState({ date: todayStr(), docno: "", customerId: "", address: "", description: "", docType: "NORMAL" });
     const [dateDisplay, setDateDisplay] = useState({ docDate: formatDateForDisplay(todayStr()) });
@@ -627,7 +629,6 @@ export default function IssueCreatePage() {
             docDate: form.date,
             description: form.description.trim(),
             doctype: form.docType,
-            docstatus: "DRAFT",
             ...(adjAuditId ? { inventoryAuditId: Number(adjAuditId) } : {}),
             details,
         };
@@ -698,8 +699,15 @@ export default function IssueCreatePage() {
             const payload = buildIssuePayload(details);
             const result = await createIssue(payload);
             if (result?.success) {
-                showToast("success", "Tạo phiếu xuất kho thành công!");
                 const newId = result?.data?.id;
+                if (isManager && newId) {
+                    const confirmed = await confirmIssue(newId);
+                    if (!confirmed?.success) {
+                        showToast("error", confirmed?.message || "Đã lưu nháp nhưng xác nhận thất bại.");
+                        return;
+                    }
+                }
+                showToast("success", isManager ? "Tạo và xác nhận phiếu xuất kho thành công!" : "Đã lưu nháp phiếu xuất kho.");
                 if (adjAuditId && form.docType === "ADJUSTMENT" && newId) {
                     localStorage.setItem(`audit_adj_issue_id_${adjAuditId}`, String(newId));
                     if (adjAuditDetailId) {
@@ -1047,7 +1055,7 @@ export default function IssueCreatePage() {
                                 {saving ? "Đang lưu..." : "Lưu nháp"}
                             </button>
                             <button className="sp-btn-primary" onClick={handleSave} disabled={saving}>
-                                {saving ? "Đang lưu..." : "Lưu phiếu"}
+                                {saving ? "Đang lưu..." : isManager ? "Lưu và xác nhận" : "Lưu phiếu"}
                             </button>
                         </div>
                     </div>

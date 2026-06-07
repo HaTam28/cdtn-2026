@@ -11,14 +11,17 @@ import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
 import { AUDIT_STATUS_BADGE, AUDIT_STATUS_LABELS, formatDisplayDate, getAuditEndDate, getAuditRowTone, getAuditStartDate, getAuditWorkflowStatus, normalizeAuditDetails, toNumber } from "./auditRowUtils";
 
-const TABS = ["Tất cả", "Nháp", "Chờ kiểm kê", "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Quá hạn"];
-const STAFF_TABS = ["Tất cả", "Chờ kiểm kê", "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Quá hạn"];
+const TABS = ["Tất cả", "Nháp", "Đã giao", "Đang kiểm kê", "Chờ duyệt", "Có chênh lệch", "Đã xác nhận", "Đã xử lý chênh lệch", "Bị từ chối", "Quá hạn"];
+const STAFF_TABS = ["Tất cả", "Đã giao", "Đang kiểm kê", "Chờ duyệt", "Có chênh lệch", "Đã xác nhận", "Đã xử lý chênh lệch", "Bị từ chối", "Quá hạn"];
 const TAB_STATUS = {
     "Nháp": "DRAFT",
-    "Chờ kiểm kê": "REQUESTED",
+    "Đã giao": "REQUESTED",
+    "Đang kiểm kê": "IN_PROGRESS",
     "Chờ duyệt": "SUBMITTED",
-    "Đã duyệt": "APPROVED",
-    "Đã từ chối": "REJECTED",
+    "Có chênh lệch": "PENDING_PROCESS",
+    "Đã xác nhận": "CONFIRMED",
+    "Đã xử lý chênh lệch": "PROCESSED",
+    "Bị từ chối": "REJECTED",
     "Quá hạn": "OVERDUE",
 };
 const ROWS_OPTIONS = [10, 15, 20, 50];

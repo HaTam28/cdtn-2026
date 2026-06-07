@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import "../../styles/shared.css";
 import "./receipts.css";
-import { createReceipt, getAvailableLocations, getAllReceipts } from "../../api/receiptApi";
+import { confirmReceipt, createReceipt, getAvailableLocations, getAllReceipts } from "../../api/receiptApi";
 import { getAuditById } from "../../api/auditApi";
 import { getAllCustomers } from "../../api/customerApi";
 import { getAllItems } from "../../api/itemApi";
@@ -536,7 +536,7 @@ export default function ReceiptCreatePage() {
     }, [searchParams, prefilledFromAudit]);
 
     const user = JSON.parse(localStorage.getItem("user") || "{}");
-    const isManager = user?.role && user.role !== "STAFF";
+    const isManager = user?.role && !["STAFF", "NV"].includes(user.role);
     const isAdjustment = form.docType === "ADJUSTMENT";
 
     const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3500); };
@@ -631,14 +631,13 @@ export default function ReceiptCreatePage() {
             }));
     });
 
-    const buildReceiptPayload = (docstatus, details = buildDetailsPayload()) => {
+    const buildReceiptPayload = (details = buildDetailsPayload()) => {
         const adjAuditId = searchParams.get("auditId");
         const payload = {
             docno: form.docno.trim(),
             docDate: form.date,
             description: form.description.trim(),
             doctype: form.docType,
-            docstatus,
             ...(adjAuditId ? { inventoryAuditId: Number(adjAuditId) } : {}),
             details,
         };
@@ -714,19 +713,27 @@ export default function ReceiptCreatePage() {
         const adjAuditId = searchParams.get("auditId");
         const adjAuditDetailId = searchParams.get("auditDetailId");
         try {
-            const payload = buildReceiptPayload(isManager ? "CONFIRMED" : "DRAFT", details);
+            const payload = buildReceiptPayload(details);
             const result = await createReceipt(payload);
             if (result?.success) {
-                showToast("success", "Tạo phiếu nhập kho thành công!");
-                // Lưu ID phiếu để AuditDetailPage kiểm tra status sau này
-                if (adjAuditId && form.docType === "ADJUSTMENT" && result?.data?.id) {
-                    localStorage.setItem(`audit_adj_receipt_id_${adjAuditId}`, String(result.data.id));
-                    if (adjAuditDetailId) {
-                        localStorage.setItem(`audit_adj_receipt_detail_${adjAuditId}_${adjAuditDetailId}`, "1");
-                        localStorage.setItem(`audit_adj_receipt_detail_doc_${adjAuditId}_${adjAuditDetailId}`, String(result.data.id));
+                const newId = result?.data?.id;
+                if (isManager && newId) {
+                    const confirmed = await confirmReceipt(newId);
+                    if (!confirmed?.success) {
+                        showToast("error", confirmed?.message || "Đã lưu nháp nhưng xác nhận thất bại.");
+                        return;
                     }
                 }
-                setTimeout(() => navigate("/receipts"), 1200);
+                showToast("success", isManager ? "Tạo và xác nhận phiếu nhập kho thành công!" : "Đã lưu nháp phiếu nhập kho.");
+                // Lưu ID phiếu để AuditDetailPage kiểm tra status sau này
+                if (adjAuditId && form.docType === "ADJUSTMENT" && newId) {
+                    localStorage.setItem(`audit_adj_receipt_id_${adjAuditId}`, String(newId));
+                    if (adjAuditDetailId) {
+                        localStorage.setItem(`audit_adj_receipt_detail_${adjAuditId}_${adjAuditDetailId}`, "1");
+                        localStorage.setItem(`audit_adj_receipt_detail_doc_${adjAuditId}_${adjAuditDetailId}`, String(newId));
+                    }
+                }
+                setTimeout(() => navigate(newId ? `/receipts/${newId}` : "/receipts"), 1200);
             } else {
                 showToast("error", result?.message || "Tạo phiếu thất bại.");
             }
@@ -740,7 +747,7 @@ export default function ReceiptCreatePage() {
         if (!form.docno.trim()) { showToast("error", "Vui lòng nhập số chứng từ."); return; }
         setSaving(true);
         try {
-            const result = await createReceipt(buildReceiptPayload("DRAFT"));
+            const result = await createReceipt(buildReceiptPayload());
             if (result?.success) {
                 showToast("success", "Đã lưu nháp phiếu nhập kho.");
                 const newId = result?.data?.id;
@@ -963,7 +970,7 @@ export default function ReceiptCreatePage() {
                                 {saving ? "Đang lưu..." : "Lưu nháp"}
                             </button>
                             <button className="sp-btn-primary" onClick={handleSave} disabled={saving}>
-                                {saving ? "Đang lưu..." : "Lưu"}
+                                {saving ? "Đang lưu..." : isManager ? "Lưu và xác nhận" : "Lưu phiếu"}
                             </button>
                         </div>
                     </div>

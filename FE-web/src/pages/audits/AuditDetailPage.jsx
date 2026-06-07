@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import "../../styles/shared.css";
 import "../receipts/receipts.css";
 import "./audits.css";
-import { getAuditById, confirmAudit, cancelAudit, rejectAudit } from "../../api/auditApi";
+import { getAuditById, confirmAudit, cancelAudit, rejectAudit, requestAudit } from "../../api/auditApi";
 import { getAllReceipts } from "../../api/receiptApi";
 import { getAllIssues } from "../../api/issueApi";
 import TopbarRight from "../../components/TopbarRight";
@@ -219,6 +219,7 @@ export default function AuditDetailPage() {
     const adjustmentSummary = useMemo(() => getAdjustmentSummary(adjustmentStates), [adjustmentStates]);
     const showSuggestionColumn = adjustmentStates.some((item) => item.state !== "APPROVED");
 
+    const canRequest = !isStaff && audit?.docstatus === "DRAFT";
     const canConfirm = !isStaff && ["SUBMITTED", "PENDING_PROCESS"].includes(audit?.docstatus);
     const canReject = !isStaff && ["SUBMITTED", "PENDING_PROCESS"].includes(audit?.docstatus);
     const canCancel = !isStaff && audit?.docstatus === "DRAFT";
@@ -235,6 +236,23 @@ export default function AuditDetailPage() {
             }
         } catch (err) {
             notify(err?.response?.data?.message || "Có lỗi xảy ra.", { type: "error" });
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleSendRequest = async () => {
+        setActionLoading(true);
+        try {
+            const res = await requestAudit(id);
+            if (res?.success) {
+                notify("Đã gửi yêu cầu kiểm kê cho nhân viên.", { type: "success" });
+                await fetchAudit();
+            } else {
+                notify(res?.message || "Gửi yêu cầu thất bại.", { type: "error" });
+            }
+        } catch (err) {
+            notify(err?.response?.data?.message || "Có lỗi xảy ra khi gửi yêu cầu.", { type: "error" });
         } finally {
             setActionLoading(false);
         }
@@ -508,9 +526,14 @@ export default function AuditDetailPage() {
                                         {actionLoading ? "Đang xử lý..." : "Hủy phiếu"}
                                     </button>
                                 )}
+                                {canRequest && (
+                                    <button className="sp-btn-primary" onClick={handleSendRequest} disabled={actionLoading}>
+                                        {actionLoading ? "Đang xử lý..." : "Gửi yêu cầu"}
+                                    </button>
+                                )}
                                 {canConfirm && (
                                     <button className="sp-btn-primary" onClick={handleConfirm} disabled={actionLoading}>
-                                        {actionLoading ? "Đang xử lý..." : "Duyệt"}
+                                        {actionLoading ? "Đang xử lý..." : "Xác nhận"}
                                     </button>
                                 )}
                             </div>
