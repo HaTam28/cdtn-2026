@@ -401,9 +401,6 @@ export default function ReceiptCreatePage() {
     const [prefilledFromClone, setPrefilledFromClone] = useState(false);
     const [prefilledFromOverview, setPrefilledFromOverview] = useState(false);
     const [auditSource, setAuditSource] = useState(null);
-<<<<<<< HEAD
-    const supplierOptions = customers.filter((c) => c.issupplier);
-=======
 
     // Hiển thị banner nháp hoặc tự động khôi phục nháp nếu được yêu cầu từ trang danh sách
     useEffect(() => {
@@ -427,7 +424,6 @@ export default function ReceiptCreatePage() {
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
->>>>>>> fixbug
     const loadData = useCallback(async () => {
         setLoadingData(true);
         try {
@@ -872,29 +868,8 @@ export default function ReceiptCreatePage() {
             const payload = buildReceiptPayload(details);
             const result = editId ? await updateReceipt(editId, payload) : await createReceipt(payload);
             if (result?.success) {
-<<<<<<< HEAD
-                const newId = editId || result?.data?.id;
-                if (isManager && newId) {
-                    const confirmed = await confirmReceipt(newId);
-                    if (!confirmed?.success) {
-                        showToast("error", confirmed?.message || "Đã lưu nháp nhưng xác nhận thất bại.");
-                        return;
-=======
                 clearDraft(); // Xóa nháp local sau khi tạo phiếu thành công
                 showToast("success", "Tạo phiếu nhập kho thành công!");
-                // Lưu ID phiếu để AuditDetailPage kiểm tra status sau này
-                if (adjAuditId && form.docType === "ADJUSTMENT" && result?.data?.id) {
-                    localStorage.setItem(`audit_adj_receipt_id_${adjAuditId}`, String(result.data.id));
-                    if (adjAuditDetailId) {
-                        localStorage.setItem(`audit_adj_receipt_detail_${adjAuditId}_${adjAuditDetailId}`, "1");
-                        localStorage.setItem(`audit_adj_receipt_detail_doc_${adjAuditId}_${adjAuditDetailId}`, String(result.data.id));
->>>>>>> fixbug
-                    }
-                }
-                showToast("success", editId 
-                    ? (isManager ? "Cập nhật và xác nhận phiếu nhập kho thành công!" : "Đã cập nhật phiếu nhập kho.")
-                    : (isManager ? "Tạo và xác nhận phiếu nhập kho thành công!" : "Đã lưu nháp phiếu nhập kho.")
-                );
                 // Lưu ID phiếu để AuditDetailPage kiểm tra status sau này
                 if (adjAuditId && form.docType === "ADJUSTMENT" && newId) {
                     localStorage.setItem(`audit_adj_receipt_id_${adjAuditId}`, String(newId));
@@ -950,9 +925,6 @@ export default function ReceiptCreatePage() {
                 </div>
 
                 <div className="sp-content">
-<<<<<<< HEAD
-                    <h1 className="sp-title">{editId ? "Cập nhật phiếu nhập kho" : "Phiếu nhập kho"}</h1>
-=======
                     <h1 className="sp-title">Phiếu nhập kho</h1>
                     {showDraftBanner && (
                         <DraftBanner
@@ -962,7 +934,6 @@ export default function ReceiptCreatePage() {
                             onDismiss={handleDismissBanner}
                         />
                     )}
->>>>>>> fixbug
                     <div className="rc-form-card">
 
                         {/* ── Header row ── */}
@@ -1011,11 +982,7 @@ export default function ReceiptCreatePage() {
                                 <label className="rc-form-label">Đối tượng<span className="rc-required">*</span></label>
                                 <select className="rc-form-select rc-form-full" value={form.customerId} onChange={(e) => handleCustomerChange(e.target.value)} disabled={loadingData}>
                                     <option value="">Chọn đối tượng</option>
-<<<<<<< HEAD
-                                    {supplierOptions.map((c) => (
-=======
                                     {customers.filter((c) => c.issupplier).map((c) => (
->>>>>>> fixbug
                                         <option key={c.id} value={c.id}>{c.customercode ? `${c.customercode}: ` : ""}{c.customername}</option>
                                     ))}
                                 </select>
@@ -1191,13 +1158,6 @@ export default function ReceiptCreatePage() {
                         {/* ── Actions ── */}
                         <div className="rc-form-actions">
                             <button className="sp-btn-outline" onClick={() => navigate("/receipts")} disabled={saving}>Hủy bỏ</button>
-<<<<<<< HEAD
-                            {!isAdjustment && (
-                                <button className="sp-btn-outline" onClick={handleSaveDraft} disabled={saving}>
-                                    {saving ? "Đang lưu..." : "Lưu nháp"}
-                                </button>
-                            )}
-=======
                             <button
                                 id="receipt-draft-save-btn"
                                 type="button"
@@ -1214,7 +1174,6 @@ export default function ReceiptCreatePage() {
                                 </svg>
                                 Lưu nháp
                             </button>
->>>>>>> fixbug
                             <button className="sp-btn-primary" onClick={handleSave} disabled={saving}>
                                 {saving ? "Đang lưu..." : isManager ? "Lưu và xác nhận" : "Lưu phiếu"}
                             </button>

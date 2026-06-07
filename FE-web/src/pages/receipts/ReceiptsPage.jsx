@@ -22,13 +22,8 @@ const STATUS_BADGE = {
     CANCELLED: "rc-badge rc-badge-cancelled",
     REJECTED: "rc-badge rc-badge-rejected",
 };
-<<<<<<< HEAD
-const TABS = ["Tất cả", "Nháp", "Đã xác nhận", "Bị từ chối"];
-const TAB_STATUS = { "Nháp": "DRAFT", "Đã xác nhận": "CONFIRMED", "Bị từ chối": "REJECTED" };
-=======
 const TABS = ["Tất cả", "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Nháp"];
 const TAB_STATUS = { "Chờ duyệt": "DRAFT", "Đã duyệt": "CONFIRMED", "Đã từ chối": "REJECTED" };
->>>>>>> fixbug
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
 function formatDate(str) {

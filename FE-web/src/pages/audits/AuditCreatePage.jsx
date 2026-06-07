@@ -8,15 +8,11 @@ import { getAllEmployees } from "../../api/employeeApi";
 import TopbarRight from "../../components/TopbarRight";
 import notify from "../../utils/notify";
 import { formatDateForDisplay, normalizeDateDisplayInput, parseDisplayDateToIso } from "../../utils/dateInput";
-<<<<<<< HEAD
-import { auditDetailPayload, formatNumber, makeRowsFromStockRows, toInputDate, getAuditStartDate, getAuditEndDate, normalizeAuditDetails } from "./auditRowUtils";
-=======
 import { auditDetailPayload, formatNumber, makeRowsFromStockRows, toInputDate } from "./auditRowUtils";
 import { useDraft } from "../../utils/useDraft";
 import DraftBanner from "../../components/DraftBanner";
 
 const DRAFT_KEY = "draft_audit_create";
->>>>>>> fixbug
 
 function buildNextDocno(prefix, list) {
     const regex = new RegExp(`^${prefix}-(\\d+)$`);
@@ -544,32 +540,7 @@ export default function AuditCreatePage() {
         ...(sendToStaff ? { sendToStaff: true } : {}),
     });
 
-<<<<<<< HEAD
-    const handleSaveDraft = async () => {
-        if (form.startDate && form.endDate && form.endDate < form.startDate) {
-            notify("Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu.", { type: "error" });
-            return;
-        }
-        setSaving(true);
-        try {
-            const payload = buildPayload({ draft: true });
-            const result = editId ? await updateAudit(editId, payload) : await createAudit(payload);
-            if (result?.success) {
-                notify(editId ? "Đã cập nhật phiếu kiểm kê." : "Đã lưu nháp phiếu kiểm kê.", { type: "success" });
-                const newId = editId || result?.data?.id;
-                setTimeout(() => navigate(newId ? `/audits/${newId}` : "/audits"), 800);
-            } else {
-                notify(result?.message || (editId ? "Cập nhật nháp thất bại." : "Lưu nháp thất bại."), { type: "error" });
-            }
-        } catch (err) {
-            notify(err?.response?.data?.message || (editId ? "Có lỗi xảy ra khi cập nhật phiếu." : "Có lỗi xảy ra khi lưu phiếu."), { type: "error" });
-        } finally {
-            setSaving(false);
-        }
-    };
-=======
 
->>>>>>> fixbug
 
     const handleSendRequest = async () => {
         if (!validateBase()) return;
@@ -582,14 +553,9 @@ export default function AuditCreatePage() {
             const payload = buildPayload({ sendToStaff: true });
             const result = editId ? await updateAudit(editId, payload) : await createAudit(payload);
             if (result?.success) {
-<<<<<<< HEAD
-                notify(editId ? "Đã cập nhật và gửi yêu cầu kiểm kê cho nhân viên." : "Đã gửi yêu cầu kiểm kê cho nhân viên.", { type: "success" });
-                const newId = editId || result?.data?.id;
-=======
                 clearDraft(); // Xóa nháp local khi gửi yêu cầu thành công
                 notify("Đã gửi yêu cầu kiểm kê cho nhân viên.", { type: "success" });
                 const newId = result?.data?.id;
->>>>>>> fixbug
                 setTimeout(() => navigate(newId ? `/audits/${newId}` : "/audits"), 800);
             } else {
                 notify(result?.message || (editId ? "Cập nhật và gửi yêu cầu thất bại." : "Gửi yêu cầu thất bại."), { type: "error" });

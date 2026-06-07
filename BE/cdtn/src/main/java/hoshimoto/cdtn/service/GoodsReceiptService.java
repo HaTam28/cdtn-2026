@@ -125,10 +125,7 @@ public class GoodsReceiptService {
         receipt = receiptRepository.save(receipt);
         notifyManagersIfStaffCreated(receipt);
 
-<<<<<<< HEAD
-=======
         validateAdjustmentDetailsForDraft(receipt, request.getDetails());
->>>>>>> fixbug
         saveDetails(receipt, request.getDetails());
         return toResponse(receipt);
     }
@@ -149,10 +146,7 @@ public class GoodsReceiptService {
         // will be replaced.
         deleteBatchesForReceipt(id);
         detailRepository.deleteByGoodsReceiptId(id);
-<<<<<<< HEAD
-=======
         validateAdjustmentDetailsForDraft(receipt, request.getDetails());
->>>>>>> fixbug
         saveDetails(receipt, request.getDetails());
         return toResponse(receipt);
     }

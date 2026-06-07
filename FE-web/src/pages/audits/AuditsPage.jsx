@@ -12,17 +12,6 @@ import notify from "../../utils/notify";
 import { AUDIT_STATUS_BADGE, AUDIT_STATUS_LABELS, formatDisplayDate, getAuditEndDate, getAuditRowTone, getAuditStartDate, getAuditWorkflowStatus, normalizeAuditDetails, toNumber } from "./auditRowUtils";
 import { useDraft, formatDraftTime } from "../../utils/useDraft";
 
-<<<<<<< HEAD
-const TABS = ["Tất cả", "Nháp", "Chờ kiểm kê", "Chờ duyệt", "Đã duyệt", "Bị từ chối", "Quá hạn"];
-const STAFF_TABS = ["Tất cả", "Chờ kiểm kê", "Chờ duyệt", "Đã duyệt", "Bị từ chối", "Quá hạn"];
-const TAB_STATUS = {
-    "Nháp": ["DRAFT"],
-    "Chờ kiểm kê": ["REQUESTED", "IN_PROGRESS"],
-    "Chờ duyệt": ["SUBMITTED"],
-    "Đã duyệt": ["PENDING_PROCESS", "CONFIRMED", "PROCESSED", "APPROVED"],
-    "Bị từ chối": ["REJECTED"],
-    "Quá hạn": ["OVERDUE"],
-=======
 const AUDIT_DRAFT_KEY = "draft_audit_create";
 
 const TABS = ["Tất cả", "Chờ kiểm kê", "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Quá hạn", "Nháp"];
@@ -33,7 +22,6 @@ const TAB_STATUS = {
     "Đã duyệt": "APPROVED",
     "Đã từ chối": "REJECTED",
     "Quá hạn": "OVERDUE",
->>>>>>> fixbug
 };
 const ROWS_OPTIONS = [10, 15, 20, 50];
 const APPROVED_AUDIT_STATUSES = new Set(["CONFIRMED", "PROCESSED"]);
