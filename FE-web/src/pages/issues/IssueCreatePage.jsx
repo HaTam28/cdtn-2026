@@ -10,6 +10,10 @@ import { getAllItems } from "../../api/itemApi";
 import { getAllBatches } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
 import { formatDateForDisplay, normalizeDateDisplayInput, parseDisplayDateToIso } from "../../utils/dateInput";
+import { useDraft } from "../../utils/useDraft";
+import DraftBanner from "../../components/DraftBanner";
+
+const DRAFT_KEY = "draft_issue_create";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 let _rowKey = 0;
@@ -278,6 +282,9 @@ export default function IssueCreatePage() {
     const user = JSON.parse(localStorage.getItem("user") || "{}");
     const isManager = user?.role && !["STAFF", "NV"].includes(user.role);
 
+    const { hasDraft, draftSavedAt, saveDraft, loadDraft, clearDraft } = useDraft(DRAFT_KEY);
+    const [showDraftBanner, setShowDraftBanner] = useState(false);
+
     const [form, setForm] = useState({ date: todayStr(), docno: "", customerId: "", address: "", description: "", docType: "NORMAL" });
     const [dateDisplay, setDateDisplay] = useState({ docDate: formatDateForDisplay(todayStr()) });
     const [rows, setRows] = useState([newRow()]);
@@ -293,6 +300,27 @@ export default function IssueCreatePage() {
     const [prefilledFromClone, setPrefilledFromClone] = useState(false);
     const [auditSource, setAuditSource] = useState(null);
     const customerOptions = customers.filter((c) => c.iscustomer);
+
+    // Hiển thị banner nháp hoặc tự động khôi phục nháp nếu được yêu cầu từ trang danh sách
+    useEffect(() => {
+        const hasAuditParam = !!searchParams.get("auditId");
+        const hasCloneState = !!location.state?.clone;
+        if (hasDraft && !hasAuditParam && !hasCloneState) {
+            if (location.state?.resumeDraft) {
+                const draft = loadDraft();
+                if (draft) {
+                    if (draft.form) setForm(draft.form);
+                    if (draft.dateDisplay) setDateDisplay(draft.dateDisplay);
+                    if (draft.rows) {
+                        setRows(draft.rows.map((r) => ({ ...r, _id: ++_rowKey })));
+                    }
+                }
+            } else {
+                setShowDraftBanner(true);
+            }
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const loadData = useCallback(async () => {
         setLoadingData(true);
@@ -509,6 +537,39 @@ export default function IssueCreatePage() {
     const isAdjustment = form.docType === "ADJUSTMENT";
 
     const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3500); };
+
+    // ── Lưu nháp local ──────────────────────────────────────────────────────
+    const handleSaveDraftLocal = () => {
+        try {
+            saveDraft({ form, rows, dateDisplay });
+            showToast("success", "Đã lưu nháp thành công.");
+            setTimeout(() => navigate("/issues"), 1000);
+        } catch {
+            showToast("error", "Không thể lưu nháp.");
+        }
+    };
+
+    const handleRestoreDraft = () => {
+        const draft = loadDraft();
+        if (!draft) return;
+        if (draft.form) setForm(draft.form);
+        if (draft.dateDisplay) setDateDisplay(draft.dateDisplay);
+        if (draft.rows) {
+            setRows(draft.rows.map((r) => ({ ...r, _id: ++_rowKey })));
+        }
+        setShowDraftBanner(false);
+        showToast("success", "Đã khôi phục nháp.");
+    };
+
+    const handleDeleteDraft = () => {
+        clearDraft();
+        setShowDraftBanner(false);
+        showToast("success", "Đã xóa nháp.");
+    };
+
+    const handleDismissBanner = () => {
+        setShowDraftBanner(false);
+    };
 
     const handleFormChange = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
     const handleDocDateChange = (value) => {
@@ -769,6 +830,7 @@ export default function IssueCreatePage() {
             const payload = buildIssuePayload(details);
             const result = editId ? await updateIssue(editId, payload) : await createIssue(payload);
             if (result?.success) {
+<<<<<<< HEAD
                 const newId = editId || result?.data?.id;
                 if (isManager && newId) {
                     const confirmed = await confirmIssue(newId);
@@ -781,6 +843,11 @@ export default function IssueCreatePage() {
                     ? (isManager ? "Cập nhật và xác nhận phiếu xuất kho thành công!" : "Đã cập nhật phiếu xuất kho.")
                     : (isManager ? "Tạo và xác nhận phiếu xuất kho thành công!" : "Đã lưu nháp phiếu xuất kho.")
                 );
+=======
+                clearDraft(); // Xóa nháp local sau khi tạo phiếu thành công
+                showToast("success", "Tạo phiếu xuất kho thành công!");
+                const newId = result?.data?.id;
+>>>>>>> fixbug
                 if (adjAuditId && form.docType === "ADJUSTMENT" && newId) {
                     localStorage.setItem(`audit_adj_issue_id_${adjAuditId}`, String(newId));
                     if (adjAuditDetailId) {
@@ -850,6 +917,14 @@ export default function IssueCreatePage() {
 
                 <div className="sp-content">
                     <h1 className="sp-title">Phiếu xuất kho</h1>
+                    {showDraftBanner && (
+                        <DraftBanner
+                            draftSavedAt={draftSavedAt}
+                            onResume={handleRestoreDraft}
+                            onDelete={handleDeleteDraft}
+                            onDismiss={handleDismissBanner}
+                        />
+                    )}
                     <div className="rc-form-card">
 
                         {/* ── Header row ── */}
@@ -883,7 +958,11 @@ export default function IssueCreatePage() {
                                 <label className="rc-form-label" style={{ minWidth: 110 }}>Đối tượng</label>
                                 <select className="rc-form-select rc-form-full" value={form.customerId} onChange={(e) => handleCustomerChange(e.target.value)} disabled={loadingData}>
                                     <option value="">Chọn đối tượng</option>
+<<<<<<< HEAD
                                     {customerOptions.map((c) => (
+=======
+                                    {customers.filter((c) => c.iscustomer).map((c) => (
+>>>>>>> fixbug
                                         <option key={c.id} value={c.id}>{c.customercode ? `${c.customercode}: ` : ""}{c.customername}</option>
                                     ))}
                                 </select>
@@ -911,11 +990,16 @@ export default function IssueCreatePage() {
                                     <tr>
                                         <th className="rc-td-stt" style={{ width: "4%" }}>STT</th>
                                         <th style={{ width: "9%" }}>Mã hàng</th>
-                                        <th style={{ width: "17%" }}>Tên vật tư hàng hóa</th>
+                                        <th style={{ width: "40%" }}>Tên vật tư hàng hóa</th>
                                         <th style={{ width: "6%" }}>ĐVT</th>
+<<<<<<< HEAD
                                         <th style={{ width: "8%" }}>SL yêu cầu</th>
                                         {!isAdjustment && <th style={{ width: "9%", textAlign: "right", paddingRight: "12px" }}>Tồn hiện tại</th>}
                                         <th style={{ width: "10%", textAlign: "right", paddingRight: "12px" }}>Thành tiền</th>
+=======
+                                        <th style={{ width: "8%", textAlign: "right" }}>SL yêu cầu</th>
+                                        {!isAdjustment && <th style={{ width: "9%", textAlign: "right" }}>Tồn hiện tại</th>}
+>>>>>>> fixbug
                                         <th style={{ width: "4%" }}></th>
                                     </tr>
                                 </thead>
@@ -928,8 +1012,7 @@ export default function IssueCreatePage() {
 
                                         return (
                                             <React.Fragment key={row._id}>
-                                                {/* ── Main item row ── */}
-                                                <tr>
+                                                <tr style={{ background: "#f5faf7" }}>
                                                     <td className="rc-td-stt">{idx + 1}</td>
                                                     <td>
                                                         <select
@@ -939,9 +1022,14 @@ export default function IssueCreatePage() {
                                                             disabled={loadingData}
                                                         >
                                                             <option value="">Chọn</option>
-                                                            {items.map((it) => (
-                                                                <option key={it.id} value={it.id}>{it.itemcode}</option>
-                                                            ))}
+                                                            {items.map((it) => {
+                                                                const isSelectedElsewhere = rows.some((r, rIdx) => rIdx !== idx && String(r.itemId) === String(it.id));
+                                                                return (
+                                                                    <option key={it.id} value={it.id} disabled={isSelectedElsewhere}>
+                                                                        {it.itemcode} {isSelectedElsewhere ? "(Đã chọn)" : ""}
+                                                                    </option>
+                                                                );
+                                                            })}
                                                         </select>
                                                     </td>
                                                     <td>
@@ -970,10 +1058,14 @@ export default function IssueCreatePage() {
                                                                         : (stockByItem[row.itemId]?.total ?? 0)}
                                                         </td>
                                                     )}
+<<<<<<< HEAD
                                                     <td className="rc-td-num" style={{ textAlign: "right", paddingRight: "12px" }}>
                                                         {formatMoney((Number(row.quantity) || 0) * (Number(row.price) || 0))}
                                                     </td>
                                                     <td>
+=======
+                                                    <td style={{ textAlign: "center", width: "4%" }}>
+>>>>>>> fixbug
                                                         {rows.length > 1 && (
                                                             <button className="rc-del-btn" onClick={() => handleRemoveRow(idx)} type="button" title="Xóa dòng">
                                                                 <IconTrash />
@@ -984,7 +1076,11 @@ export default function IssueCreatePage() {
 
                                                 {/* ── Batch entries sub-row ── */}
                                                 <tr>
+<<<<<<< HEAD
                                                     <td colSpan={isAdjustment ? 7 : 8} style={{ padding: "0 0 10px 32px", background: "#fafcfb" }}>
+=======
+                                                    <td colSpan={isAdjustment ? 6 : 7} style={{ padding: "0 0 10px 32px", background: "#fafcfb" }}>
+>>>>>>> fixbug
                                                         <div style={{ borderLeft: "3px solid #c6dfd0", paddingLeft: 12, paddingTop: 6 }}>
 
                                                             {/* Batch entries table */}
@@ -992,9 +1088,9 @@ export default function IssueCreatePage() {
                                                                 <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8, fontSize: "0.84rem" }}>
                                                                     <thead>
                                                                         <tr style={{ background: "#edf6f1" }}>
-                                                                            <th style={{ padding: "5px 10px", textAlign: "right", fontWeight: 600, color: "#1E3A2F", width: "18%", borderBottom: "1px solid #c6dfd0" }}>SL xuất</th>
                                                                             <th style={{ padding: "5px 10px", textAlign: "left", fontWeight: 600, color: "#1E3A2F", width: "26%", borderBottom: "1px solid #c6dfd0" }}>Mã lô</th>
                                                                             <th style={{ padding: "5px 10px", textAlign: "left", fontWeight: 600, color: "#1E3A2F", width: "24%", borderBottom: "1px solid #c6dfd0" }}>Vị trí</th>
+                                                                            <th style={{ padding: "5px 10px", textAlign: "right", fontWeight: 600, color: "#1E3A2F", width: "18%", borderBottom: "1px solid #c6dfd0" }}>SL xuất</th>
                                                                             <th style={{ padding: "5px 10px", textAlign: "right", fontWeight: 600, color: "#1E3A2F", width: "16%", borderBottom: "1px solid #c6dfd0" }}>Tồn khả dụng</th>
                                                                             <th style={{ padding: "5px 10px", textAlign: "right", fontWeight: 600, color: "#1E3A2F", width: "12%", borderBottom: "1px solid #c6dfd0" }}>Đơn giá</th>
                                                                             <th style={{ width: "4%", borderBottom: "1px solid #c6dfd0" }}></th>
@@ -1006,6 +1102,10 @@ export default function IssueCreatePage() {
                                                                             const exceedsStock = entryQty > entry.remainingStock;
                                                                             return (
                                                                                 <tr key={entry._id} style={{ borderBottom: "1px solid #edf6f1" }}>
+                                                                                    <td style={{ padding: "5px 10px", fontWeight: 600, color: "#1E854A" }}>{entry.batchCode}</td>
+                                                                                    <td style={{ padding: "5px 10px", color: "#4c6152" }}>
+                                                                                        {entry.locationcode || <span style={{ color: "#b0c4b8", fontStyle: "italic" }}>Chưa xác định</span>}
+                                                                                    </td>
                                                                                     <td style={{ padding: "5px 10px", textAlign: "right" }}>
                                                                                         <input
                                                                                             type="number"
@@ -1031,18 +1131,14 @@ export default function IssueCreatePage() {
                                                                                             </div>
                                                                                         )}
                                                                                     </td>
-                                                                                    <td style={{ padding: "5px 10px", fontWeight: 600, color: "#1E854A" }}>{entry.batchCode}</td>
-                                                                                    <td style={{ padding: "5px 10px", color: "#4c6152" }}>
-                                                                                        {entry.locationcode || <span style={{ color: "#b0c4b8", fontStyle: "italic" }}>Chưa xác định</span>}
-                                                                                    </td>
                                                                                     <td style={{ padding: "5px 10px", textAlign: "right", color: "#4c6152" }}>{entry.remainingStock}</td>
                                                                                     <td style={{ padding: "5px 10px", textAlign: "right", color: "#1E3A2F" }}>{formatMoney(Number(entry.unitCost) || 0)}</td>
                                                                                     <td style={{ padding: "5px 8px", textAlign: "center" }}>
                                                                                         <button
                                                                                             type="button"
+                                                                                            className="rc-del-btn"
                                                                                             onClick={() => removeBatchEntry(idx, eIdx)}
                                                                                             title="Xóa mã lô"
-                                                                                            style={{ background: "none", border: "none", cursor: "pointer", color: "#e57373", padding: 2 }}
                                                                                         >
                                                                                             <IconTrash />
                                                                                         </button>
@@ -1093,13 +1189,27 @@ export default function IssueCreatePage() {
                                         );
                                     })}
                                     <tr className="rc-add-row" onClick={handleAddRow}>
+<<<<<<< HEAD
                                         <td colSpan={isAdjustment ? 7 : 8}>
+=======
+                                        <td colSpan={isAdjustment ? 6 : 7}>
+>>>>>>> fixbug
                                             <button className="rc-add-row-btn" type="button">
                                                 <IconPlus size={13} /> Thêm mới dữ liệu
                                             </button>
                                         </td>
                                     </tr>
+<<<<<<< HEAD
 
+=======
+                                    {totalAmount > 0 && (
+                                        <tr className="rc-total-row">
+                                            <td colSpan={isAdjustment ? 4 : 5} style={{ textAlign: "right", paddingRight: 12 }}>Tổng cộng</td>
+                                            <td className="rc-td-num" style={{ textAlign: "right" }}>{formatMoney(totalAmount)}</td>
+                                            <td />
+                                        </tr>
+                                    )}
+>>>>>>> fixbug
                                 </tbody>
                             </table>
                         </div>
@@ -1107,11 +1217,29 @@ export default function IssueCreatePage() {
                         {/* ── Actions ── */}
                         <div className="rc-form-actions">
                             <button className="sp-btn-outline" onClick={() => navigate("/issues")}>Hủy bỏ</button>
+<<<<<<< HEAD
                             {!isAdjustment && (
                                 <button className="sp-btn-outline" onClick={handleSaveDraft} disabled={saving}>
                                     {saving ? "Đang lưu..." : "Lưu nháp"}
                                 </button>
                             )}
+=======
+                            <button
+                                id="issue-draft-save-btn"
+                                type="button"
+                                className="sp-btn-draft"
+                                onClick={handleSaveDraftLocal}
+                                disabled={saving}
+                                title="Lưu tạm dữ liệu vào máy, không tạo phiếu chính thức"
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                                    <polyline points="17 21 17 13 7 13 7 21" />
+                                    <polyline points="7 3 7 8 15 8" />
+                                </svg>
+                                Lưu nháp
+                            </button>
+>>>>>>> fixbug
                             <button className="sp-btn-primary" onClick={handleSave} disabled={saving}>
                                 {saving ? "Đang lưu..." : isManager ? "Lưu và xác nhận" : "Lưu phiếu"}
                             </button>

@@ -1156,3 +1156,144 @@ input[type="password"]::-webkit-strong-password-auto-fill-button {
         justify-content: center;
     }
 }
+
+/* ── Draft Banner ────────────────────────────────────── */
+.draft-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding: 12px 18px;
+    margin-bottom: 14px;
+    background: linear-gradient(135deg, #fffbea 0%, #fef3c7 100%);
+    border: 1.5px solid #f6d860;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(234, 179, 8, 0.12);
+    animation: draft-banner-in 0.25s ease;
+}
+
+@keyframes draft-banner-in {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.draft-banner-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.draft-banner-icon {
+    display: flex;
+    align-items: center;
+    color: #b45309;
+    flex-shrink: 0;
+}
+
+.draft-banner-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.draft-banner-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #92400e;
+}
+
+.draft-banner-sub {
+    font-size: 0.78rem;
+    color: #a16207;
+}
+
+.draft-banner-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.draft-btn-resume {
+    padding: 6px 14px;
+    background: #f59e0b;
+    color: #fff;
+    border: none;
+    border-radius: 7px;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s, background 0.15s;
+    white-space: nowrap;
+}
+
+.draft-btn-resume:hover {
+    background: #d97706;
+}
+
+.draft-btn-delete {
+    padding: 6px 14px;
+    background: #fff;
+    color: #b91c1c;
+    border: 1.5px solid #fca5a5;
+    border-radius: 7px;
+    font-size: 0.84rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+
+.draft-btn-delete:hover {
+    background: #fef2f2;
+}
+
+.draft-btn-dismiss {
+    padding: 6px 14px;
+    background: #fff;
+    color: #78716c;
+    border: 1.5px solid #d6d3d1;
+    border-radius: 7px;
+    font-size: 0.84rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+
+.draft-btn-dismiss:hover {
+    background: #f5f5f4;
+}
+
+/* ── "Lưu nháp local" button ─────────────────────────── */
+.sp-btn-draft {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: #fff;
+    color: #a16207;
+    border: 1.5px solid #fcd34d;
+    border-radius: 8px;
+    font-weight: 500;
+    font-size: 0.9rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.sp-btn-draft:hover {
+    background: #fef9c3;
+    border-color: #f59e0b;
+}
+
+.sp-btn-draft:active {
+    background: #fef3c7;
+}

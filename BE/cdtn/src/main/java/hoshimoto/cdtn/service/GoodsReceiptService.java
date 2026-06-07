@@ -125,6 +125,10 @@ public class GoodsReceiptService {
         receipt = receiptRepository.save(receipt);
         notifyManagersIfStaffCreated(receipt);
 
+<<<<<<< HEAD
+=======
+        validateAdjustmentDetailsForDraft(receipt, request.getDetails());
+>>>>>>> fixbug
         saveDetails(receipt, request.getDetails());
         return toResponse(receipt);
     }
@@ -145,6 +149,10 @@ public class GoodsReceiptService {
         // will be replaced.
         deleteBatchesForReceipt(id);
         detailRepository.deleteByGoodsReceiptId(id);
+<<<<<<< HEAD
+=======
+        validateAdjustmentDetailsForDraft(receipt, request.getDetails());
+>>>>>>> fixbug
         saveDetails(receipt, request.getDetails());
         return toResponse(receipt);
     }
@@ -169,6 +177,11 @@ public class GoodsReceiptService {
             if (detail.getLocation() == null) {
                 throw new RuntimeException(
                         "Dòng chi tiết với mã hàng '" + detail.getItemcode() + "' chưa được gán vị trí");
+            }
+            // Khi xác nhận phiếu ADJUSTMENT: bắt buộc liên kết chi tiết kiểm kê
+            if (isAdjustment(receipt) && detail.getInventoryAuditDetailId() == null) {
+                throw new RuntimeException(
+                        "Phiếu nhập điều chỉnh: dòng '" + detail.getItemcode() + "' chưa liên kết chi tiết phiếu kiểm kê");
             }
 
             Item item = detail.getItem();
@@ -636,21 +649,24 @@ public class GoodsReceiptService {
         }
     }
 
-    private void validateAdjustmentDetails(GoodsReceipt receipt, List<GoodsReceiptDetailRequest> detailRequests) {
+    /**
+     * Validation nhẹ khi lưu nháp phiếu nhập điều chỉnh (ADJUSTMENT).
+     * Kiểm tra tính hợp lệ của liên kết kiểm kê và trùng lặp — KHÔNG bắt buộc locationId hay capacity.
+     * locationId và capacity được kiểm tra đầy đủ trong confirm().
+     */
+    private void validateAdjustmentDetailsForDraft(GoodsReceipt receipt,
+            List<GoodsReceiptDetailRequest> detailRequests) {
         if (!isAdjustment(receipt)) {
             return;
         }
+        // Cho phép lưu nháp với details rỗng hoặc chưa đầy đủ
         if (detailRequests == null || detailRequests.isEmpty()) {
-            throw new RuntimeException("Phiếu nhập điều chỉnh không có dòng chi tiết nào");
+            return;
         }
 
         java.util.Set<Long> auditDetailIds = new java.util.HashSet<>();
-        java.util.Map<Long, BigDecimal> quantityByLocation = new java.util.HashMap<>();
 
         for (GoodsReceiptDetailRequest req : detailRequests) {
-            if (req.getLocationId() == null) {
-                throw new RuntimeException("Phiếu nhập điều chỉnh phải có vị trí");
-            }
             if (req.getInventoryAuditDetailId() == null) {
                 throw new RuntimeException("Phiếu nhập điều chỉnh phải liên kết chi tiết phiếu kiểm kê");
             }
@@ -659,7 +675,8 @@ public class GoodsReceiptService {
             }
 
             var auditDetail = inventoryAuditDetailRepository.findById(req.getInventoryAuditDetailId())
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy chi tiết phiếu kiểm kê id: " + req.getInventoryAuditDetailId()));
+                    .orElseThrow(() -> new RuntimeException(
+                            "Không tìm thấy chi tiết phiếu kiểm kê id: " + req.getInventoryAuditDetailId()));
             if (auditDetail.getInventoryAudit() == null
                     || !auditDetail.getInventoryAudit().getId().equals(receipt.getInventoryAuditId())) {
                 throw new RuntimeException("Chi tiết phiếu kiểm kê không thuộc phiếu kiểm kê đã chọn");
@@ -685,14 +702,7 @@ public class GoodsReceiptService {
             if (usedByReceipt || usedByIssue) {
                 throw new RuntimeException("Chi tiết phiếu kiểm kê đã được tạo phiếu điều chỉnh");
             }
-
-            quantityByLocation.merge(req.getLocationId(), req.getQuantity(), BigDecimal::add);
-        }
-
-        for (var entry : quantityByLocation.entrySet()) {
-            Location location = locationRepository.findById(entry.getKey())
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy vị trí id: " + entry.getKey()));
-            validateLocationCapacity(location, entry.getValue());
+            // locationId không bắt buộc khi lưu nháp — kiểm tra trong confirm()
         }
     }
 
