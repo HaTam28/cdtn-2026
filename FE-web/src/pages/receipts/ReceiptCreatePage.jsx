@@ -400,6 +400,7 @@ export default function ReceiptCreatePage() {
     const [prefilledFromClone, setPrefilledFromClone] = useState(false);
     const [prefilledFromOverview, setPrefilledFromOverview] = useState(false);
     const [auditSource, setAuditSource] = useState(null);
+    const [capacityWarnings, setCapacityWarnings] = useState({});
 
     // Hiển thị banner nháp hoặc tự động khôi phục nháp nếu được yêu cầu từ trang danh sách
     useEffect(() => {
@@ -548,7 +549,7 @@ export default function ReceiptCreatePage() {
                     });
                 if (rowsFromAudit.length > 0) {
                     setRows(rowsFromAudit);
-                    validateAdjustmentCapacity(rowsFromAudit);
+                    await validateAdjustmentCapacity(rowsFromAudit);
                 }
                 setForm((prev) => ({
                     ...prev,
@@ -605,7 +606,16 @@ export default function ReceiptCreatePage() {
         setShowDraftBanner(false);
     };
 
-    const handleFormChange = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+    const handleFormChange = async (field, value) => {
+        setForm((prev) => ({ ...prev, [field]: value }));
+        if (field === "docType") {
+            if (value === "ADJUSTMENT") {
+                await validateAdjustmentCapacity(rows);
+            } else {
+                setCapacityWarnings({});
+            }
+        }
+    };
     const handleDocDateChange = (value) => {
         const display = normalizeDateDisplayInput(value);
         setDateDisplay((prev) => ({ ...prev, docDate: display }));
@@ -637,7 +647,7 @@ export default function ReceiptCreatePage() {
         setInvoice((prev) => ({ ...prev, date: dateStr }));
     };
 
-    const handleRowChange = (idx, field, value) => {
+    const handleRowChange = async (idx, field, value) => {
         setRows((prev) => {
             const next = [...prev];
             next[idx] = { ...next[idx], [field]: value };
@@ -654,10 +664,36 @@ export default function ReceiptCreatePage() {
             }
             return next;
         });
+        if (isAdjustment) {
+            const updatedRows = rows.map((r, i) => {
+                if (i === idx) {
+                    const nextR = { ...r, [field]: value };
+                    if (field === "itemId") {
+                        const found = items.find((it) => String(it.id) === String(value));
+                        nextR.itemcode = found?.itemcode || "";
+                        nextR.itemname = found?.itemname || "";
+                        nextR.unitof = found?.unitof || "";
+                        nextR.nameBatch = "L";
+                        nextR.batchId = "";
+                        nextR.sourceBatchCode = "";
+                        nextR.selectedLocations = [];
+                    }
+                    return nextR;
+                }
+                return r;
+            });
+            await validateAdjustmentCapacity(updatedRows);
+        }
     };
 
     const handleAddRow = () => setRows((prev) => [...prev, newRow()]);
-    const handleRemoveRow = (idx) => setRows((prev) => prev.filter((_, i) => i !== idx));
+    const handleRemoveRow = async (idx) => {
+        const nextRows = rows.filter((_, i) => i !== idx);
+        setRows(nextRows);
+        if (isAdjustment) {
+            await validateAdjustmentCapacity(nextRows);
+        }
+    };
 
     const openLocationModal = async (idx) => {
         const row = rows[idx];
@@ -685,10 +721,14 @@ export default function ReceiptCreatePage() {
         }
     };
 
-    const handleLocConfirm = (locs) => {
+    const handleLocConfirm = async (locs) => {
         const idx = locModal.rowIdx;
         setRows((prev) => { const next = [...prev]; next[idx] = { ...next[idx], selectedLocations: locs }; return next; });
         setLocModal({ open: false, rowIdx: null, suggestions: [], loading: false });
+        if (isAdjustment) {
+            const updatedRows = rows.map((r, i) => i === idx ? { ...r, selectedLocations: locs } : r);
+            await validateAdjustmentCapacity(updatedRows);
+        }
     };
 
     const totalAmount = rows.reduce((sum, r) => sum + (Number(r.quantity) || 0) * (Number(r.price) || 0), 0);
@@ -700,6 +740,7 @@ export default function ReceiptCreatePage() {
                 const key = String(row.itemId);
                 const list = allocationsByItem.get(key) || [];
                 list.push({
+                    rowId: row._id,
                     locationId: loc.locationId,
                     locationcode: loc.locationcode,
                     quantity: Number(loc.allocQty) || 0,
@@ -708,29 +749,48 @@ export default function ReceiptCreatePage() {
             });
         });
 
-        for (const [itemId, allocations] of allocationsByItem.entries()) {
-            const locations = await getAvailableLocations(itemId);
-            const availableByLocation = new Map((locations || []).map((loc) => [String(loc.locationId), loc]));
-            const totalsByLocation = new Map();
-            allocations.forEach((loc) => {
-                const key = String(loc.locationId);
-                const current = totalsByLocation.get(key) || { ...loc, quantity: 0 };
-                current.quantity += loc.quantity;
-                totalsByLocation.set(key, current);
-            });
+        const newWarnings = {};
+        let firstErrorMsg = "";
+        let hasError = false;
 
-            for (const loc of totalsByLocation.values()) {
-                const available = availableByLocation.get(String(loc.locationId));
-                const remaining = available?.remainingCapacity;
-                if (remaining !== null && remaining !== undefined && Number(remaining) < loc.quantity) {
-                    const code = loc.locationcode || available?.locationcode || loc.locationId;
-                    const shortfall = Math.max(0, loc.quantity - Number(remaining || 0));
-                    showToast("error", `Vị trí ${code} chỉ còn trống ${formatMoney(remaining || 0)}, thiếu ${formatMoney(shortfall)} sản phẩm.`);
-                    return false;
+        for (const [itemId, allocations] of allocationsByItem.entries()) {
+            try {
+                const locations = await getAvailableLocations(itemId);
+                const availableByLocation = new Map((locations || []).map((loc) => [String(loc.locationId), loc]));
+                const totalsByLocation = new Map();
+                allocations.forEach((loc) => {
+                    const key = String(loc.locationId);
+                    const current = totalsByLocation.get(key) || { ...loc, quantity: 0, rows: [] };
+                    current.quantity += loc.quantity;
+                    current.rows.push(loc.rowId);
+                    totalsByLocation.set(key, current);
+                });
+
+                for (const loc of totalsByLocation.values()) {
+                    const available = availableByLocation.get(String(loc.locationId));
+                    const remaining = available !== undefined ? available?.remainingCapacity : 0;
+                    if (remaining !== null && remaining !== undefined && Number(remaining) < loc.quantity) {
+                        const code = loc.locationcode || available?.locationcode || loc.locationId;
+                        const shortfall = Math.max(0, loc.quantity - Number(remaining || 0));
+                        const msg = `Vị trí ${code} chỉ còn trống ${formatMoney(remaining || 0)}, thiếu ${formatMoney(shortfall)} sản phẩm.`;
+                        if (!firstErrorMsg) {
+                            firstErrorMsg = msg;
+                        }
+                        loc.rows.forEach((rId) => {
+                            newWarnings[rId] = msg;
+                        });
+                        hasError = true;
+                    }
                 }
+            } catch (err) {
+                // Ignore API failures during auto-validation
             }
         }
-        return true;
+        setCapacityWarnings(newWarnings);
+        if (firstErrorMsg) {
+            showToast("error", firstErrorMsg);
+        }
+        return !hasError;
     };
 
     const handleSave = async () => {
@@ -919,63 +979,81 @@ export default function ReceiptCreatePage() {
                                     {rows.map((row, idx) => {
                                         const amount = (Number(row.quantity) || 0) * (Number(row.price) || 0);
                                         const locLabel = row.selectedLocations.map((l) => l.locationcode).join(" / ");
+                                        const hasWarning = !!capacityWarnings[row._id];
+                                        const locBtnClass = `rc-loc-btn${hasWarning ? " rc-loc-btn-warn" : row.selectedLocations.length > 0 ? " rc-loc-btn-set" : ""}`;
                                         return (
-                                            <tr key={row._id} style={{ background: "#f5faf7" }}>
-                                                <td className="rc-td-stt">{idx + 1}</td>
-                                                <td>
-                                                    <select className="rc-td-select" value={row.itemId} onChange={(e) => handleRowChange(idx, "itemId", e.target.value)}>
-                                                        <option value="">--</option>
-                                                        {items.map((it) => {
-                                                            const isSelectedElsewhere = rows.some((r, rIdx) => rIdx !== idx && String(r.itemId) === String(it.id));
-                                                            return (
-                                                                <option key={it.id} value={it.id} disabled={isSelectedElsewhere}>
-                                                                    {it.itemcode} {isSelectedElsewhere ? "(Đã chọn)" : ""}
-                                                                </option>
-                                                            );
-                                                        })}
-                                                    </select>
-                                                </td>
-                                                <td>
-                                                    <input className="rc-td-input" value={row.itemname} readOnly style={{ background: "#f6fbf8", color: "#4c6152" }} placeholder="Tên vật tư" />
-                                                </td>
-                                                <td>
-                                                    <input
-                                                        className="rc-td-input rc-batch-code-preview"
-                                                        readOnly
-                                                        value={isAdjustment ? (row.sourceBatchCode || row.nameBatch || "—") : buildBatchCode(row.nameBatch, form.date, row.itemcode)}
-                                                        placeholder="Auto"
-                                                    />
-                                                </td>
-                                                <td>
-                                                    <input className="rc-td-input" value={row.unitof} readOnly style={{ background: "#f6fbf8", color: "#4c6152" }} />
-                                                </td>
-                                                <td>
-                                                    <input type="number" className="rc-td-input" min="1" value={row.quantity}
-                                                        onChange={(e) => {
-                                                            setRows((prev) => {
-                                                                const next = [...prev];
-                                                                next[idx] = { ...next[idx], quantity: e.target.value, selectedLocations: [] };
-                                                                return next;
-                                                            });
-                                                        }} placeholder="0" />
-                                                </td>
-                                                <td>
-                                                    <button type="button" className={`rc-loc-btn${row.selectedLocations.length > 0 ? " rc-loc-btn-set" : ""}`} onClick={() => openLocationModal(idx)}>
-                                                        {row.selectedLocations.length > 0 ? locLabel : "Chọn vị trí"} <IconChevron />
-                                                    </button>
-                                                </td>
-                                                <td>
-                                                    <input type="number" className="rc-td-input" min="0.01" step="0.01" value={row.price} onChange={(e) => handleRowChange(idx, "price", e.target.value)} placeholder="0" />
-                                                </td>
-                                                <td className="rc-td-num" style={{ textAlign: "right", fontWeight: 500 }}>
-                                                    {amount > 0 ? formatMoney(amount) : ""}
-                                                </td>
-                                                <td style={{ textAlign: "center", width: 32 }}>
-                                                    {rows.length > 1 && (
-                                                        <button className="rc-del-btn" onClick={() => handleRemoveRow(idx)} title="Xóa dòng"><IconTrash /></button>
-                                                    )}
-                                                </td>
-                                            </tr>
+                                            <React.Fragment key={row._id}>
+                                                <tr style={{ background: "#f5faf7" }}>
+                                                    <td className="rc-td-stt">{idx + 1}</td>
+                                                    <td>
+                                                        <select className="rc-td-select" value={row.itemId} onChange={(e) => handleRowChange(idx, "itemId", e.target.value)}>
+                                                            <option value="">--</option>
+                                                            {items.map((it) => {
+                                                                const isSelectedElsewhere = rows.some((r, rIdx) => rIdx !== idx && String(r.itemId) === String(it.id));
+                                                                return (
+                                                                    <option key={it.id} value={it.id} disabled={isSelectedElsewhere}>
+                                                                        {it.itemcode} {isSelectedElsewhere ? "(Đã chọn)" : ""}
+                                                                    </option>
+                                                                );
+                                                            })}
+                                                        </select>
+                                                    </td>
+                                                    <td>
+                                                        <input className="rc-td-input" value={row.itemname} readOnly style={{ background: "#f6fbf8", color: "#4c6152" }} placeholder="Tên vật tư" />
+                                                    </td>
+                                                    <td>
+                                                        <input
+                                                            className="rc-td-input rc-batch-code-preview"
+                                                            readOnly
+                                                            value={isAdjustment ? (row.sourceBatchCode || row.nameBatch || "—") : buildBatchCode(row.nameBatch, form.date, row.itemcode)}
+                                                            placeholder="Auto"
+                                                        />
+                                                    </td>
+                                                    <td>
+                                                        <input className="rc-td-input" value={row.unitof} readOnly style={{ background: "#f6fbf8", color: "#4c6152" }} />
+                                                    </td>
+                                                    <td>
+                                                        <input type="number" className="rc-td-input" min="1" value={row.quantity}
+                                                            onChange={async (e) => {
+                                                                const val = e.target.value;
+                                                                setRows((prev) => {
+                                                                    const next = [...prev];
+                                                                    next[idx] = { ...next[idx], quantity: val, selectedLocations: [] };
+                                                                    return next;
+                                                                });
+                                                                if (isAdjustment) {
+                                                                    const updatedRows = rows.map((r, i) => i === idx ? { ...r, quantity: val, selectedLocations: [] } : r);
+                                                                    await validateAdjustmentCapacity(updatedRows);
+                                                                }
+                                                            }} placeholder="0" />
+                                                    </td>
+                                                    <td>
+                                                        <button type="button" className={locBtnClass} onClick={() => openLocationModal(idx)}>
+                                                            {row.selectedLocations.length > 0 ? locLabel : "Chọn vị trí"} <IconChevron />
+                                                        </button>
+                                                    </td>
+                                                    <td>
+                                                        <input type="number" className="rc-td-input" min="0.01" step="0.01" value={row.price} onChange={(e) => handleRowChange(idx, "price", e.target.value)} placeholder="0" />
+                                                    </td>
+                                                    <td className="rc-td-num" style={{ textAlign: "right", fontWeight: 500 }}>
+                                                        {amount > 0 ? formatMoney(amount) : ""}
+                                                    </td>
+                                                    <td style={{ textAlign: "center", width: 32 }}>
+                                                        {rows.length > 1 && (
+                                                            <button className="rc-del-btn" onClick={() => handleRemoveRow(idx)} title="Xóa dòng"><IconTrash /></button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                                {hasWarning && (
+                                                    <tr className="rc-row-warning-msg">
+                                                        <td colSpan={10} style={{ color: "#b71c1c", background: "#fce4ec", fontSize: "0.84rem", padding: "6px 12px", borderLeft: "3px solid #b71c1c" }}>
+                                                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                                                <IconWarn /> {capacityWarnings[row._id]}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </React.Fragment>
                                         );
                                     })}
                                     <tr className="rc-add-row" onClick={handleAddRow}>

@@ -380,6 +380,16 @@
     background: #eaf7f0;
 }
 
+.rc-loc-btn.rc-loc-btn-warn {
+    border-color: #d32f2f;
+    color: #d32f2f;
+    background: #ffebee;
+}
+
+.rc-loc-btn.rc-loc-btn-warn:hover {
+    background: #ffcdd2;
+}
+
 /* ── Batch sub-row ───────────────────────────────────── */
 .rc-batch-subrow td {
     border-bottom: 1.5px solid #e0ece5;
