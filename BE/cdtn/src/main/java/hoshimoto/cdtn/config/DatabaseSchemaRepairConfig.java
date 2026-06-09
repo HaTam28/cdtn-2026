@@ -17,6 +17,7 @@ public class DatabaseSchemaRepairConfig {
         return args -> {
             repairInventoryAuditDocstatusConstraint(jdbcTemplate);
             repairNotificationSequence(jdbcTemplate);
+            repairNotificationTypeConstraint(jdbcTemplate);
         };
     }
 
@@ -80,4 +81,55 @@ public class DatabaseSchemaRepairConfig {
             logger.warn("Failed to repair notification sequence", ex);
         }
     }
+
+    private void repairNotificationTypeConstraint(JdbcTemplate jdbcTemplate) {
+        try {
+            jdbcTemplate.execute("""
+                DO $$
+                DECLARE
+                    constraint_name text;
+                BEGIN
+                    FOR constraint_name IN
+                        SELECT c.conname
+                        FROM pg_constraint c
+                        JOIN pg_class t ON t.oid = c.conrelid
+                        WHERE t.relname = 'notification'
+                          AND c.contype = 'c'
+                          AND pg_get_constraintdef(c.oid) ILIKE '%(type)%'
+                    LOOP
+                        EXECUTE format('ALTER TABLE notification DROP CONSTRAINT IF EXISTS %I', constraint_name);
+                    END LOOP;
+
+                    -- Recreate type check constraint to include REJECTED
+                    ALTER TABLE notification
+                        ADD CONSTRAINT notification_type_check
+                        CHECK (type IN (
+                            'APPROVAL_REQUIRED',
+                            'APPROVED',
+                            'ASSIGNED',
+                            'REJECTED'
+                        ));
+
+                    -- Ensure targettype check constraint exists
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint c
+                        JOIN pg_class t ON t.oid = c.conrelid
+                        WHERE t.relname = 'notification'
+                          AND c.conname = 'notification_targettype_check'
+                    ) THEN
+                        ALTER TABLE notification
+                            ADD CONSTRAINT notification_targettype_check
+                            CHECK (targettype IN (
+                                'GOODS_RECEIPT',
+                                'GOODS_ISSUE',
+                                'INVENTORY_AUDIT'
+                            ));
+                    END IF;
+                END $$;
+                """);
+        } catch (Exception ex) {
+            logger.warn("Failed to repair notification type constraint", ex);
+        }
+    }
 }
+
