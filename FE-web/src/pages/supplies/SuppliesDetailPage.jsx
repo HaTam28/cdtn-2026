@@ -232,7 +232,7 @@ export default function SuppliesDetailPage() {
                                     <input
                                         className={`sd-input${fieldErrors.unitof ? " sd-input-error" : ""}`}
                                         value={form.unitof}
-                                        disabled={!isEditing}
+                                        disabled
                                         onChange={(e) => handleChange("unitof", e.target.value)}
                                     />
                                     {fieldErrors.unitof && <span className="sd-error-msg">{fieldErrors.unitof}</span>}
