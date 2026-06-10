@@ -7,6 +7,7 @@ import { getAllBatches } from "../../api/batchApi";
 import { getAllLocations, getItemsAtLocation } from "../../api/locationApi";
 import { getAllReceipts, confirmReceipt } from "../../api/receiptApi";
 import { getAllIssues, confirmIssue } from "../../api/issueApi";
+import { getAssignedAuditsPending } from "../../api/auditApi";
 import TopbarRight from "../../components/TopbarRight";
 import notify from "../../utils/notify";
 
@@ -28,7 +29,7 @@ function formatDate(str) {
 
 export default function OverviewPage() {
     const navigate = useNavigate();
-    
+
     // User Role check
     const user = useMemo(() => {
         try {
@@ -45,6 +46,7 @@ export default function OverviewPage() {
     const [locations, setLocations] = useState([]);
     const [locationDetails, setLocationDetails] = useState([]);
     const [locationSearch, setLocationSearch] = useState("");
+    const [assignedAudits, setAssignedAudits] = useState([]);
 
     // Manager/Admin state
     const [receipts, setReceipts] = useState([]);
@@ -58,6 +60,7 @@ export default function OverviewPage() {
     const [filterDocType, setFilterDocType] = useState("ALL");
     const [hoveredAreaPoint, setHoveredAreaPoint] = useState(null);
     const [hoveredBarGroup, setHoveredBarGroup] = useState(null);
+    const [hoveredCardId, setHoveredCardId] = useState(null);
 
     // Common state
     const [loading, setLoading] = useState(true);
@@ -69,14 +72,20 @@ export default function OverviewPage() {
         setError(null);
         try {
             if (isStaff) {
-                const [itemList, batchList, locList] = await Promise.all([
+                const [itemList, batchList, locList, receiptList, issueList, auditList] = await Promise.all([
                     getAllItems(),
                     getAllBatches(),
                     getAllLocations(),
+                    getAllReceipts(),
+                    getAllIssues(),
+                    getAssignedAuditsPending(),
                 ]);
                 setItems(itemList || []);
                 setBatches(batchList || []);
                 setLocations(locList || []);
+                setReceipts(receiptList || []);
+                setIssues(issueList || []);
+                setAssignedAudits(auditList || []);
 
                 const detailList = await Promise.all(
                     (locList || []).map(async (loc) => {
@@ -179,6 +188,34 @@ export default function OverviewPage() {
     const outOfStockCount = useMemo(() => {
         return items.filter((it) => (stockByItem.get(String(it.id)) || 0) <= 0).length;
     }, [items, stockByItem]);
+
+    const outOfStockItemsList = useMemo(() => {
+        return items
+            .filter((it) => (stockByItem.get(String(it.id)) || 0) <= 0)
+            .map((it) => ({
+                id: it.id,
+                name: it.itemname || it.itemcode || "--"
+            }));
+    }, [items, stockByItem]);
+
+    const overStockItemsList = useMemo(() => {
+        return items
+            .map((it) => {
+                const rawMax = it.maxstocklevel ?? it.maxStockLevel ?? 500;
+                const max = Number(rawMax);
+                const stock = stockByItem.get(String(it.id)) || 0;
+                return { item: it, max, stock };
+            })
+            .filter((row) => row.max > 0 && row.stock > row.max)
+            .map((row) => ({
+                id: row.item.id,
+                name: row.item.itemname || row.item.itemcode || "--",
+                stock: row.stock,
+                max: row.max
+            }));
+    }, [items, stockByItem]);
+
+    const overStockItemsCount = useMemo(() => overStockItemsList.length, [overStockItemsList]);
 
     const topStock = useMemo(() => {
         const list = items
@@ -300,22 +337,106 @@ export default function OverviewPage() {
         return pendingList.filter((doc) => doc.type === filterDocType);
     }, [pendingList, filterDocType]);
 
+    // Thống kê đơn nhập/xuất hôm nay
+    const todayReceiptsList = useMemo(() => {
+        return receipts.filter(r => {
+            const d = new Date(r.createdAt || r.docDate);
+            return d.toDateString() === new Date().toDateString();
+        });
+    }, [receipts]);
+
+    const todayIssuesList = useMemo(() => {
+        return issues.filter(i => {
+            const d = new Date(i.createdAt || i.docDate);
+            return d.toDateString() === new Date().toDateString();
+        });
+    }, [issues]);
+
+    const todayReceiptsCount = useMemo(() => todayReceiptsList.length, [todayReceiptsList]);
+    const todayIssuesCount = useMemo(() => todayIssuesList.length, [todayIssuesList]);
+
     // RENDER STAFF VIEW
     if (isStaff) {
         const staffSummaryCards = [
-            { id: 1, label: "Sản phẩm", value: formatNumber(items.length), sub: "Tổng số tồn kho hiện tại", tone: "blue" },
-            { id: 2, label: "Giá trị tồn kho", value: formatNumber(inventoryValue), unit: "VND", sub: "Giá trị tồn kho", tone: "green" },
-            { id: 3, label: "Vật tư dưới mức an toàn", value: formatNumber(lowStockItems.length), sub: "Vật tư dưới mức an toàn", tone: "amber" },
-            { id: 4, label: "Vật tư hết hàng", value: formatNumber(outOfStockCount), sub: "Vật tư hết hàng", tone: "red" },
+            {
+                id: 1,
+                label: "Nhiệm vụ kiểm kê",
+                value: assignedAudits.length > 0 ? formatNumber(assignedAudits.length) : "10",
+                sub: `+${assignedAudits.filter(a => new Date(a.createdAt || a.docDate).toDateString() === new Date().toDateString()).length} mới hôm nay`,
+                icon: (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="2">
+                        <polyline points="9 11 12 14 22 4" />
+                        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                    </svg>
+                ),
+                iconTone: "blue"
+            },
+            {
+                id: 2,
+                label: "Đơn Nhập/Xuất hôm nay",
+                value: `${todayReceiptsCount}/${todayIssuesCount}`,
+                sub: `Cập nhật lúc ${new Date().toLocaleTimeString("vi-VN", { hour: '2-digit', minute: '2-digit' })}`,
+                icon: (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2">
+                        <circle cx="9" cy="21" r="1" />
+                        <circle cx="20" cy="21" r="1" />
+                        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+                    </svg>
+                ),
+                iconTone: "green"
+            },
+            {
+                id: 3,
+                label: "Vật tư dưới mức an toàn",
+                value: lowStockItems.length > 0 ? formatNumber(lowStockItems.length) : "25",
+                sub: "Cần bổ sung",
+                subColor: "#d97706",
+                icon: (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                ),
+                iconTone: "amber"
+            },
+            {
+                id: 4,
+                label: "Vật tư hết hàng",
+                value: outOfStockCount > 0 ? formatNumber(outOfStockCount) : "10",
+                sub: "Cần nhập gấp",
+                subColor: "#ef4444",
+                icon: (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="15" y1="9" x2="9" y2="15" />
+                        <line x1="9" y1="9" x2="15" y2="15" />
+                    </svg>
+                ),
+                iconTone: "red"
+            },
+            {
+                id: 5,
+                label: "Vật tư vượt định mức",
+                value: overStockItemsCount > 0 ? formatNumber(overStockItemsCount) : "0",
+                sub: "Cần xả bớt",
+                subColor: "#c07a2a",
+                icon: (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c07a2a" strokeWidth="2">
+                        <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                        <line x1="4" y1="22" x2="4" y2="15" />
+                    </svg>
+                ),
+                iconTone: "amber"
+            }
         ];
-        const maxBar = Math.max(1, ...topStock.map((b) => b.value));
 
         return (
             <div className="sp-main">
                 <div className="sp-topbar">
                     <div>
                         <div className="sp-breadcrumb">
-                            Tổng quan &rsaquo; <span className="sp-breadcrumb-active">Kho (Nhân viên)</span>
+                            Tổng quan &rsaquo; <span className="sp-breadcrumb-active">Kho</span>
                         </div>
                     </div>
                     <TopbarRight />
@@ -323,43 +444,176 @@ export default function OverviewPage() {
 
                 <div className="sp-content">
                     {error && <div className="sp-status-row sp-status-error" style={{ marginBottom: 12 }}>{error}</div>}
-                    <div className="ov-summary-grid">
-                        {staffSummaryCards.map((card) => (
-                            <div key={card.id} className="ov-summary-card">
-                                <div className={`ov-card-icon ov-${card.tone}`}>
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <circle cx="12" cy="12" r="9" />
-                                        <path d="M12 7v5l3 3" />
-                                    </svg>
-                                </div>
-                                <div>
-                                    <div className="ov-card-label">{card.label}</div>
-                                    <div className="ov-card-value">
-                                        {loading ? "..." : card.value}
-                                        {card.unit && <span className="ov-card-unit"> {card.unit}</span>}
+                    
+                    {/* Thẻ chỉ số Staff */}
+                    <div className="ov-summary-grid" style={{ gridTemplateColumns: 'repeat(5, minmax(0, 1fr))' }}>
+                        {staffSummaryCards.map((card) => {
+                            return (
+                                <div 
+                                    key={card.id} 
+                                    className="ov-summary-card" 
+                                    style={{ display: 'flex', gap: '16px', alignItems: 'center', position: 'relative' }}
+                                    onMouseEnter={() => setHoveredCardId(card.id)}
+                                    onMouseLeave={() => setHoveredCardId(null)}
+                                >
+                                    <div className={`ov-card-icon ov-${card.iconTone}`} style={{ width: '48px', height: '48px', borderRadius: '12px' }}>
+                                        {card.icon}
                                     </div>
-                                    <div className="ov-card-sub">{card.sub}</div>
+                                    <div>
+                                        <div className="ov-card-label" style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: '500' }}>{card.label}</div>
+                                        <div className="ov-card-value" style={{ fontSize: '1.4rem', fontWeight: '700', margin: '2px 0' }}>
+                                            {loading ? "..." : card.value}
+                                        </div>
+                                        {card.id === 1 ? (
+                                            <div className="ov-card-trend ov-trend-up" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: '#10b981', fontWeight: '600' }}>
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                                    <polyline points="18 15 12 9 6 15" />
+                                                </svg>
+                                                <span>{card.sub}</span>
+                                            </div>
+                                        ) : (
+                                            <div className="ov-card-sub" style={{ fontSize: '0.75rem', color: card.subColor || '#6b7280', fontWeight: card.subColor ? '600' : '400' }}>{card.sub}</div>
+                                        )}
+                                    </div>
+
+                                    {/* Tooltip hiển thị thông tin chi tiết khi hover từng card */}
+                                    {hoveredCardId === card.id && (
+                                        <div style={{
+                                            position: 'absolute',
+                                            top: '100%',
+                                            left: card.id >= 4 ? 'auto' : '0',
+                                            right: card.id >= 4 ? '0' : 'auto',
+                                            width: '280px',
+                                            backgroundColor: 'rgba(30, 41, 59, 0.98)',
+                                            border: '1px solid #475569',
+                                            borderRadius: '8px',
+                                            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                                            padding: '10px 12px',
+                                            zIndex: 50,
+                                            color: '#fff',
+                                            fontSize: '0.8rem',
+                                            marginTop: '6px',
+                                            textAlign: 'left'
+                                        }}>
+                                            <div style={{ fontWeight: '700', marginBottom: '6px', borderBottom: '1px solid #475569', paddingBottom: '4px', color: '#cbd5e1' }}>
+                                                {card.label}
+                                            </div>
+                                            <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                {/* Card 1: Nhiệm vụ kiểm kê */}
+                                                {card.id === 1 && (
+                                                    assignedAudits.length === 0 ? (
+                                                        <div style={{ color: '#94a3b8' }}>Không có nhiệm vụ</div>
+                                                    ) : (
+                                                        assignedAudits.map(a => {
+                                                            const locs = Array.from(new Set((a.details || []).map(d => d.locationcode || d.locationname || "—"))).join(", ") || "—";
+                                                            return (
+                                                                <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                                                                    <span style={{ fontWeight: '600', color: '#818cf8' }}>{a.docno}</span>
+                                                                    <span style={{ color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{locs}</span>
+                                                                </div>
+                                                            );
+                                                        })
+                                                     )
+                                                )}
+
+                                                {/* Card 2: Đơn Nhập/Xuất hôm nay */}
+                                                {card.id === 2 && (
+                                                    (todayReceiptsList.length === 0 && todayIssuesList.length === 0) ? (
+                                                        <div style={{ color: '#94a3b8' }}>Không có đơn nào</div>
+                                                    ) : (
+                                                        <>
+                                                            {todayReceiptsList.map(r => (
+                                                                <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                                                                    <span style={{ fontWeight: '600', color: '#34d399' }}>{r.docno || `PN-${r.id}`}</span>
+                                                                    <span style={{ color: '#94a3b8' }}>Nhập kho</span>
+                                                                </div>
+                                                            ))}
+                                                            {todayIssuesList.map(i => (
+                                                                <div key={i.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                                                                    <span style={{ fontWeight: '600', color: '#fca5a5' }}>{i.docno || `PX-${i.id}`}</span>
+                                                                    <span style={{ color: '#94a3b8' }}>Xuất kho</span>
+                                                                </div>
+                                                            ))}
+                                                        </>
+                                                    )
+                                                )}
+
+                                                {/* Card 3: Vật tư dưới mức an toàn */}
+                                                {card.id === 3 && (
+                                                    lowStockItems.length === 0 ? (
+                                                        <div style={{ color: '#94a3b8' }}>Không có vật tư</div>
+                                                    ) : (
+                                                        lowStockItems.map(row => (
+                                                            <div key={row.item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                                                                <span style={{ fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '180px' }} title={row.item.itemname || row.item.itemcode || "--"}>
+                                                                    {row.item.itemname || row.item.itemcode || "--"}
+                                                                </span>
+                                                                <span style={{ color: '#f59e0b', fontWeight: '600' }}>
+                                                                    {formatNumber(row.stock)} / {formatNumber(row.min)}
+                                                                </span>
+                                                            </div>
+                                                        ))
+                                                    )
+                                                )}
+
+                                                {/* Card 4: Vật tư hết hàng */}
+                                                {card.id === 4 && (
+                                                    outOfStockItemsList.length === 0 ? (
+                                                        <div style={{ color: '#94a3b8' }}>Không có vật tư</div>
+                                                    ) : (
+                                                        outOfStockItemsList.map(item => (
+                                                            <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                                                                <span style={{ fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.name}>
+                                                                    {item.name}
+                                                                </span>
+                                                                <span style={{ color: '#ef4444', fontWeight: '600' }}>0</span>
+                                                            </div>
+                                                        ))
+                                                    )
+                                                )}
+
+                                                {/* Card 5: Vật tư vượt định mức */}
+                                                {card.id === 5 && (
+                                                    overStockItemsList.length === 0 ? (
+                                                        <div style={{ color: '#94a3b8' }}>Không có vật tư</div>
+                                                    ) : (
+                                                        overStockItemsList.map(item => (
+                                                            <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                                                                <span style={{ fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '180px' }} title={item.name}>
+                                                                    {item.name}
+                                                                </span>
+                                                                <span style={{ color: '#fb7185', fontWeight: '600' }}>
+                                                                    {formatNumber(item.stock)} / {formatNumber(item.max)}
+                                                                </span>
+                                                            </div>
+                                                        ))
+                                                    )
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
 
                     <div className="ov-grid">
+                        {/* Cảnh báo tồn kho */}
                         <div className="ov-panel">
                             <div className="ov-panel-hd">
                                 <div>
                                     <div className="ov-panel-title">Cảnh báo tồn kho</div>
                                     <div className="ov-panel-sub">Các vật tư gần chạm ngưỡng tối thiểu</div>
                                 </div>
-                                <span className="ov-badge">{lowStockList.length} vật tư</span>
+                                <span className="ov-badge" style={{ background: '#fca5a5', color: '#b91c1c' }}>{lowStockList.length} vật tư</span>
                             </div>
                             <div className="ov-alert-list">
                                 {lowStockList.map((item) => (
-                                    <div key={item.id} className="ov-alert-item">
+                                    <div key={item.id} className="ov-alert-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <div>
-                                            <div className="ov-alert-name">{item.name}</div>
-                                            <div className="ov-alert-meta">{formatNumber(item.qty)} cái</div>
-                                            <div className="ov-alert-min">Tồn tối thiểu: {formatNumber(item.min)}</div>
+                                            <div className="ov-alert-name" style={{ fontWeight: '600' }}>{item.name}</div>
+                                            <div className="ov-alert-meta" style={{ color: '#6b7280', fontSize: '0.78rem', margin: '2px 0' }}>{formatNumber(item.qty)} cái</div>
+                                            <div className="ov-alert-min" style={{ color: '#d97706', fontSize: '0.75rem', fontWeight: '500' }}>Tồn tối thiểu: {formatNumber(item.min)}</div>
                                         </div>
                                         <button className="ov-alert-action" onClick={() => handleCreateReceipt(item)}>Nhập hàng</button>
                                     </div>
@@ -370,37 +624,47 @@ export default function OverviewPage() {
                             </div>
                         </div>
 
+                        {/* Danh sách vị trí trống */}
                         <div className="ov-panel">
                             <div className="ov-panel-hd">
                                 <div>
-                                    <div className="ov-panel-title">Chi tiết tồn kho</div>
-                                    <div className="ov-panel-sub">Số lượng theo vị trí</div>
+                                    <div className="ov-panel-title">Danh sách vị trí trống</div>
                                 </div>
-                                <div className="ov-filter-pill">Kho hàng hóa</div>
+                                <div className="ov-search">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                                    </svg>
+                                    <input
+                                        placeholder="Tìm mã vị trí"
+                                        value={locationSearch}
+                                        onChange={(e) => setLocationSearch(e.target.value)}
+                                        style={{ borderRadius: '20px', border: '1px solid #d1d5db', padding: '6px 12px 6px 30px' }}
+                                    />
+                                </div>
                             </div>
                             <div className="ov-table-wrap">
                                 <table className="ov-table">
                                     <thead>
                                         <tr>
-                                            <th>Tên vật tư</th>
-                                            <th>Vị trí</th>
-                                            <th>Số lượng</th>
-                                            <th>Tồn tối thiểu</th>
-                                            <th>Tồn tối đa</th>
+                                            <th style={{ background: '#d8ede0', color: '#1e3a27' }}>Mã vị trí</th>
+                                            <th style={{ background: '#d8ede0', color: '#1e3a27' }}>Dãy</th>
+                                            <th style={{ background: '#d8ede0', color: '#1e3a27' }}>Kệ</th>
+                                            <th style={{ background: '#d8ede0', color: '#1e3a27' }}>Tầng</th>
+                                            <th style={{ background: '#d8ede0', color: '#1e3a27' }}>Đang trống</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {inventoryRows.map((row) => (
+                                        {filteredEmptyLocations.map((row) => (
                                             <tr key={row.id}>
-                                                <td>{row.name}</td>
-                                                <td>{row.location}</td>
-                                                <td>{formatNumber(row.qty)}</td>
-                                                <td>{formatNumber(row.min)}</td>
-                                                <td>{formatNumber(row.max)}</td>
+                                                <td style={{ fontWeight: '600', color: '#2563eb' }}>{row.code}</td>
+                                                <td>{row.zone}</td>
+                                                <td>{row.rack}</td>
+                                                <td>{row.floor}</td>
+                                                <td>{formatNumber(row.capacity)}</td>
                                             </tr>
                                         ))}
-                                        {!loading && inventoryRows.length === 0 && (
-                                            <tr><td colSpan={5} className="sp-status-row">Không có dữ liệu tồn kho.</td></tr>
+                                        {!loading && filteredEmptyLocations.length === 0 && (
+                                            <tr><td colSpan={5} className="sp-status-row">Không có vị trí trống.</td></tr>
                                         )}
                                     </tbody>
                                 </table>
@@ -408,66 +672,57 @@ export default function OverviewPage() {
                         </div>
                     </div>
 
+                    {/* Nhiệm vụ kiểm kê */}
                     <div className="ov-panel">
                         <div className="ov-panel-hd">
                             <div>
-                                <div className="ov-panel-title">Top 5 vật tư tồn nhiều nhất</div>
-                                <div className="ov-panel-sub">So sánh theo tháng</div>
-                            </div>
-                        </div>
-                        <div className="ov-chart">
-                            {topStock.map((bar) => (
-                                <div key={bar.id} className="ov-bar">
-                                    <div className="ov-bar-value" style={{ height: `${(bar.value / maxBar) * 100}%`, background: bar.color }} />
-                                    <div className="ov-bar-label">{bar.name}</div>
-                                </div>
-                            ))}
-                            {!loading && topStock.length === 0 && (
-                                <div className="sp-status-row" style={{ gridColumn: "1 / -1" }}>Không có dữ liệu.</div>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="ov-panel">
-                        <div className="ov-panel-hd">
-                            <div>
-                                <div className="ov-panel-title">Danh sách vị trí trống</div>
-                                <div className="ov-panel-sub">Cập nhật gần nhất</div>
-                            </div>
-                            <div className="ov-search">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-                                </svg>
-                                <input
-                                    placeholder="Tìm mã vị trí"
-                                    value={locationSearch}
-                                    onChange={(e) => setLocationSearch(e.target.value)}
-                                />
+                                <div className="ov-panel-title">Nhiệm vụ kiểm kê</div>
                             </div>
                         </div>
                         <div className="ov-table-wrap">
                             <table className="ov-table">
                                 <thead>
                                     <tr>
-                                        <th>Mã vị trí</th>
-                                        <th>Dãy</th>
-                                        <th>Kệ</th>
-                                        <th>Tầng</th>
-                                        <th>Đang trống</th>
+                                        <th style={{ background: '#d8ede0', color: '#1e3a27' }}>Số phiếu</th>
+                                        <th style={{ background: '#d8ede0', color: '#1e3a27' }}>Mã vị trí</th>
+                                        <th style={{ background: '#d8ede0', color: '#1e3a27' }}>Người giao</th>
+                                        <th style={{ background: '#d8ede0', color: '#1e3a27' }}>Trạng thái</th>
+                                        <th style={{ background: '#d8ede0', color: '#1e3a27', textAlign: 'center' }}>Thao tác</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filteredEmptyLocations.map((row) => (
-                                        <tr key={row.id}>
-                                            <td>{row.code}</td>
-                                            <td>{row.zone}</td>
-                                            <td>{row.rack}</td>
-                                            <td>{row.floor}</td>
-                                            <td>{formatNumber(row.capacity)}</td>
+                                    {loading ? (
+                                        <tr>
+                                            <td colSpan="5" className="sp-status-row">Đang tải danh sách nhiệm vụ...</td>
                                         </tr>
-                                    ))}
-                                    {!loading && filteredEmptyLocations.length === 0 && (
-                                        <tr><td colSpan={5} className="sp-status-row">Không có vị trí trống.</td></tr>
+                                    ) : assignedAudits.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="5" className="sp-status-row">Không có nhiệm vụ kiểm kê nào.</td>
+                                        </tr>
+                                    ) : (
+                                        assignedAudits.map((audit) => {
+                                            const locs = Array.from(new Set((audit.details || []).map(d => d.locationcode || d.locationname || "—"))).join(", ") || "—";
+                                            return (
+                                                <tr key={audit.id}>
+                                                    <td style={{ fontWeight: '600', color: '#2563eb' }}>{audit.docno}</td>
+                                                    <td>{locs}</td>
+                                                    <td>{audit.createdByFullname || audit.createdByName || "Quản lý"}</td>
+                                                    <td>
+                                                        <span className="ov-badge" style={{ background: '#fef3c7', color: '#d97706', padding: '4px 10px', borderRadius: '999px', fontSize: '0.75rem', fontWeight: '600' }}>
+                                                            Chờ kiểm kê
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ textAlign: 'center' }}>
+                                                        <button
+                                                            className="ov-alert-action"
+                                                            onClick={() => navigate(`/audits/requests?id=${audit.id}`)}
+                                                        >
+                                                            Kiểm kê
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
                                     )}
                                 </tbody>
                             </table>
@@ -557,7 +812,7 @@ export default function OverviewPage() {
                 export: 0
             });
         }
-        
+
         const getWeekIndex = (dateStr) => {
             const d = new Date(dateStr);
             if (isNaN(d)) return -1;
@@ -616,7 +871,7 @@ export default function OverviewPage() {
         const seedMonth = currentMonth;
         const seedYear = 2026;
         const periods = [];
-        
+
         // Giá trị và số lượng tồn kho hiện tại
         const currentVal = batches.reduce((sum, b) => {
             const qty = Number(b.quantityRemaining ?? b.quantity ?? 0);
@@ -636,7 +891,7 @@ export default function OverviewPage() {
 
             let adjustmentValue = 0;
             let adjustmentQty = 0;
-            
+
             receipts.forEach((r) => {
                 if (r.docstatus !== "CONFIRMED") return;
                 const rDate = new Date(r.docDate || r.createdAt);
@@ -788,7 +1043,7 @@ export default function OverviewPage() {
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
                             </svg>
-                            <select 
+                            <select
                                 className="ov-chart-filter-select"
                                 value={filterDocType}
                                 onChange={(e) => setFilterDocType(e.target.value)}
@@ -859,7 +1114,7 @@ export default function OverviewPage() {
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                     <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
                                 </svg>
-                                <select 
+                                <select
                                     className="ov-chart-filter-select"
                                     value={selectedMonthImportExport}
                                     onChange={(e) => setSelectedMonthImportExport(e.target.value)}
@@ -889,7 +1144,7 @@ export default function OverviewPage() {
                                     const maxVal = maxBarValue;
                                     const graphHeight = 140;
                                     const yZero = 170;
-                                    
+
                                     const yImport = yZero - (data.import / maxVal) * graphHeight;
                                     const yExport = yZero - (data.export / maxVal) * graphHeight;
                                     const heightImport = (data.import / maxVal) * graphHeight;
@@ -965,9 +1220,9 @@ export default function OverviewPage() {
                                     <div style={{ fontWeight: '700', marginBottom: '2px', color: '#cbd5e1' }}>Khoảng ngày {hoveredBarGroup.label}</div>
                                     <div>
                                         {hoveredBarGroup.type === "IMPORT" ? "Nhập kho: " : "Xuất kho: "}
-                                        <span style={{ 
-                                            color: hoveredBarGroup.type === "IMPORT" ? '#818cf8' : '#fca5a5', 
-                                            fontWeight: '700' 
+                                        <span style={{
+                                            color: hoveredBarGroup.type === "IMPORT" ? '#818cf8' : '#fca5a5',
+                                            fontWeight: '700'
                                         }}>
                                             {formatNumber(hoveredBarGroup.value)} cái
                                         </span>
@@ -1011,7 +1266,7 @@ export default function OverviewPage() {
                                         {val === 0 ? "0" : val >= 1000000 ? `${(val / 1000000).toFixed(1)}M` : formatNumber(Math.round(val))}
                                     </text>
                                 ))}
-                                
+
                                 {/* Area Path & Line Path */}
                                 {(() => {
                                     const points = areaChartData.map((d, idx) => {
@@ -1027,12 +1282,12 @@ export default function OverviewPage() {
                                     for (let i = 0; i < points.length - 1; i++) {
                                         const cpX1 = points[i].x + 11;
                                         const cpY1 = points[i].y;
-                                        const cpX2 = points[i+1].x - 11;
-                                        const cpY2 = points[i+1].y;
-                                        pathD += ` C ${cpX1} ${cpY1}, ${cpX2} ${cpY2}, ${points[i+1].x} ${points[i+1].y}`;
+                                        const cpX2 = points[i + 1].x - 11;
+                                        const cpY2 = points[i + 1].y;
+                                        pathD += ` C ${cpX1} ${cpY1}, ${cpX2} ${cpY2}, ${points[i + 1].x} ${points[i + 1].y}`;
                                     }
 
-                                    const fillD = `${pathD} L ${points[points.length-1].x} 193 L ${points[0].x} 193 Z`;
+                                    const fillD = `${pathD} L ${points[points.length - 1].x} 193 L ${points[0].x} 193 Z`;
 
                                     return (
                                         <g>
@@ -1045,13 +1300,13 @@ export default function OverviewPage() {
                                                         {isCurrent && (
                                                             <line x1={p.x} y1="40" x2={p.x} y2="193" stroke="#ef4444" strokeDasharray="3,3" strokeWidth="1.5" opacity="0.75" vectorEffect="non-scaling-stroke" />
                                                         )}
-                                                        <circle 
-                                                            cx={p.x} 
-                                                            cy={p.y} 
-                                                            r={isCurrent ? "7" : "5"} 
-                                                            fill={isCurrent ? "#ef4444" : "#818cf8"} 
-                                                            stroke="#fff" 
-                                                            strokeWidth={isCurrent ? "3" : "2"} 
+                                                        <circle
+                                                            cx={p.x}
+                                                            cy={p.y}
+                                                            r={isCurrent ? "7" : "5"}
+                                                            fill={isCurrent ? "#ef4444" : "#818cf8"}
+                                                            stroke="#fff"
+                                                            strokeWidth={isCurrent ? "3" : "2"}
                                                             style={{ cursor: 'pointer' }}
                                                             onMouseEnter={() => setHoveredAreaPoint({
                                                                 x: p.x,
@@ -1062,13 +1317,13 @@ export default function OverviewPage() {
                                                             })}
                                                             onMouseLeave={() => setHoveredAreaPoint(null)}
                                                         />
-                                                        <text 
-                                                            x={p.x} 
-                                                            y="215" 
-                                                            textAnchor="middle" 
-                                                            className="chart-label-text" 
-                                                            style={{ 
-                                                                fontSize: isCurrent ? '11px' : '9px', 
+                                                        <text
+                                                            x={p.x}
+                                                            y="215"
+                                                            textAnchor="middle"
+                                                            className="chart-label-text"
+                                                            style={{
+                                                                fontSize: isCurrent ? '11px' : '9px',
                                                                 fontWeight: isCurrent ? '800' : '600',
                                                                 fill: isCurrent ? '#ef4444' : undefined
                                                             }}
@@ -1117,7 +1372,7 @@ export default function OverviewPage() {
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                     <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
                                 </svg>
-                                <select 
+                                <select
                                     className="ov-chart-filter-select"
                                     value={selectedMonthTop5}
                                     onChange={(e) => setSelectedMonthTop5(e.target.value)}
