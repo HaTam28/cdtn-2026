@@ -177,7 +177,10 @@ export default function ReceiptsPage() {
     };
 
     const handleExportPdf = () => {
-        if (selected.size === 0) return;
+        if (selected.size === 0) {
+            notify("Vui lòng chọn ít nhất 1 phiếu để xuất dữ liệu.", { type: "warning" });
+            return;
+        }
         const exportRows = filtered.filter((r) => selected.has(r.id));
         const now = new Date();
         const title = "DANH SÁCH PHIᯪU NHẬP KHO";
@@ -275,7 +278,6 @@ export default function ReceiptsPage() {
                     <button
                         className="rc-btn-template"
                         onClick={handleExportPdf}
-                        disabled={selected.size === 0}
                         title={selected.size === 0 ? "Chọn ít nhất 1 phiếu để export" : `Export ${selected.size} phiếu`}
                     >
                         <IconExport /> Export {selected.size > 0 ? `(${selected.size})` : ""}

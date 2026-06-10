@@ -4,6 +4,7 @@ import "../../styles/shared.css";
 import { getAllEmployees } from "../../api/employeeApi";
 import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
+import notify from "../../utils/notify";
 
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
@@ -99,7 +100,10 @@ export default function EmployeesPage() {
     };
 
     const handleExportPdf = () => {
-        if (selected.size === 0) return;
+        if (selected.size === 0) {
+            notify("Vui lòng chọn ít nhất 1 nhân viên để xuất dữ liệu.", { type: "warning" });
+            return;
+        }
         const now = new Date();
         const title = "DANH MỤC NHÂN VIÊN";
         const exportRows = filtered.filter((r) => selected.has(r.id));
@@ -228,7 +232,6 @@ export default function EmployeesPage() {
                     <button
                         className="sp-btn-outline"
                         onClick={handleExportPdf}
-                        disabled={selected.size === 0}
                         title={selected.size === 0 ? "Chọn ít nhất 1 nhân viên để export" : `Export ${selected.size} nhân viên`}
                     >
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
