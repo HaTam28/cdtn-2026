@@ -285,8 +285,37 @@ export default function AuditCreatePage() {
             const selectableStockRows = makeRowsFromStockRows(stockRows);
             setEmployees(employeeList || []);
             setStockOptions(selectableStockRows);
-            setRows(selectableStockRows.length > 0 ? [newEmptyAuditRow()] : []);
             const clone = location.state?.clone;
+            if (clone && clone.details && clone.details.length > 0) {
+                const grouped = {};
+                clone.details.forEach((d) => {
+                    const key = String(d.itemId);
+                    if (!grouped[key]) {
+                        grouped[key] = {
+                            _id: `audit-clone-row-${++_auditRowKey}`,
+                            selectedItemId: String(d.itemId),
+                            itemId: d.itemId,
+                            itemcode: d.itemcode || "",
+                            itemname: d.itemname || "",
+                            unitof: d.unitof || "",
+                            batchEntries: [],
+                        };
+                    }
+                    grouped[key].batchEntries.push({
+                        _id: `audit-batch-clone-${++_auditRowKey}`,
+                        selectedStockId: `${d.batchId || ""}-${d.locationId || ""}`,
+                        batchId: d.batchId,
+                        batchCode: d.batchCode || d.batchcode || "",
+                        locationId: d.locationId,
+                        locationcode: d.locationcode || d.locationname || "",
+                        locationname: d.locationname || "",
+                        bookquantity: d.bookquantity,
+                    });
+                });
+                setRows(Object.values(grouped));
+            } else {
+                setRows(selectableStockRows.length > 0 ? [newEmptyAuditRow()] : []);
+            }
             const nextStartDate = toInputDate(clone?.startDate || clone?.auditStartDate || clone?.fromDate || clone?.docDate);
             const nextEndDate = toInputDate(clone?.endDate || clone?.auditEndDate || clone?.toDate || clone?.dueDate || clone?.docDate);
             setForm((prev) => ({
@@ -295,6 +324,7 @@ export default function AuditCreatePage() {
                 description: clone?.description || prev.description,
                 startDate: nextStartDate || prev.startDate,
                 endDate: nextEndDate || prev.endDate,
+                assigneeId: clone?.assignedToUserId ? String(clone.assignedToUserId) : (clone?.assigneeId ? String(clone.assigneeId) : prev.assigneeId),
             }));
             setDateDisplay((prev) => ({
                 startDate: formatDateForDisplay(nextStartDate || form.startDate || prev.startDate),
@@ -311,8 +341,10 @@ export default function AuditCreatePage() {
     useEffect(() => { loadData(); }, [loadData]);
 
     useEffect(() => {
-        if (isStaff) navigate("/audits/requests");
-    }, [isStaff, navigate]);
+        if (isStaff && !location.state?.clone) {
+            navigate("/audits/requests");
+        }
+    }, [isStaff, navigate, location.state]);
 
     const setField = (field, value) => {
         setForm((prev) => ({ ...prev, [field]: value }));

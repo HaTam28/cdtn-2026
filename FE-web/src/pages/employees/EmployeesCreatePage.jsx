@@ -123,6 +123,10 @@ export default function EmployeesCreatePage() {
                 if (val && !isBirthdateValid(val)) return "Nhân viên phải đủ 18 tuổi.";
                 return "";
             }
+            if (name === "phoneNumber") {
+                if (val && !/^[0-9]*$/.test(val)) return "Số điện thoại chỉ được nhập số";
+                return "";
+            }
             if (name === "password") {
                 return validatePassword(val) || "";
             }
@@ -177,6 +181,10 @@ export default function EmployeesCreatePage() {
         if (form.email && form.email.trim()) {
             const emailRe = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
             if (!emailRe.test(form.email.trim())) errs.email = "Email không đúng định dạng";
+        }
+
+        if (form.phoneNumber && !/^[0-9]*$/.test(form.phoneNumber)) {
+            errs.phoneNumber = "Số điện thoại chỉ được nhập số";
         }
 
         // Keep existing account-related validations (username/password) as before
@@ -316,12 +324,15 @@ export default function EmployeesCreatePage() {
                                     </div>
                                     <div className="sd-field-half">
                                         <label className="sd-label">Số điện thoại</label>
-                                        <input
-                                            className="sd-input"
-                                            placeholder="Nhập SDT"
-                                            value={form.phoneNumber}
-                                            onChange={(e) => set("phoneNumber", e.target.value)}
-                                        />
+                                        <div className="sd-input-wrap">
+                                            <input
+                                                className={`sd-input${fieldErrors.phoneNumber ? " sd-input-error" : ""}`}
+                                                placeholder="Nhập SDT"
+                                                value={form.phoneNumber}
+                                                onChange={(e) => set("phoneNumber", e.target.value.replace(/\D/g, ""))}
+                                            />
+                                            {fieldErrors.phoneNumber && <span className="sd-error-msg">{fieldErrors.phoneNumber}</span>}
+                                        </div>
                                     </div>
                                 </div>
 

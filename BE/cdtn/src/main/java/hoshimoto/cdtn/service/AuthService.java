@@ -34,6 +34,10 @@ public class AuthService {
     public Optional<User> login(String username, String password) {
         Optional<User> userOpt = userRepository.findByUsername(username);
         if (userOpt.isPresent() && passwordEncoder.matches(password, userOpt.get().getPasswordHash())) {
+            User user = userOpt.get();
+            if (Boolean.FALSE.equals(user.getIsActive())) {
+                throw new RuntimeException("Tài khoản đã bị vô hiệu hóa");
+            }
             return userOpt;
         }
         return Optional.empty();

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import "../../styles/shared.css";
 import "../receipts/receipts.css";
 import "./audits.css";
-import { getAllAudits, getAssignedAuditsPending, getAssignedAuditsDone } from "../../api/auditApi";
+import { getAllAudits, getAssignedAuditsPending, getAssignedAuditsDone, getAuditById } from "../../api/auditApi";
 import { getAllReceipts } from "../../api/receiptApi";
 import { getAllIssues } from "../../api/issueApi";
 import TopbarRight from "../../components/TopbarRight";
@@ -14,8 +14,8 @@ import { useDraft } from "../../utils/useDraft";
 
 const AUDIT_DRAFT_KEY = "draft_audit_create";
 
-const TABS = ["Tất cả", "Chờ kiểm kê", "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Quá hạn", "Nháp"];
-const STAFF_TABS = ["Tất cả", "Chờ kiểm kê", "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Quá hạn", "Nháp"];
+const TABS = ["Tất cả", "Nháp", "Chờ kiểm kê", "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Quá hạn"];
+const STAFF_TABS = ["Tất cả", "Nháp", "Chờ kiểm kê", "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Quá hạn"];
 const TAB_STATUS = {
     "Chờ kiểm kê": "REQUESTED",
     "Chờ duyệt": "SUBMITTED",
@@ -267,15 +267,19 @@ export default function AuditsPage() {
         setSelected(next);
     };
 
-    const handleClone = () => {
+    const handleClone = async () => {
         if (selected.size !== 1) {
             notify(COPY_SELECT_ONE, { type: 'warning' });
             return;
         }
         const id = Array.from(selected)[0];
-        const item = audits.find((r) => r.id === id);
-        if (!item) return;
-        navigate("/audits/create", { state: { clone: item } });
+        try {
+            const fullItem = await getAuditById(id);
+            if (!fullItem) return;
+            navigate("/audits/create", { state: { clone: fullItem } });
+        } catch {
+            notify("Không thể tải chi tiết phiếu kiểm kê để sao chép.", { type: "error" });
+        }
     };
 
     const pages = useMemo(() => {
@@ -320,7 +324,9 @@ export default function AuditsPage() {
                             <IconPlus /> Thêm mới
                         </button>
                     )}
-                    <button className="rc-btn-template" onClick={handleClone}><IconDoc /> Thêm bản sao mới</button>
+                    {isManager && (
+                        <button className="rc-btn-template" onClick={handleClone}><IconDoc /> Thêm bản sao mới</button>
+                    )}
                 </div>
 
                 {/* Tabs */}
@@ -381,7 +387,7 @@ export default function AuditsPage() {
                                 const draftRows = draft?.rows || [];
                                 const itemCount = draftRows.filter((r) => r.itemId || r.selectedItemId).length;
                                 return (
-                                    <tr className="rc-draft-local-row">
+                                    <tr className="rc-draft-local-row sp-row-clickable" onClick={() => navigate("/audits/create", { state: { resumeDraft: true } })} style={{ cursor: "pointer" }}>
                                         <td className="sp-td-cb" />
                                         <td className="sp-td-id" style={{ color: "#a16207" }}>
                                             <span style={{ fontStyle: "italic", opacity: 0.7 }}>(Chưa có số)</span>
@@ -396,7 +402,7 @@ export default function AuditsPage() {
                                             <span className="rc-badge rc-badge-local-draft">⬥ Nháp</span>
                                             {itemCount > 0 && <div style={{ fontSize: "0.78rem", color: "#a16207", marginTop: 3 }}>{itemCount} vật tư</div>}
                                         </td>
-                                        <td className="sp-td-action">
+                                        <td className="sp-td-action" onClick={(e) => e.stopPropagation()}>
                                             <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
                                                 <button className="sp-edit-btn" title="Tiếp tục nháp" style={{ color: "#a16207" }} onClick={() => navigate("/audits/create", { state: { resumeDraft: true } })}>
                                                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
@@ -424,12 +430,12 @@ export default function AuditsPage() {
                                 const detailRows = getDetailRowsForStatus(r);
                                 const pendingAdjustment = hasUnresolvedAdjustment(r, detailRows);
                                 const rowDisplayStatus = getStatusForAudit(r);
-                                const rowTone = getAuditRowTone(rowDisplayStatus, pendingAdjustment);
+                                const rowTone = isStaff ? "" : getAuditRowTone(rowDisplayStatus, pendingAdjustment);
                                 return (
                                     <tr
                                         key={r.id}
                                         className={`sp-row-clickable${selected.has(r.id) ? " sp-row-selected" : ""}${rowTone ? ` ${rowTone}` : ""}`}
-                                        onClick={() => navigate(isStaff ? `/audits/requests?id=${r.id}` : `/audits/${r.id}`)}
+                                        onClick={() => navigate(`/audits/${r.id}`)}
                                     >
                                         <td className="sp-td-cb" onClick={(e) => { e.stopPropagation(); toggleOne(r.id); }}>
                                             <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleOne(r.id)} onClick={(e) => e.stopPropagation()} />
@@ -453,7 +459,7 @@ export default function AuditsPage() {
                                                 </div>
                                             )}
                                         </td>
-                                        <td className="sp-td-action" onClick={(e) => { e.stopPropagation(); navigate(isStaff ? `/audits/requests?id=${r.id}` : `/audits/${r.id}`); }}>
+                                        <td className="sp-td-action" onClick={(e) => { e.stopPropagation(); navigate(`/audits/${r.id}`); }}>
                                             <button className="sp-edit-btn" title="Xem chi tiết"><IconEye /></button>
                                         </td>
                                     </tr>

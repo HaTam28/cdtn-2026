@@ -78,13 +78,20 @@ export default function SuppliesDetailPage() {
         if (!form.itemname.trim()) errs.itemname = "Bắt buộc";
         if (!form.unitof.trim()) errs.unitof = "Bắt buộc";
         if (!form.itemtype.trim()) errs.itemtype = "Bắt buộc";
-        if (form.minStockLevel !== undefined && form.minStockLevel !== "" && (isNaN(Number(form.minStockLevel)) || Number(form.minStockLevel) < 0)) errs.minStockLevel = "Phải là số >= 0";
-        if (form.maxStockLevel !== undefined && form.maxStockLevel !== "" && (isNaN(Number(form.maxStockLevel)) || Number(form.maxStockLevel) < 0)) errs.maxStockLevel = "Phải là số >= 0";
-        // if both provided, ensure min <= max
-        if (form.minStockLevel !== undefined && form.minStockLevel !== "" && form.maxStockLevel !== undefined && form.maxStockLevel !== "") {
+
+        const hasMin = form.minStockLevel !== null && form.minStockLevel !== undefined && String(form.minStockLevel).trim() !== "";
+        const hasMax = form.maxStockLevel !== null && form.maxStockLevel !== undefined && String(form.maxStockLevel).trim() !== "";
+
+        if (hasMin && (Number.isNaN(Number(form.minStockLevel)) || Number(form.minStockLevel) < 0)) {
+            errs.minStockLevel = "Tồn tối thiểu phải là số >= 0";
+        }
+        if (hasMax && (Number.isNaN(Number(form.maxStockLevel)) || Number(form.maxStockLevel) < 0)) {
+            errs.maxStockLevel = "Tồn tối đa phải là số >= 0";
+        }
+        if (hasMin && hasMax) {
             const minV = Number(form.minStockLevel);
             const maxV = Number(form.maxStockLevel);
-            if (!isNaN(minV) && !isNaN(maxV) && minV > maxV) {
+            if (!Number.isNaN(minV) && !Number.isNaN(maxV) && minV > maxV) {
                 errs.minStockLevel = "Tồn tối thiểu phải nhỏ hơn hoặc bằng Tồn tối đa";
                 errs.maxStockLevel = "Tồn tối đa phải lớn hơn hoặc bằng Tồn tối thiểu";
             }
@@ -181,7 +188,7 @@ export default function SuppliesDetailPage() {
                                         <input
                                             className={`sd-input${fieldErrors.itemname ? " sd-input-error" : ""}`}
                                             value={form.itemname}
-                                            disabled={!isEditing}
+                                            disabled
                                             onChange={(e) => handleChange("itemname", e.target.value)}
                                         />
                                         {fieldErrors.itemname && <span className="sd-error-msg">{fieldErrors.itemname}</span>}
@@ -195,7 +202,7 @@ export default function SuppliesDetailPage() {
                                     <input
                                         className="sd-input"
                                         value={form.invoicename}
-                                        disabled={!isEditing}
+                                        disabled
                                         onChange={(e) => handleChange("invoicename", e.target.value)}
                                     />
                                 </div>
@@ -204,7 +211,7 @@ export default function SuppliesDetailPage() {
                                     <input
                                         className="sd-input"
                                         value={form.itemcatg}
-                                        disabled={!isEditing}
+                                        disabled
                                         onChange={(e) => handleChange("itemcatg", e.target.value)}
                                     />
                                 </div>
@@ -225,7 +232,7 @@ export default function SuppliesDetailPage() {
                                     <input
                                         className={`sd-input${fieldErrors.unitof ? " sd-input-error" : ""}`}
                                         value={form.unitof}
-                                        disabled={!isEditing}
+                                        disabled
                                         onChange={(e) => handleChange("unitof", e.target.value)}
                                     />
                                     {fieldErrors.unitof && <span className="sd-error-msg">{fieldErrors.unitof}</span>}
@@ -239,7 +246,7 @@ export default function SuppliesDetailPage() {
                                         <input
                                             className={`sd-input${fieldErrors.itemtype ? " sd-input-error" : ""}`}
                                             value={form.itemtype}
-                                            disabled={!isEditing}
+                                            disabled
                                             onChange={(e) => handleChange("itemtype", e.target.value)}
                                         />
                                         {fieldErrors.itemtype && <span className="sd-error-msg">{fieldErrors.itemtype}</span>}
@@ -249,12 +256,13 @@ export default function SuppliesDetailPage() {
                                     <label className="sd-label">Tồn tối thiểu</label>
                                     <div className="sd-input-wrap">
                                         <input
-                                            type="number"
-                                            min={0}
+                                            type="text"
+                                            inputMode="numeric"
+                                            pattern="[0-9]*"
                                             className={`sd-input${fieldErrors.minStockLevel ? " sd-input-error" : ""}`}
                                             value={form.minStockLevel ?? ""}
                                             disabled={!isEditing}
-                                            onChange={(e) => handleChange("minStockLevel", e.target.value)}
+                                            onChange={(e) => handleChange("minStockLevel", e.target.value.replace(/\D/g, ""))}
                                         />
                                         {fieldErrors.minStockLevel && <span className="sd-error-msg">{fieldErrors.minStockLevel}</span>}
                                     </div>
@@ -270,12 +278,13 @@ export default function SuppliesDetailPage() {
                                     <label className="sd-label">Tồn tối đa</label>
                                     <div className="sd-input-wrap">
                                         <input
-                                            type="number"
-                                            min={0}
+                                            type="text"
+                                            inputMode="numeric"
+                                            pattern="[0-9]*"
                                             className={`sd-input${fieldErrors.maxStockLevel ? " sd-input-error" : ""}`}
                                             value={form.maxStockLevel ?? ""}
                                             disabled={!isEditing}
-                                            onChange={(e) => handleChange("maxStockLevel", e.target.value)}
+                                            onChange={(e) => handleChange("maxStockLevel", e.target.value.replace(/\D/g, ""))}
                                         />
                                         {fieldErrors.maxStockLevel && <span className="sd-error-msg">{fieldErrors.maxStockLevel}</span>}
                                     </div>

@@ -71,8 +71,20 @@ export default function SuppliesCreatePage() {
         if (!form.itemname.trim()) errs.itemname = "Bắt buộc";
         if (!form.unitof.trim()) errs.unitof = "Bắt buộc";
         if (!form.itemtype.trim()) errs.itemtype = "Bắt buộc";
-        if (form.minStockLevel !== "" && Number.isNaN(Number(form.minStockLevel))) errs.minStockLevel = "Phải là số";
-        if (form.maxStockLevel !== "" && Number.isNaN(Number(form.maxStockLevel))) errs.maxStockLevel = "Phải là số";
+        if (form.minStockLevel !== "" && (Number.isNaN(Number(form.minStockLevel)) || Number(form.minStockLevel) < 0)) {
+            errs.minStockLevel = "Tồn tối thiểu phải là số >= 0";
+        }
+        if (form.maxStockLevel !== "" && (Number.isNaN(Number(form.maxStockLevel)) || Number(form.maxStockLevel) < 0)) {
+            errs.maxStockLevel = "Tồn tối đa phải là số >= 0";
+        }
+        if (form.minStockLevel !== "" && form.maxStockLevel !== "") {
+            const minV = Number(form.minStockLevel);
+            const maxV = Number(form.maxStockLevel);
+            if (!Number.isNaN(minV) && !Number.isNaN(maxV) && minV > maxV) {
+                errs.minStockLevel = "Tồn tối thiểu phải nhỏ hơn hoặc bằng Tồn tối đa";
+                errs.maxStockLevel = "Tồn tối đa phải lớn hơn hoặc bằng Tồn tối thiểu";
+            }
+        }
         return errs;
     };
 
@@ -248,20 +260,26 @@ export default function SuppliesCreatePage() {
                                 <div className="sd-field-half">
                                     <label className="sd-label">Tồn tối thiểu</label>
                                     <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        pattern="[0-9]*"
                                         className={`sd-input${fieldErrors.minStockLevel ? " sd-input-error" : ""}`}
                                         placeholder="Số nguyên, để trống dùng mặc định"
                                         value={form.minStockLevel}
-                                        onChange={(e) => handleChange("minStockLevel", e.target.value)}
+                                        onChange={(e) => handleChange("minStockLevel", e.target.value.replace(/\D/g, ""))}
                                     />
                                     {fieldErrors.minStockLevel && <span className="sd-error-msg">{fieldErrors.minStockLevel}</span>}
                                 </div>
                                 <div className="sd-field-half">
                                     <label className="sd-label">Tồn tối đa</label>
                                     <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        pattern="[0-9]*"
                                         className={`sd-input${fieldErrors.maxStockLevel ? " sd-input-error" : ""}`}
                                         placeholder="Số nguyên, để trống dùng mặc định"
                                         value={form.maxStockLevel}
-                                        onChange={(e) => handleChange("maxStockLevel", e.target.value)}
+                                        onChange={(e) => handleChange("maxStockLevel", e.target.value.replace(/\D/g, ""))}
                                     />
                                     {fieldErrors.maxStockLevel && <span className="sd-error-msg">{fieldErrors.maxStockLevel}</span>}
                                 </div>

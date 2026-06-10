@@ -393,15 +393,24 @@ export default function IssueCreatePage() {
         setForm((prev) => ({
             ...prev,
             date: cloneDocDate || prev.date,
-            customerId: clone.customerId || "",
+            customerId: clone.customerId ? String(clone.customerId) : "",
             address: clone.address || "",
             description: clone.description || "",
-            docType: clone.docType || prev.docType || "NORMAL",
+            docType: clone.docType || clone.doctype || prev.docType || "NORMAL",
         }));
         setDateDisplay({ docDate: formatDateForDisplay(cloneDocDate || form.date) });
         setPrefilledFromClone(true);
         setPrefilledFromAudit(true);
     }, [location.state, prefilledFromClone]);
+
+    useEffect(() => {
+        if (form.customerId && customers.length > 0 && !form.address) {
+            const found = customers.find((c) => String(c.id) === String(form.customerId));
+            if (found?.address) {
+                setForm((prev) => ({ ...prev, address: found.address }));
+            }
+        }
+    }, [form.customerId, customers]);
 
     // ── Audit prefill ──
     useEffect(() => {
@@ -507,7 +516,12 @@ export default function IssueCreatePage() {
 
     const handleCustomerChange = (customerId) => {
         const found = customers.find((c) => String(c.id) === String(customerId));
-        setForm((prev) => ({ ...prev, customerId, address: found?.address || "" }));
+        setForm((prev) => ({
+            ...prev,
+            customerId,
+            customerName: found?.customername || "",
+            address: found?.address || ""
+        }));
     };
 
     const handleRowChange = (idx, field, value) => {

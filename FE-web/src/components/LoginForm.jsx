@@ -89,17 +89,18 @@ export default function LoginForm() {
                 }
             }
         } catch (err) {
-            const next = failCount + 1;
-            setFailCount(next);
-            localStorage.setItem("login_fail_count", next);
-            if (next >= MAX_FAILS) {
-                const until = Date.now() + LOCK_DURATION_MS;
-                setLockUntil(until);
-                localStorage.setItem("login_lock_until", until);
+            const msg = err?.response?.data?.message || "Sai tài khoản hoặc mật khẩu";
+            if (msg !== "Tài khoản đã bị vô hiệu hóa") {
+                const next = failCount + 1;
+                setFailCount(next);
+                localStorage.setItem("login_fail_count", next);
+                if (next >= MAX_FAILS) {
+                    const until = Date.now() + LOCK_DURATION_MS;
+                    setLockUntil(until);
+                    localStorage.setItem("login_lock_until", until);
+                }
             }
-            if (!err?.response) {
-                setError("Lỗi kết nối. Vui lòng thử lại.");
-            }
+            setError(msg);
         }
         setLoading(false);
     };
@@ -143,7 +144,7 @@ export default function LoginForm() {
                         <Link to="/forgot-password">Quên mật khẩu?</Link>
                     </div>
                     {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
-                    {failCount > 0 && failCount < MAX_FAILS && lockUntil <= Date.now() && (
+                    {failCount > 0 && failCount < MAX_FAILS && lockUntil <= Date.now() && error !== "Tài khoản đã bị vô hiệu hóa" && (
                         <div style={{ color: '#e65100', marginBottom: 8, fontSize: '0.88rem' }}>
                             Bạn đã đăng nhập sai <strong>{failCount}/{MAX_FAILS}</strong> lần.
                             {MAX_FAILS - failCount === 1

@@ -79,10 +79,10 @@ export default function SidebarLayout({ children, activeKey }) {
                         <div className="sp-nav-children">
                             <div className={`sp-nav-child${location.pathname.startsWith("/supplies") ? " sp-child-active" : ""}`} onClick={() => navTo("Danh mục vật tư hàng hóa", "/supplies")}>Danh mục vật tư hàng hóa</div>
                             <div className={`sp-nav-child${location.pathname.startsWith("/batches") ? " sp-child-active" : ""}`} onClick={() => navTo("Danh mục lô vật tư hàng hóa", "/batches")}>Danh mục lô vật tư hàng hóa</div>
+                            <div className={`sp-nav-child${location.pathname.startsWith("/locations") ? " sp-child-active" : ""}`} onClick={() => navTo("Danh mục vị trí", "/locations")}>Danh mục vị trí</div>
                             {!isStaff && (
                                 <div className={`sp-nav-child${location.pathname.startsWith("/employees") ? " sp-child-active" : ""}`} onClick={() => navTo("Danh mục nhân viên", "/employees")}>Danh mục nhân viên</div>
                             )}
-                            <div className={`sp-nav-child${location.pathname.startsWith("/locations") ? " sp-child-active" : ""}`} onClick={() => navTo("Danh mục vị trí", "/locations")}>Danh mục vị trí</div>
                             <div className={`sp-nav-child${location.pathname.startsWith("/partners") ? " sp-child-active" : ""}`} onClick={() => navTo("Danh mục đối tượng", "/partners")}>Danh mục đối tượng</div>
                         </div>
                     )}

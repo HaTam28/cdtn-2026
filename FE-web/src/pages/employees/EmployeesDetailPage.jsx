@@ -47,6 +47,7 @@ export default function EmployeesDetailPage() {
     const [fieldErrors, setFieldErrors] = useState({});
     const [toast, setToast] = useState(null);
     const [openSection, setOpenSection] = useState(true);
+    const [confirmModal, setConfirmModal] = useState({ open: false, title: "", message: "", type: "danger", onConfirm: null });
 
     const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3500); };
 
@@ -66,13 +67,36 @@ export default function EmployeesDetailPage() {
 
     const set = (field, value) => {
         setForm((prev) => ({ ...prev, [field]: value }));
-        if (fieldErrors[field]) setFieldErrors((prev) => { const n = { ...prev }; delete n[field]; return n; });
+        
+        const validateField = (name, val) => {
+            if (name === "phoneNumber") {
+                if (val && !/^[0-9]*$/.test(val)) return "Số điện thoại chỉ được nhập số";
+                if (val && val.length !== 10) return "Số điện thoại phải nhập đúng 10 số";
+            }
+            if (name === "fullname") {
+                if (!val?.trim()) return "Bắt buộc";
+            }
+            return "";
+        };
+        const err = validateField(field, value);
+        setFieldErrors((prev) => {
+            const n = { ...prev };
+            if (err) n[field] = err; else delete n[field];
+            return n;
+        });
     };
 
     const validate = () => {
         const errs = {};
         if (!form.usercode?.trim()) errs.usercode = "Bắt buộc";
         if (!form.fullname?.trim()) errs.fullname = "Bắt buộc";
+        if (form.phoneNumber) {
+            if (!/^[0-9]*$/.test(form.phoneNumber)) {
+                errs.phoneNumber = "Số điện thoại chỉ được nhập số";
+            } else if (form.phoneNumber.length !== 10) {
+                errs.phoneNumber = "Số điện thoại phải nhập đúng 10 số";
+            }
+        }
         return errs;
     };
 
@@ -115,13 +139,15 @@ export default function EmployeesDetailPage() {
         setIsEditing(false);
     };
 
-    // canEditTarget: ADMIN can edit any; MANAGER can only edit STAFF accounts
-    const canEditTarget = isAdmin || (isManager && original.role === "STAFF");
+    // canEditTarget: ADMIN can edit any; MANAGER can only edit STAFF accounts. Restricted to active accounts.
+    const canEditTarget = (isAdmin || (isManager && original.role === "STAFF")) && original.isActive;
     // canDeactivate: ADMIN can deactivate any; MANAGER can only deactivate STAFF
     const canDeactivate = (isAdmin || (isManager && original.role === "STAFF")) && form.isActive;
+    // canReactivate: ADMIN can reactivate any; MANAGER can only reactivate STAFF
+    const canReactivate = (isAdmin || (isManager && original.role === "STAFF")) && !form.isActive;
 
     const handleDeactivate = async () => {
-        if (!window.confirm(`Bạn có chắc muốn vô hiệu hóa tài khoản "${form.fullname}" không?`)) return;
+        setConfirmModal((prev) => ({ ...prev, open: false }));
         setDeactivating(true);
         setError(null);
         try {
@@ -140,10 +166,76 @@ export default function EmployeesDetailPage() {
         }
     };
 
+    const handleReactivate = async () => {
+        setConfirmModal((prev) => ({ ...prev, open: false }));
+        setSaving(true);
+        setError(null);
+        try {
+            const updated = await updateEmployee(id, {
+                usercode: form.usercode,
+                fullname: form.fullname,
+                username: form.username,
+                email: form.email,
+                department: form.department,
+                phoneNumber: form.phoneNumber,
+                address: form.address,
+                birthdate: form.birthdate || null,
+                gender: form.gender,
+                firstworkingdate: form.firstworkingdate || null,
+                bankaccount: form.bankaccount,
+                bankname: form.bankname,
+                isActive: true,
+                role: form.role,
+            });
+            const f = { ...EMPTY_FORM, ...updated };
+            setOriginal(f);
+            setForm(f);
+            showToast("success", "Kích hoạt lại tài khoản thành công.");
+        } catch (err) {
+            setError(err?.response?.data?.message || "Kích hoạt lại thất bại. Vui lòng thử lại.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
     return (
         <div className="sp-main">
             {toast && (
                 <div className={`sp-toast ${toast.type === "success" ? "sp-toast-success" : "sp-toast-error"}`}>{toast.msg}</div>
+            )}
+            {confirmModal.open && (
+                <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div style={{ background: "#fff", borderRadius: 12, padding: "32px 36px", minWidth: 340, boxShadow: "0 8px 32px rgba(0,0,0,0.1)", border: confirmModal.type === "danger" ? "1.5px solid #ffccbc" : "1.5px solid #c6dfd0", textAlign: "center" }}>
+                        <div style={{ width: 52, height: 52, borderRadius: "50%", background: confirmModal.type === "danger" ? "#fbe9e7" : "#e8f5e9", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+                            {confirmModal.type === "danger" ? (
+                                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#c0392b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <circle cx="12" cy="12" r="10" />
+                                    <line x1="15" y1="9" x2="9" y2="15" />
+                                    <line x1="9" y1="9" x2="15" y2="15" />
+                                </svg>
+                            ) : (
+                                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#2dbe60" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <circle cx="12" cy="12" r="10" />
+                                    <polyline points="9 12 11 14 15 10" />
+                                </svg>
+                            )}
+                        </div>
+                        <h3 style={{ margin: "0 0 8px", color: confirmModal.type === "danger" ? "#c0392b" : "#1e3a2f", fontSize: "1.1rem", fontWeight: 700 }}>{confirmModal.title}</h3>
+                        <p style={{ margin: "0 0 24px", color: "#4c6152", fontSize: "0.92rem", lineHeight: "1.4" }}>{confirmModal.message}</p>
+                        <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+                            <button
+                                className="sp-btn-outline"
+                                onClick={() => setConfirmModal((prev) => ({ ...prev, open: false }))}
+                                style={{ minWidth: 100 }}
+                            >Hủy bỏ</button>
+                            <button
+                                className="sp-btn-primary"
+                                onClick={confirmModal.onConfirm}
+                                style={{ minWidth: 120, background: confirmModal.type === "danger" ? "#c0392b" : "#2dbe60", borderColor: confirmModal.type === "danger" ? "#c0392b" : "#2dbe60" }}
+                            >Xác nhận</button>
+                        </div>
+                    </div>
+                </div>
             )}
             <div className="sp-topbar">
                 <div>
@@ -211,7 +303,7 @@ export default function EmployeesDetailPage() {
                                                     className={`sd-input${fieldErrors.fullname ? " sd-input-error" : ""}`}
                                                     value={form.fullname}
                                                     disabled={!isEditing}
-                                                    onChange={(e) => set("fullname", e.target.value)}
+                                                    onChange={(e) => set("fullname", e.target.value.replace(/[^a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂĐỔỞỚỜỞỠỨỪỬỮỰỳýỵỷỹđĐ ]/g, ""))}
                                                 />
                                                 {fieldErrors.fullname && <span className="sd-error-msg">{fieldErrors.fullname}</span>}
                                             </div>
@@ -240,12 +332,15 @@ export default function EmployeesDetailPage() {
                                         </div>
                                         <div className="sd-field-half">
                                             <label className="sd-label">Số điện thoại</label>
-                                            <input
-                                                className="sd-input"
-                                                value={form.phoneNumber}
-                                                disabled={!isEditing}
-                                                onChange={(e) => set("phoneNumber", e.target.value)}
-                                            />
+                                            <div className="sd-input-wrap">
+                                                <input
+                                                    className={`sd-input${fieldErrors.phoneNumber ? " sd-input-error" : ""}`}
+                                                    value={form.phoneNumber}
+                                                    disabled={!isEditing}
+                                                    onChange={(e) => set("phoneNumber", e.target.value.replace(/\D/g, "").slice(0, 10))}
+                                                />
+                                                {fieldErrors.phoneNumber && <span className="sd-error-msg">{fieldErrors.phoneNumber}</span>}
+                                            </div>
                                         </div>
                                     </div>
 
@@ -305,7 +400,7 @@ export default function EmployeesDetailPage() {
                                                 className="sd-input"
                                                 value={form.bankaccount}
                                                 disabled={!isEditing}
-                                                onChange={(e) => set("bankaccount", e.target.value)}
+                                                onChange={(e) => set("bankaccount", e.target.value.replace(/\D/g, ""))}
                                             />
                                         </div>
                                     </div>
@@ -377,10 +472,32 @@ export default function EmployeesDetailPage() {
                                         <button
                                             className="sp-btn-outline"
                                             style={{ color: "#c0392b", borderColor: "#c0392b" }}
-                                            onClick={handleDeactivate}
+                                            onClick={() => setConfirmModal({
+                                                open: true,
+                                                title: "Vô hiệu hóa tài khoản",
+                                                message: `Bạn có chắc muốn vô hiệu hóa tài khoản "${form.fullname}" không?`,
+                                                type: "danger",
+                                                onConfirm: handleDeactivate
+                                            })}
                                             disabled={deactivating}
                                         >
                                             {deactivating ? "Đang xử lý..." : "Vô hiệu hóa"}
+                                        </button>
+                                    )}
+                                    {canReactivate && (
+                                        <button
+                                            className="sp-btn-outline"
+                                            style={{ color: "#2dbe60", borderColor: "#2dbe60" }}
+                                            onClick={() => setConfirmModal({
+                                                open: true,
+                                                title: "Kích hoạt lại tài khoản",
+                                                message: `Bạn có chắc muốn gỡ bỏ vô hiệu hóa (kích hoạt lại) tài khoản "${form.fullname}" không?`,
+                                                type: "success",
+                                                onConfirm: handleReactivate
+                                            })}
+                                            disabled={saving}
+                                        >
+                                            {saving ? "Đang xử lý..." : "Kích hoạt lại"}
                                         </button>
                                     )}
                                     {canEditTarget && (

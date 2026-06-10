@@ -244,7 +244,10 @@ export default function LocationsPage() {
     };
 
     const handleExportPdf = () => {
-        if (selected.size === 0) return;
+        if (selected.size === 0) {
+            notify("Vui lòng chọn ít nhất 1 vị trí để xuất dữ liệu.", { type: "warning" });
+            return;
+        }
         const now = new Date();
         const title = "DANH MỤC VỊ TRÍ";
         const exportRows = filtered.filter((r) => selected.has(getLocationId(r)));
@@ -372,7 +375,6 @@ export default function LocationsPage() {
                     <button
                         className="sp-btn-outline"
                         onClick={handleExportPdf}
-                        disabled={selected.size === 0}
                         title={selected.size === 0 ? "Chọn ít nhất 1 vị trí để export" : `Export ${selected.size} vị trí`}
                     >
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

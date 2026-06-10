@@ -13,6 +13,7 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import hoshimoto.cdtn.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -22,6 +23,9 @@ import jakarta.servlet.http.HttpServletResponse;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Autowired
     private JwtUtil jwtUtil;
+
+    @Autowired
+    private UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -41,6 +45,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             if (jwtUtil.isTokenValid(jwt, username)) {
+                // Kiểm tra trạng thái tài khoản có bị vô hiệu hóa không
+                boolean isActive = userRepository.findByUsername(username)
+                        .map(u -> Boolean.TRUE.equals(u.getIsActive()))
+                        .orElse(false);
+
+                if (!isActive) {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json;charset=UTF-8");
+                    response.getWriter().write("{\"success\":false,\"message\":\"Tài khoản đã bị vô hiệu hóa\",\"data\":null}");
+                    return;
+                }
+
                 String role = jwtUtil.extractRole(jwt);
                 var authorities = (role != null)
                     ? List.of(new SimpleGrantedAuthority(normalizeRoleAuthority(role)))

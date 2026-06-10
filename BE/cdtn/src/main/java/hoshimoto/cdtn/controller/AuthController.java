@@ -26,15 +26,19 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<UserResponse>> login(@RequestBody LoginRequest request) {
-        return authService.login(request.getUsername(), request.getPassword())
-                .map(user -> {
-                    UserResponse res = UserResponse.fromEntity(user);
-                    // Sinh JWT token
-                    String token = jwtUtil.generateToken(user.getUsername(), user.getRole() != null ? user.getRole().name() : null);
-                    res.setToken(token);
-                    return ResponseEntity.ok(new ApiResponse<>(true, "Đăng nhập thành công", res));
-                })
-                .orElseGet(() -> ResponseEntity.status(401).body(new ApiResponse<>(false, "Sai tài khoản hoặc mật khẩu", null)));
+        try {
+            return authService.login(request.getUsername(), request.getPassword())
+                    .map(user -> {
+                        UserResponse res = UserResponse.fromEntity(user);
+                        // Sinh JWT token
+                        String token = jwtUtil.generateToken(user.getUsername(), user.getRole() != null ? user.getRole().name() : null);
+                        res.setToken(token);
+                        return ResponseEntity.ok(new ApiResponse<>(true, "Đăng nhập thành công", res));
+                    })
+                    .orElseGet(() -> ResponseEntity.status(401).body(new ApiResponse<>(false, "Sai tài khoản hoặc mật khẩu", null)));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, e.getMessage(), null));
+        }
     }
 
     @PostMapping("/forgot-password")

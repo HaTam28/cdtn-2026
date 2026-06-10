@@ -106,14 +106,17 @@ function TopbarRightContent() {
 
     const buildTargetUrl = (note) => {
         if (!note) return "/overview";
-        if (note.targetUrl) return note.targetUrl;
         const t = String(note.targetType || "").toUpperCase();
-        const id = note.targetId ?? (note.target && note.target.id);
+        const id = note.targetId ?? (note.target && note.target.id) ?? (note.targetUrl ? note.targetUrl.split("/").pop() : null);
+        if (t.includes("AUDIT") || (note.targetUrl && note.targetUrl.startsWith("/audits/"))) {
+            if (user?.role === "STAFF" || user?.role === "NV") {
+                return `/audits/requests?id=${id}`;
+            }
+        }
+        if (note.targetUrl) return note.targetUrl;
         if (t.includes("GOODS_RECEIPT")) return `/receipts/${id}`;
         if (t.includes("GOODS_ISSUE")) return `/issues/${id}`;
-        // Match any audit-related targetType (INVENTORY_AUDIT, INVENTORY_AUDIT_REQUEST, etc.)
         if (t.includes("AUDIT")) {
-            if (user?.role === "STAFF" || user?.role === "NV") return `/audits/requests?id=${id}`;
             return `/audits/${id}`;
         }
         return "/overview";

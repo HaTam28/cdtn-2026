@@ -489,17 +489,17 @@ export default function ReceiptCreatePage() {
         setForm((prev) => ({
             ...prev,
             date: cloneDocDate || prev.date,
-            customerId: clone.customerId || "",
+            customerId: clone.customerId ? String(clone.customerId) : "",
             address: clone.address || "",
             description: clone.description || "",
-            docType: clone.docType || prev.docType || "NORMAL",
+            docType: clone.docType || clone.doctype || prev.docType || "NORMAL",
         }));
         setInvoice((prev) => ({
             ...prev,
             date: cloneInvoiceDate,
             taxcode: clone.taxcode || clone.customerTaxcode || prev.taxcode,
             number: clone.invoiceNo || clone.invoiceNumber || "",
-            supplierId: clone.customerId || prev.supplierId,
+            supplierId: clone.customerId ? String(clone.customerId) : prev.supplierId,
         }));
         setDateDisplay((prev) => ({
             ...prev,
@@ -509,6 +509,15 @@ export default function ReceiptCreatePage() {
         setPrefilledFromClone(true);
         setPrefilledFromAudit(true);
     }, [location.state, prefilledFromClone]);
+
+    useEffect(() => {
+        if (form.customerId && customers.length > 0 && !form.address) {
+            const found = customers.find((c) => String(c.id) === String(form.customerId));
+            if (found?.address) {
+                setForm((prev) => ({ ...prev, address: found.address }));
+            }
+        }
+    }, [form.customerId, customers]);
 
     useEffect(() => {
         const auditId = searchParams.get("auditId");
@@ -624,7 +633,13 @@ export default function ReceiptCreatePage() {
 
     const handleCustomerChange = (customerId) => {
         const found = customers.find((c) => String(c.id) === String(customerId));
-        setForm((prev) => ({ ...prev, customerId, address: found?.address || "" }));
+        setForm((prev) => ({
+            ...prev,
+            customerId,
+            customerName: found?.customername || "",
+            supplierName: found?.customername || "",
+            address: found?.address || ""
+        }));
         if (found) setInvoice((prev) => ({ ...prev, taxcode: found.taxcode || "", supplierId: customerId }));
     };
 

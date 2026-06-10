@@ -5,6 +5,7 @@ import "./batches.css";
 import { getAllBatches } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
 import { getAllReceipts } from "../../api/receiptApi";
+import notify from "../../utils/notify";
 
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
@@ -112,7 +113,10 @@ export default function BatchesPage() {
     const someChecked = allIds.some((id) => selected.has(id)) && !allChecked;
 
     const handleExportPdf = () => {
-        if (selected.size === 0) return;
+        if (selected.size === 0) {
+            notify("Vui lòng chọn ít nhất 1 lô hàng để xuất dữ liệu.", { type: "warning" });
+            return;
+        }
         const now = new Date();
         const title = "DANH MỤC LÔ HÀNG";
         const exportRows = filtered.filter((r) => selected.has(r.id));
@@ -247,7 +251,6 @@ export default function BatchesPage() {
                     <button
                         className="sp-btn-outline"
                         onClick={handleExportPdf}
-                        disabled={selected.size === 0}
                         title={selected.size === 0 ? "Chọn ít nhất 1 lô hàng để export" : `Export ${selected.size} lô hàng`}
                     >
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -277,16 +280,15 @@ export default function BatchesPage() {
                                 <th>SL còn lại <SortIcon /></th>
                                 <th>Đơn giá nhập <SortIcon /></th>
                                 <th>Ngày tạo <SortIcon /></th>
-                                <th className="sp-th-action">Thao tác</th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr><td colSpan={10} className="sp-status-row">Đang tải...</td></tr>
+                                <tr><td colSpan={9} className="sp-status-row">Đang tải...</td></tr>
                             ) : error ? (
-                                <tr><td colSpan={10} className="sp-status-row sp-status-error">{error}</td></tr>
+                                <tr><td colSpan={9} className="sp-status-row sp-status-error">{error}</td></tr>
                             ) : rows.length === 0 ? (
-                                <tr><td colSpan={10} className="sp-status-row">Không có dữ liệu</td></tr>
+                                <tr><td colSpan={9} className="sp-status-row">Không có dữ liệu</td></tr>
                             ) : rows.map((r) => (
                                 <tr
                                     key={r.id}
@@ -313,14 +315,6 @@ export default function BatchesPage() {
                                     </td>
                                     <td className="bt-td-number" style={{ textAlign: "left" }}>{formatNumber(r.unitCost)}</td>
                                     <td className="bt-td-date" style={{ textAlign: "left" }} >{formatDate(r.createdAt)}</td>
-                                    <td className="sp-td-action" onClick={(e) => e.stopPropagation()}>
-                                        <button className="sp-edit-btn" title="Xem chi tiết" onClick={() => navigate(`/batches/${r.id}`)}>
-                                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                                            </svg>
-                                        </button>
-                                    </td>
                                 </tr>
                             ))}
                         </tbody>

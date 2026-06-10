@@ -154,7 +154,10 @@ export default function SuppliesPage() {
     };
 
     const handleExportPdf = () => {
-        if (selected.size === 0) return;
+        if (selected.size === 0) {
+            notify("Vui lòng chọn ít nhất 1 vật tư để xuất dữ liệu.", { type: "warning" });
+            return;
+        }
         const now = new Date();
         const title = "DANH MỤC VẬT TƯ";
         const exportRows = filtered.filter((r) => selected.has(r.id));
@@ -281,7 +284,6 @@ export default function SuppliesPage() {
                     <button
                         className="sp-btn-outline"
                         onClick={handleExportPdf}
-                        disabled={selected.size === 0}
                         title={selected.size === 0 ? "Chọn ít nhất 1 vật tư để export" : `Export ${selected.size} vật tư`}
                     >
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -367,19 +369,21 @@ export default function SuppliesPage() {
                             }
                         }}
                     />
-                    <button
-                        className="sp-btn-outline"
-                        onClick={() => fileInputRef.current && fileInputRef.current.click()}
-                        disabled={importing}
-                        title="Import danh mục từ file"
-                    >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                            <polyline points="7 10 12 15 17 10" />
-                            <line x1="12" y1="15" x2="12" y2="3" />
-                        </svg>
-                        Import
-                    </button>
+                    {!isStaff && (
+                        <button
+                            className="sp-btn-outline"
+                            onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                            disabled={importing}
+                            title="Import danh mục từ file"
+                        >
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                <polyline points="7 10 12 15 17 10" />
+                                <line x1="12" y1="15" x2="12" y2="3" />
+                            </svg>
+                            Import
+                        </button>
+                    )}
                     {/* Download template button hidden per request */}
                     {previewResult && (
                         <div style={{ marginLeft: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
