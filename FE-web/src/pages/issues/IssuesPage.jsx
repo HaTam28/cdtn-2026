@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import "../../styles/shared.css";
 import "../receipts/receipts.css";
 import "./issues.css";
-import { getAllIssues } from "../../api/issueApi";
+import { getAllIssues, getIssueById } from "../../api/issueApi";
 import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
@@ -192,15 +192,19 @@ export default function IssuesPage() {
         });
     };
 
-    const handleClone = () => {
+    const handleClone = async () => {
         if (selected.size !== 1) {
             notify(COPY_SELECT_ONE, { type: 'warning' });
             return;
         }
         const id = Array.from(selected)[0];
-        const item = issues.find((r) => r.id === id);
-        if (!item) return;
-        navigate("/issues/create", { state: { clone: item } });
+        try {
+            const fullItem = await getIssueById(id);
+            if (!fullItem) return;
+            navigate("/issues/create", { state: { clone: fullItem } });
+        } catch {
+            notify("Không thể tải chi tiết phiếu để sao chép.", { type: "error" });
+        }
     };
 
     const pages = useMemo(() => {

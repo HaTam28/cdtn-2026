@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../styles/shared.css";
 import "./receipts.css";
-import { getAllReceipts, getReceiptsByUser } from "../../api/receiptApi";
+import { getAllReceipts, getReceiptsByUser, getReceiptById } from "../../api/receiptApi";
 import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
@@ -172,15 +172,19 @@ export default function ReceiptsPage() {
         });
     };
 
-    const handleClone = () => {
+    const handleClone = async () => {
         if (selected.size !== 1) {
             notify(COPY_SELECT_ONE, { type: 'warning' });
             return;
         }
         const id = Array.from(selected)[0];
-        const item = receipts.find((r) => r.id === id);
-        if (!item) return;
-        navigate("/receipts/create", { state: { clone: item } });
+        try {
+            const fullItem = await getReceiptById(id);
+            if (!fullItem) return;
+            navigate("/receipts/create", { state: { clone: fullItem } });
+        } catch {
+            notify("Không thể tải chi tiết phiếu để sao chép.", { type: "error" });
+        }
     };
 
     const handleExportPdf = () => {

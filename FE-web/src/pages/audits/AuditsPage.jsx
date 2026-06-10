@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import "../../styles/shared.css";
 import "../receipts/receipts.css";
 import "./audits.css";
-import { getAllAudits, getAssignedAuditsPending, getAssignedAuditsDone } from "../../api/auditApi";
+import { getAllAudits, getAssignedAuditsPending, getAssignedAuditsDone, getAuditById } from "../../api/auditApi";
 import { getAllReceipts } from "../../api/receiptApi";
 import { getAllIssues } from "../../api/issueApi";
 import TopbarRight from "../../components/TopbarRight";
@@ -267,15 +267,19 @@ export default function AuditsPage() {
         setSelected(next);
     };
 
-    const handleClone = () => {
+    const handleClone = async () => {
         if (selected.size !== 1) {
             notify(COPY_SELECT_ONE, { type: 'warning' });
             return;
         }
         const id = Array.from(selected)[0];
-        const item = audits.find((r) => r.id === id);
-        if (!item) return;
-        navigate("/audits/create", { state: { clone: item } });
+        try {
+            const fullItem = await getAuditById(id);
+            if (!fullItem) return;
+            navigate("/audits/create", { state: { clone: fullItem } });
+        } catch {
+            notify("Không thể tải chi tiết phiếu kiểm kê để sao chép.", { type: "error" });
+        }
     };
 
     const pages = useMemo(() => {
@@ -320,7 +324,9 @@ export default function AuditsPage() {
                             <IconPlus /> Thêm mới
                         </button>
                     )}
-                    <button className="rc-btn-template" onClick={handleClone}><IconDoc /> Thêm bản sao mới</button>
+                    {isManager && (
+                        <button className="rc-btn-template" onClick={handleClone}><IconDoc /> Thêm bản sao mới</button>
+                    )}
                 </div>
 
                 {/* Tabs */}
@@ -429,7 +435,7 @@ export default function AuditsPage() {
                                     <tr
                                         key={r.id}
                                         className={`sp-row-clickable${selected.has(r.id) ? " sp-row-selected" : ""}${rowTone ? ` ${rowTone}` : ""}`}
-                                        onClick={() => navigate(isStaff ? `/audits/requests?id=${r.id}` : `/audits/${r.id}`)}
+                                        onClick={() => navigate(`/audits/${r.id}`)}
                                     >
                                         <td className="sp-td-cb" onClick={(e) => { e.stopPropagation(); toggleOne(r.id); }}>
                                             <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleOne(r.id)} onClick={(e) => e.stopPropagation()} />
@@ -453,7 +459,7 @@ export default function AuditsPage() {
                                                 </div>
                                             )}
                                         </td>
-                                        <td className="sp-td-action" onClick={(e) => { e.stopPropagation(); navigate(isStaff ? `/audits/requests?id=${r.id}` : `/audits/${r.id}`); }}>
+                                        <td className="sp-td-action" onClick={(e) => { e.stopPropagation(); navigate(`/audits/${r.id}`); }}>
                                             <button className="sp-edit-btn" title="Xem chi tiết"><IconEye /></button>
                                         </td>
                                     </tr>
