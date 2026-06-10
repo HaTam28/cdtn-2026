@@ -1,6 +1,7 @@
 package hoshimoto.cdtn.dto.request;
 
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
@@ -23,6 +24,7 @@ public class UserRequest {
     @Size(max = 100)
     private String department;
 
+    @Pattern(regexp = "^[0-9]*$", message = "Số điện thoại chỉ được nhập số")
     @Size(max = 20)
     private String phoneNumber;
 

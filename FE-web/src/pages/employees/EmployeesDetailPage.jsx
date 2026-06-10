@@ -66,13 +66,28 @@ export default function EmployeesDetailPage() {
 
     const set = (field, value) => {
         setForm((prev) => ({ ...prev, [field]: value }));
-        if (fieldErrors[field]) setFieldErrors((prev) => { const n = { ...prev }; delete n[field]; return n; });
+        
+        const validateField = (name, val) => {
+            if (name === "phoneNumber") {
+                if (val && !/^[0-9]*$/.test(val)) return "Số điện thoại chỉ được nhập số";
+            }
+            return "";
+        };
+        const err = validateField(field, value);
+        setFieldErrors((prev) => {
+            const n = { ...prev };
+            if (err) n[field] = err; else delete n[field];
+            return n;
+        });
     };
 
     const validate = () => {
         const errs = {};
         if (!form.usercode?.trim()) errs.usercode = "Bắt buộc";
         if (!form.fullname?.trim()) errs.fullname = "Bắt buộc";
+        if (form.phoneNumber && !/^[0-9]*$/.test(form.phoneNumber)) {
+            errs.phoneNumber = "Số điện thoại chỉ được nhập số";
+        }
         return errs;
     };
 
@@ -240,12 +255,15 @@ export default function EmployeesDetailPage() {
                                         </div>
                                         <div className="sd-field-half">
                                             <label className="sd-label">Số điện thoại</label>
-                                            <input
-                                                className="sd-input"
-                                                value={form.phoneNumber}
-                                                disabled={!isEditing}
-                                                onChange={(e) => set("phoneNumber", e.target.value)}
-                                            />
+                                            <div className="sd-input-wrap">
+                                                <input
+                                                    className={`sd-input${fieldErrors.phoneNumber ? " sd-input-error" : ""}`}
+                                                    value={form.phoneNumber}
+                                                    disabled={!isEditing}
+                                                    onChange={(e) => set("phoneNumber", e.target.value.replace(/\D/g, ""))}
+                                                />
+                                                {fieldErrors.phoneNumber && <span className="sd-error-msg">{fieldErrors.phoneNumber}</span>}
+                                            </div>
                                         </div>
                                     </div>
 
