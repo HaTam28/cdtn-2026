@@ -188,7 +188,7 @@ export default function SuppliesDetailPage() {
                                         <input
                                             className={`sd-input${fieldErrors.itemname ? " sd-input-error" : ""}`}
                                             value={form.itemname}
-                                            disabled={!isEditing}
+                                            disabled
                                             onChange={(e) => handleChange("itemname", e.target.value)}
                                         />
                                         {fieldErrors.itemname && <span className="sd-error-msg">{fieldErrors.itemname}</span>}
@@ -202,7 +202,7 @@ export default function SuppliesDetailPage() {
                                     <input
                                         className="sd-input"
                                         value={form.invoicename}
-                                        disabled={!isEditing}
+                                        disabled
                                         onChange={(e) => handleChange("invoicename", e.target.value)}
                                     />
                                 </div>
@@ -211,7 +211,7 @@ export default function SuppliesDetailPage() {
                                     <input
                                         className="sd-input"
                                         value={form.itemcatg}
-                                        disabled={!isEditing}
+                                        disabled
                                         onChange={(e) => handleChange("itemcatg", e.target.value)}
                                     />
                                 </div>
@@ -246,7 +246,7 @@ export default function SuppliesDetailPage() {
                                         <input
                                             className={`sd-input${fieldErrors.itemtype ? " sd-input-error" : ""}`}
                                             value={form.itemtype}
-                                            disabled={!isEditing}
+                                            disabled
                                             onChange={(e) => handleChange("itemtype", e.target.value)}
                                         />
                                         {fieldErrors.itemtype && <span className="sd-error-msg">{fieldErrors.itemtype}</span>}
