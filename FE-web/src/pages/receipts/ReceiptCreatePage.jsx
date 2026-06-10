@@ -624,7 +624,13 @@ export default function ReceiptCreatePage() {
 
     const handleCustomerChange = (customerId) => {
         const found = customers.find((c) => String(c.id) === String(customerId));
-        setForm((prev) => ({ ...prev, customerId, address: found?.address || "" }));
+        setForm((prev) => ({
+            ...prev,
+            customerId,
+            customerName: found?.customername || "",
+            supplierName: found?.customername || "",
+            address: found?.address || ""
+        }));
         if (found) setInvoice((prev) => ({ ...prev, taxcode: found.taxcode || "", supplierId: customerId }));
     };
 

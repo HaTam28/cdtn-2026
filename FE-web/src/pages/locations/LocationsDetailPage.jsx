@@ -245,7 +245,7 @@ export default function LocationsDetailPage() {
                                                 <input
                                                     className={`sd-input${fieldErrors.locationname ? " sd-input-error" : ""}`}
                                                     value={form.locationname}
-                                                    disabled
+                                                    disabled={!isEditing}
                                                     onChange={(e) => set("locationname", e.target.value)}
                                                 />
                                                 {fieldErrors.locationname && <span className="sd-error-msg">{fieldErrors.locationname}</span>}
@@ -288,10 +288,9 @@ export default function LocationsDetailPage() {
                                             <label className="sd-label">Sức chứa</label>
                                             <input
                                                 className="sd-input"
-                                                type="number"
                                                 value={form.capacity}
                                                 disabled={!isEditing}
-                                                onChange={(e) => set("capacity", e.target.value)}
+                                                onChange={(e) => set("capacity", e.target.value.replace(/\D/g, ""))}
                                             />
                                         </div>
                                     </div>

@@ -22,7 +22,7 @@ const STATUS_BADGE = {
     CANCELLED: "rc-badge rc-badge-cancelled",
     REJECTED: "rc-badge rc-badge-rejected",
 };
-const TABS = ["Tất cả", "Chờ duyệt", "Đã duyệt", "Đã từ chối", "Nháp"];
+const TABS = ["Tất cả", "Nháp", "Chờ duyệt", "Đã duyệt", "Đã từ chối"];
 const TAB_STATUS = { "Chờ duyệt": "DRAFT", "Đã duyệt": "CONFIRMED", "Đã từ chối": "REJECTED" };
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
@@ -104,6 +104,7 @@ export default function ReceiptsPage() {
     const [rowsPerPage, setRowsPerPage] = useState(15);
     const [selected, setSelected] = useState(new Set());
     const navigate = useNavigate();
+    const [docTypeFilter, setDocTypeFilter] = useState("ALL");
 
     const { hasDraft, loadDraft, clearDraft } = useDraft(RECEIPT_DRAFT_KEY);
 
@@ -130,6 +131,12 @@ export default function ReceiptsPage() {
             const st = TAB_STATUS[activeTab];
             list = list.filter((r) => r.docstatus === st);
         }
+        if (docTypeFilter !== "ALL") {
+            list = list.filter((r) => {
+                const rt = (r.docType || r.doctype || "NORMAL").toUpperCase();
+                return rt === docTypeFilter;
+            });
+        }
         if (search.trim()) {
             const q = search.trim().toLowerCase();
             list = list.filter(
@@ -140,7 +147,7 @@ export default function ReceiptsPage() {
             );
         }
         return list;
-    }, [receipts, activeTab, search]);
+    }, [receipts, activeTab, docTypeFilter, search]);
 
     const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
     const safeP = Math.min(page, totalPages);
@@ -284,20 +291,34 @@ export default function ReceiptsPage() {
                     </button>
                 </div>
 
-                {/* Tabs */}
-                <div className="rc-tabs">
-                    {TABS.map((tab) => (
-                        <div
-                            key={tab}
-                            className={`rc-tab${activeTab === tab ? " rc-tab-active" : ""}${tab === "Nháp" ? " rc-tab-draft-local" : ""}`}
-                            onClick={() => { setActiveTab(tab); setPage(1); }}
+                {/* Tabs & Type filter */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", borderBottom: "2px solid #e0ece5", marginBottom: 16 }}>
+                    <div className="rc-tabs" style={{ borderBottom: "none", marginBottom: 0 }}>
+                        {TABS.map((tab) => (
+                            <div
+                                key={tab}
+                                className={`rc-tab${activeTab === tab ? " rc-tab-active" : ""}${tab === "Nháp" ? " rc-tab-draft-local" : ""}`}
+                                onClick={() => { setActiveTab(tab); setPage(1); }}
+                            >
+                                {tab === "Nháp" && hasDraft && (
+                                    <span className="rc-tab-draft-dot" />
+                                )}
+                                {tab}
+                            </div>
+                        ))}
+                    </div>
+                    <div style={{ paddingBottom: 6 }}>
+                        <select
+                            className="sp-rows-select"
+                            style={{ height: 32, padding: "0 10px", border: "1px solid #c0deca", borderRadius: 6, background: "#fff", color: "#1e3a2f", fontWeight: 500, outline: "none", cursor: "pointer", fontSize: "0.86rem" }}
+                            value={docTypeFilter}
+                            onChange={(e) => { setDocTypeFilter(e.target.value); setPage(1); }}
                         >
-                            {tab === "Nháp" && hasDraft && (
-                                <span className="rc-tab-draft-dot" />
-                            )}
-                            {tab}
-                        </div>
-                    ))}
+                            <option value="ALL">Tất cả loại phiếu</option>
+                            <option value="NORMAL">Phiếu thông thường</option>
+                            <option value="ADJUSTMENT">Phiếu điều chỉnh</option>
+                        </select>
+                    </div>
                 </div>
 
                 {/* Table */}
@@ -339,16 +360,18 @@ export default function ReceiptsPage() {
                             {(activeTab === "Nháp" || activeTab === "Tất cả") && hasDraft && (() => {
                                 const draft = loadDraft();
                                 const draftForm = draft?.form || {};
+                                const draftDocType = (draftForm.docType || draftForm.doctype || "NORMAL").toUpperCase();
+                                if (docTypeFilter !== "ALL" && draftDocType !== docTypeFilter) return null;
                                 const draftRows = draft?.rows || [];
                                 const itemCount = draftRows.filter((r) => r.itemId).length;
                                 return (
-                                    <tr className="rc-draft-local-row">
+                                    <tr className="rc-draft-local-row sp-row-clickable" onClick={() => navigate("/receipts/create", { state: { resumeDraft: true } })} style={{ cursor: "pointer" }}>
                                         <td className="sp-td-cb" />
                                         <td className="sp-td-id" style={{ color: "#a16207" }}>
                                             <span style={{ fontStyle: "italic", opacity: 0.7 }}>(Chưa có số)</span>
                                         </td>
                                         <td>{draftForm.date ? draftForm.date.split("-").reverse().join("/") : "—"}</td>
-                                        <td>{draftForm.customerId ? `ID: ${draftForm.customerId}` : "—"}</td>
+                                        <td>{draftForm.customerName || draftForm.supplierName || (draftForm.customerId ? `ID: ${draftForm.customerId}` : "—")}</td>
                                         <td style={{ textAlign: "right" }}>—</td>
                                         <td style={{ color: "#4c6152", fontSize: "0.86rem" }}>
                                             {user?.fullname || user?.name || "Admin hệ thống"}
@@ -363,7 +386,7 @@ export default function ReceiptsPage() {
                                                 </div>
                                             )}
                                         </td>
-                                        <td className="sp-td-action">
+                                        <td className="sp-td-action" onClick={(e) => e.stopPropagation()}>
                                             <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
                                                 <button
                                                     className="sp-edit-btn"

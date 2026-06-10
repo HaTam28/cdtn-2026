@@ -507,7 +507,12 @@ export default function IssueCreatePage() {
 
     const handleCustomerChange = (customerId) => {
         const found = customers.find((c) => String(c.id) === String(customerId));
-        setForm((prev) => ({ ...prev, customerId, address: found?.address || "" }));
+        setForm((prev) => ({
+            ...prev,
+            customerId,
+            customerName: found?.customername || "",
+            address: found?.address || ""
+        }));
     };
 
     const handleRowChange = (idx, field, value) => {

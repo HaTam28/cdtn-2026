@@ -897,15 +897,6 @@
 
 /* ── Draft row in list table ─────────────────────────── */
 .rc-draft-local-row td {
-    background: #fffbeb;
-    border-bottom: 1px solid #fde68a;
-}
-
-.rc-draft-local-row:hover td {
-    background: #fef9c3;
-}
-
-.rc-draft-local-row td:first-child {
-    border-left: 3px solid #f59e0b;
+    border-bottom: 1px solid #edf3ef;
 }
 
