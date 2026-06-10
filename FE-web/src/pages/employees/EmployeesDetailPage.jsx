@@ -70,6 +70,10 @@ export default function EmployeesDetailPage() {
         const validateField = (name, val) => {
             if (name === "phoneNumber") {
                 if (val && !/^[0-9]*$/.test(val)) return "Số điện thoại chỉ được nhập số";
+                if (val && val.length !== 10) return "Số điện thoại phải nhập đúng 10 số";
+            }
+            if (name === "fullname") {
+                if (!val?.trim()) return "Bắt buộc";
             }
             return "";
         };
@@ -85,8 +89,12 @@ export default function EmployeesDetailPage() {
         const errs = {};
         if (!form.usercode?.trim()) errs.usercode = "Bắt buộc";
         if (!form.fullname?.trim()) errs.fullname = "Bắt buộc";
-        if (form.phoneNumber && !/^[0-9]*$/.test(form.phoneNumber)) {
-            errs.phoneNumber = "Số điện thoại chỉ được nhập số";
+        if (form.phoneNumber) {
+            if (!/^[0-9]*$/.test(form.phoneNumber)) {
+                errs.phoneNumber = "Số điện thoại chỉ được nhập số";
+            } else if (form.phoneNumber.length !== 10) {
+                errs.phoneNumber = "Số điện thoại phải nhập đúng 10 số";
+            }
         }
         return errs;
     };
@@ -226,7 +234,7 @@ export default function EmployeesDetailPage() {
                                                     className={`sd-input${fieldErrors.fullname ? " sd-input-error" : ""}`}
                                                     value={form.fullname}
                                                     disabled={!isEditing}
-                                                    onChange={(e) => set("fullname", e.target.value)}
+                                                    onChange={(e) => set("fullname", e.target.value.replace(/[^a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂĐỔỞỚỜỞỠỨỪỬỮỰỳýỵỷỹđĐ ]/g, ""))}
                                                 />
                                                 {fieldErrors.fullname && <span className="sd-error-msg">{fieldErrors.fullname}</span>}
                                             </div>
@@ -260,7 +268,7 @@ export default function EmployeesDetailPage() {
                                                     className={`sd-input${fieldErrors.phoneNumber ? " sd-input-error" : ""}`}
                                                     value={form.phoneNumber}
                                                     disabled={!isEditing}
-                                                    onChange={(e) => set("phoneNumber", e.target.value.replace(/\D/g, ""))}
+                                                    onChange={(e) => set("phoneNumber", e.target.value.replace(/\D/g, "").slice(0, 10))}
                                                 />
                                                 {fieldErrors.phoneNumber && <span className="sd-error-msg">{fieldErrors.phoneNumber}</span>}
                                             </div>
@@ -323,7 +331,7 @@ export default function EmployeesDetailPage() {
                                                 className="sd-input"
                                                 value={form.bankaccount}
                                                 disabled={!isEditing}
-                                                onChange={(e) => set("bankaccount", e.target.value)}
+                                                onChange={(e) => set("bankaccount", e.target.value.replace(/\D/g, ""))}
                                             />
                                         </div>
                                     </div>
