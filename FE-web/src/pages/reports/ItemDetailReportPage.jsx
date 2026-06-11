@@ -569,10 +569,10 @@ export default function ItemDetailReportPage() {
                                                     <th rowSpan={2}>Mã vật tư</th>
                                                     <th rowSpan={2}>Tên vật tư</th>
                                                     <th rowSpan={2} style={{ textAlign: "center" }}>Đvt</th>
-                                                    <th colSpan={2}>Tồn đầu</th>
-                                                    <th colSpan={2}>Nhập</th>
-                                                    <th colSpan={2}>Xuất</th>
-                                                    <th colSpan={2}>Tồn cuối</th>
+                                                    <th colSpan={2} style={{ textAlign: "center" }}>Tồn đầu</th>
+                                                    <th colSpan={2} style={{ textAlign: "center" }}>Nhập</th>
+                                                    <th colSpan={2} style={{ textAlign: "center" }}>Xuất</th>
+                                                    <th colSpan={2} style={{ textAlign: "center" }}>Tồn cuối</th>
                                                 </tr>
                                                 <tr>
                                                     <th>Ngày</th>
