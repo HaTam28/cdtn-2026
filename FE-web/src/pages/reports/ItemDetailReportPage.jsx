@@ -564,27 +564,20 @@ export default function ItemDetailReportPage() {
                                                     <td colSpan={14}>{`${gi + 1}. ${g.itemcode || "—"} - ${g.itemname || "—"}`}</td>
                                                 </tr>
                                                 <tr>
-                                                    <th rowSpan={2} style={{ textAlign: "center" }}>STT</th>
-                                                    <th colSpan={2} style={{ textAlign: "center" }}>Chứng từ</th>
-                                                    <th rowSpan={2}>Mã vật tư</th>
-                                                    <th rowSpan={2}>Tên vật tư</th>
-                                                    <th rowSpan={2} style={{ textAlign: "center" }}>Đvt</th>
-                                                    <th colSpan={2} style={{ textAlign: "center" }}>Tồn đầu</th>
-                                                    <th colSpan={2} style={{ textAlign: "center" }}>Nhập</th>
-                                                    <th colSpan={2} style={{ textAlign: "center" }}>Xuất</th>
-                                                    <th colSpan={2} style={{ textAlign: "center" }}>Tồn cuối</th>
-                                                </tr>
-                                                <tr>
-                                                    <th>Ngày</th>
-                                                    <th>Số</th>
-                                                    <th className="rpt-num">Số lượng</th>
-                                                    <th className="rpt-num">Giá trị</th>
-                                                    <th className="rpt-num">Số lượng</th>
-                                                    <th className="rpt-num">Giá trị</th>
-                                                    <th className="rpt-num">Số lượng</th>
-                                                    <th className="rpt-num">Giá trị</th>
-                                                    <th className="rpt-num">Số lượng</th>
-                                                    <th className="rpt-num">Giá trị</th>
+                                                    <th style={{ textAlign: "center" }}>STT</th>
+                                                    <th>Ngày CT</th>
+                                                    <th>Số CT</th>
+                                                    <th>Mã vật tư</th>
+                                                    <th>Tên vật tư</th>
+                                                    <th style={{ textAlign: "center" }}>Đvt</th>
+                                                    <th className="rpt-num">SL tồn đầu</th>
+                                                    <th className="rpt-num">GT tồn đầu</th>
+                                                    <th className="rpt-num">SL nhập</th>
+                                                    <th className="rpt-num">GT nhập</th>
+                                                    <th className="rpt-num">SL xuất</th>
+                                                    <th className="rpt-num">GT xuất</th>
+                                                    <th className="rpt-num">SL tồn cuối</th>
+                                                    <th className="rpt-num">GT tồn cuối</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
