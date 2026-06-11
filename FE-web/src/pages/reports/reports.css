@@ -213,6 +213,10 @@
     min-width: 980px;
 }
 
+.rpt-table th {
+    text-align: left;
+}
+
 .rpt-table th,
 .rpt-table td {
     white-space: normal;
