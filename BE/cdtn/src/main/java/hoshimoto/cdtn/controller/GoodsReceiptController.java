@@ -113,9 +113,11 @@ public class GoodsReceiptController {
     /** Xác nhận phiếu nhập → cập nhật tồn kho */
     @PostMapping("/{id}/confirm")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<ApiResponse<GoodsReceiptResponse>> confirm(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<GoodsReceiptResponse>> confirm(
+            @PathVariable Long id,
+            @RequestParam(required = false) String approvalNote) {
         return ResponseEntity.ok(new ApiResponse<>(true, "Xác nhận phiếu nhập thành công",
-                goodsReceiptService.confirm(id)));
+                goodsReceiptService.confirm(id, approvalNote)));
     }
 
     /** Hủy phiếu nhập */

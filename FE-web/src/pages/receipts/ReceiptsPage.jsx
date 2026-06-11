@@ -445,11 +445,18 @@ export default function ReceiptsPage() {
                                         {calcTotal(r.details) ? formatMoney(calcTotal(r.details)) : "-"}
                                     </td>
                                     <td style={{ width: 160 }}>{r.createdByFullname || r.createdByName || "-"}</td>
-                                    <td>
-                                        <span className={STATUS_BADGE[r.docstatus] || "rc-badge"}>
-                                            {STATUS_LABELS[r.docstatus] || r.docstatus}
-                                        </span>
-                                    </td>
+                                     <td>
+                                         <span className={STATUS_BADGE[r.docstatus] || "rc-badge"}>
+                                             {STATUS_LABELS[r.docstatus] || r.docstatus}
+                                         </span>
+                                         {r.docstatus === "CONFIRMED" &&
+                                          String(r.docType || r.doctype || "NORMAL").toUpperCase() === "ADJUSTMENT" &&
+                                          r.approvalNote && (
+                                             <div style={{ color: "#d97706", fontSize: "0.8rem", fontWeight: 600, marginTop: 4 }}>
+                                                 Cần điều chuyển vị trí
+                                             </div>
+                                         )}
+                                     </td>
                                     <td className="sp-td-action" onClick={(e) => { e.stopPropagation(); navigate(`/receipts/${r.id}`); }}>
                                         <button className="sp-edit-btn" title="Xem chi tiết"><IconEye /></button>
                                     </td>

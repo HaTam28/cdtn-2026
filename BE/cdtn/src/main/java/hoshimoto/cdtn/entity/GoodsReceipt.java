@@ -83,4 +83,8 @@ public class GoodsReceipt {
     @Column(name = "rejectreason", columnDefinition = "TEXT")
     private String rejectReason;
 
+    @Column(name = "approvalnote", columnDefinition = "TEXT")
+    private String approvalNote;
+
 }
+

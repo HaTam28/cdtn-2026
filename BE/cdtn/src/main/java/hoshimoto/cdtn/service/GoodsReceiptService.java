@@ -156,7 +156,7 @@ public class GoodsReceiptService {
      * Cập nhật ItemLocation và InventoryBalance theo từng dòng chi tiết.
      */
     @Transactional
-    public GoodsReceiptResponse confirm(Long id) {
+    public GoodsReceiptResponse confirm(Long id, String approvalNote) {
         GoodsReceipt receipt = findOrThrow(id);
         requireStatus(receipt, DocStatus.DRAFT, "Chỉ có thể xác nhận phiếu ở trạng thái DRAFT");
 
@@ -214,6 +214,10 @@ public class GoodsReceiptService {
             inventoryBalanceRepository.save(balance);
 
             applyBatch(receipt, detail);
+        }
+
+        if (isAdjustment(receipt) && approvalNote != null && !approvalNote.trim().isEmpty()) {
+            receipt.setApprovalNote(approvalNote.trim());
         }
 
         receipt.setDocstatus(DocStatus.CONFIRMED);
@@ -815,6 +819,7 @@ public class GoodsReceiptService {
             return dr;
         }).collect(Collectors.toList()));
         res.setRejectReason(receipt.getRejectReason());
+        res.setApprovalNote(receipt.getApprovalNote());
         return res;
     }
 }
