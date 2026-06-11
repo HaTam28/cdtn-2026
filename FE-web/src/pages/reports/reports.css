@@ -327,6 +327,12 @@
         box-shadow: none !important;
     }
 
+    body, html, #root, .sp-layout, .sp-main, .sp-content {
+        overflow: visible !important;
+        height: auto !important;
+        min-height: 0 !important;
+    }
+
     .sp-content {
         padding: 0 !important;
     }

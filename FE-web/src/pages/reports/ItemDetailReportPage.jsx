@@ -519,6 +519,10 @@ export default function ItemDetailReportPage() {
                     </div>
 
                     <div className="rpt-content rpt-printable">
+                        <div className="rpt-print-company">
+                            <div className="rpt-print-company-name">{COMPANY_NAME}</div>
+                            <div className="rpt-print-company-address">{COMPANY_ADDRESS}</div>
+                        </div>
                         <div className="rpt-report-title">SỔ CHI TIẾT VẬT TƯ</div>
                         {dateLabel && <div className="rpt-report-subtitle">{dateLabel}</div>}
 
@@ -637,6 +641,28 @@ export default function ItemDetailReportPage() {
                                 ))}
                             </div>
                         )}
+                        {!loading && !error && groups.length > 0 && (() => {
+                            const now = new Date();
+                            return (
+                                <div className="rpt-print-signature">
+                                    <div className="rpt-print-sig-date">
+                                        {`Ngày ${now.getDate()} tháng ${now.getMonth() + 1} năm ${now.getFullYear()}`}
+                                    </div>
+                                    <div className="rpt-print-sig-row">
+                                        <div className="rpt-print-sig-col">
+                                            <div className="rpt-print-sig-title">Người lập</div>
+                                            <div className="rpt-print-sig-sub">(Đã ký)</div>
+                                            <div className="rpt-print-sig-name">&nbsp;</div>
+                                        </div>
+                                        <div className="rpt-print-sig-col">
+                                            <div className="rpt-print-sig-title">Kế toán trưởng</div>
+                                            <div className="rpt-print-sig-sub">(Đã ký)</div>
+                                            <div className="rpt-print-sig-name">&nbsp;</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
             </div>
