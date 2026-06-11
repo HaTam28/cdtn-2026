@@ -229,6 +229,10 @@
     text-align: right;
 }
 
+.rpt-table th.rpt-num {
+    text-align: right;
+}
+
 .rpt-nowrap {
     white-space: nowrap;
 }
