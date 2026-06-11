@@ -215,6 +215,9 @@
 
 .rpt-table th {
     text-align: left;
+    font-weight: 600;
+    background: #1e854a;
+    color: #fff;
 }
 
 .rpt-table th,
