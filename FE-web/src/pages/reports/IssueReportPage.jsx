@@ -128,6 +128,14 @@ function FilterDrawer({ open, filters, setFilters, items, employees, customers, 
                             ))}
                         </select>
                     </div>
+                    <div className="rpt-filter-field">
+                        <label className="rpt-filter-label">Loại phiếu xuất</label>
+                        <select className="rc-form-select" value={local.docType} onChange={(e) => set("docType", e.target.value)}>
+                            <option value="">-- Tất cả loại --</option>
+                            <option value="NORMAL">Thông thường</option>
+                            <option value="ADJUSTMENT">Điều chỉnh</option>
+                        </select>
+                    </div>
                 </div>
                 <div className="rpt-drawer-footer">
                     <button className="sp-btn-primary" onClick={handleApply} style={{ minWidth: 80 }}>Nhận</button>
