@@ -685,7 +685,9 @@ export default function ReceiptDetailPage() {
 
                             {/* ── Actions ── */}
                             <div className="rc-form-actions">
-                                <button className="rc-btn-template" onClick={handleExportPdf}>Xuất PDF</button>
+                                {receipt.docstatus === "CONFIRMED" && (
+                                    <button className="rc-btn-template" onClick={handleExportPdf}>Xuất PDF</button>
+                                )}
                                 <button className="sp-btn-outline" onClick={() => navigate("/receipts")}>Quay lại</button>
                                 {receipt.docstatus === "DRAFT" && canConfirmCancel && (
                                     <>

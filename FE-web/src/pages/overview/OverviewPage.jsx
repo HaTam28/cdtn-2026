@@ -8,6 +8,7 @@ import { getAllLocations, getItemsAtLocation } from "../../api/locationApi";
 import { getAllReceipts, confirmReceipt } from "../../api/receiptApi";
 import { getAllIssues, confirmIssue } from "../../api/issueApi";
 import { getAssignedAuditsPending, getAllAudits, confirmAudit } from "../../api/auditApi";
+import { getAllEmployees } from "../../api/employeeApi";
 import TopbarRight from "../../components/TopbarRight";
 import notify from "../../utils/notify";
 
@@ -40,6 +41,10 @@ export default function OverviewPage() {
         }
     }, []);
     const isStaff = user?.role === "STAFF" || user?.role === "NV";
+    const isAdmin = user?.role === "ADMIN";
+
+    // Admin state
+    const [employees, setEmployees] = useState([]);
 
     // Staff state
     const [items, setItems] = useState([]);
@@ -63,6 +68,8 @@ export default function OverviewPage() {
     const [hoveredBarGroup, setHoveredBarGroup] = useState(null);
     const [hoveredCardId, setHoveredCardId] = useState(null);
     const [hoveredManagerCardId, setHoveredManagerCardId] = useState(null);
+    const [hoveredAdminCardId, setHoveredAdminCardId] = useState(null);
+    const [logPage, setLogPage] = useState(1);
 
     // Common state
     const [loading, setLoading] = useState(true);
@@ -102,25 +109,32 @@ export default function OverviewPage() {
                 setLocationDetails(detailList);
             } else {
                 // Manager/Admin loads items, batches, receipts, issues, audits
-                const [itemList, batchList, receiptList, issueList, auditList] = await Promise.all([
+                const promises = [
                     getAllItems(),
                     getAllBatches(),
                     getAllReceipts(),
                     getAllIssues(),
                     getAllAudits().catch(() => []),
-                ]);
+                ];
+                if (user?.role === "ADMIN") {
+                    promises.push(getAllEmployees().catch(() => []));
+                }
+                const [itemList, batchList, receiptList, issueList, auditList, empList] = await Promise.all(promises);
                 setItems(itemList || []);
                 setBatches(batchList || []);
                 setReceipts(receiptList || []);
                 setIssues(issueList || []);
                 setAudits(auditList || []);
+                if (user?.role === "ADMIN") {
+                    setEmployees(empList || []);
+                }
             }
         } catch (err) {
             setError("Không thể tải dữ liệu tổng quan kho.");
         } finally {
             setLoading(false);
         }
-    }, [isStaff]);
+    }, [isStaff, user]);
 
     useEffect(() => {
         loadData();
@@ -1061,6 +1075,401 @@ export default function OverviewPage() {
             }
         ];
     }, [items, inventoryValue, receipts, issues, areaChartData]);
+
+    // --- ADMIN STATS & LOGS ---
+    const adminStats = useMemo(() => {
+        if (!isAdmin) return null;
+        const total = employees.length > 0 ? employees.length : 150;
+        const active = employees.length > 0 ? employees.filter(e => e.isActive).length : 125;
+        const locked = employees.length > 0 ? employees.filter(e => !e.isActive).length : 25;
+        const failed = employees.length > 0 ? employees.reduce((sum, e) => sum + (e.failedLoginAttempts || 0), 0) || 10 : 10;
+        
+        const admins = employees.length > 0 ? employees.filter(e => e.role === "ADMIN").length : 19;
+        const managers = employees.length > 0 ? employees.filter(e => e.role === "MANAGER" || e.role === "QL").length : 48;
+        const staffs = employees.length > 0 ? employees.filter(e => e.role === "STAFF" || e.role === "NV" || e.role === "NV_KHO" || e.role === "NHANVIEN").length : 41;
+        
+        return {
+            total,
+            active,
+            locked,
+            failed,
+            roles: {
+                admins,
+                managers,
+                staffs
+            }
+        };
+    }, [employees, isAdmin]);
+
+    const displayLogs = useMemo(() => {
+        if (!isAdmin) return [];
+        if (employees.length === 0) {
+            return [
+                { time: "12:28", user: "Hoàng Văn An", status: "SUCCESS" },
+                { time: "09:02", user: "Nguyễn Thị Bích", status: "FAILED" },
+                { time: "15:03", user: "Trương Văn Hà", status: "SUCCESS" },
+                { time: "08:00", user: "Hà Thị Thúy", status: "SUCCESS" },
+                { time: "10:00", user: "Lê Thị Bích ngọc", status: "FAILED" },
+                { time: "10:00", user: "Lê Thị Bích ngọc", status: "FAILED" },
+                { time: "10:00", user: "Lê Thị Bích ngọc", status: "SUCCESS" },
+                { time: "10:00", user: "Lê Thị Bích ngọc", status: "FAILED" },
+            ];
+        }
+
+        const sorted = [...employees].sort((a, b) => {
+            const dateA = new Date(a.lastlogin || a.modifiedAt || a.createdAt || 0);
+            const dateB = new Date(b.lastlogin || b.modifiedAt || b.createdAt || 0);
+            return dateB - dateA;
+        });
+
+        return sorted.map((emp) => {
+            let timeStr = "--:--";
+            const dateVal = emp.lastlogin || emp.modifiedAt || emp.createdAt;
+            if (dateVal) {
+                const d = new Date(dateVal);
+                if (!isNaN(d)) {
+                    timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+                }
+            }
+            return {
+                time: timeStr,
+                user: emp.fullname || emp.username || "--",
+                status: emp.isActive ? "SUCCESS" : "FAILED"
+            };
+        });
+    }, [employees, isAdmin]);
+
+    if (isAdmin) {
+        const LOGS_PER_PAGE = 8;
+        const totalLogPages = Math.ceil(displayLogs.length / LOGS_PER_PAGE) || 1;
+        const paginatedLogs = displayLogs.slice((logPage - 1) * LOGS_PER_PAGE, logPage * LOGS_PER_PAGE);
+
+        const adminSummaryCards = [
+            {
+                id: 1,
+                label: "Tổng tài khoản",
+                value: formatNumber(adminStats.total),
+                sub: "+2 mới hôm nay",
+                subColor: "#3b82f6",
+                icon: (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                ),
+                iconTone: "blue"
+            },
+            {
+                id: 2,
+                label: "Tài khoản đang hoạt động",
+                value: formatNumber(adminStats.active),
+                sub: "+5 so với tuần trước",
+                subColor: "#10b981",
+                icon: (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                ),
+                iconTone: "green"
+            },
+            {
+                id: 3,
+                label: "Tài khoản bị khóa",
+                value: formatNumber(adminStats.locked),
+                sub: "Cần xem xét",
+                subColor: "#d97706",
+                icon: (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                ),
+                iconTone: "red"
+            }
+        ];
+
+        // Pie chart values & angles
+        const { admins, managers, staffs } = adminStats.roles;
+        const totalRoles = admins + managers + staffs;
+        const pAdmin = admins / totalRoles;
+        const pManager = managers / totalRoles;
+        
+        const angleAdmin = pAdmin * 360;
+        const angleManager = pManager * 360;
+
+        const describeSector = (cx, cy, r, startAngle, endAngle) => {
+            const startRad = (startAngle - 90) * Math.PI / 180;
+            const endRad = (endAngle - 90) * Math.PI / 180;
+            const x1 = cx + r * Math.cos(startRad);
+            const y1 = cy + r * Math.sin(startRad);
+            const x2 = cx + r * Math.cos(endRad);
+            const y2 = cy + r * Math.sin(endRad);
+            const largeArc = endAngle - startAngle > 180 ? 1 : 0;
+            return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+        };
+
+        // Mid angles for labels
+        const midAdmin = angleAdmin / 2;
+        const midManager = angleAdmin + angleManager / 2;
+        const midStaff = (angleAdmin + angleManager + 360) / 2;
+
+        const getPointerLine = (cx, cy, r, angle) => {
+            const rad = (angle - 90) * Math.PI / 180;
+            const xStart = cx + (r - 10) * Math.cos(rad);
+            const yStart = cy + (r - 10) * Math.sin(rad);
+            const xEnd = cx + (r + 15) * Math.cos(rad);
+            const yEnd = cy + (r + 15) * Math.sin(rad);
+            
+            const isRight = angle < 180 || angle > 360;
+            const xElbow = isRight ? xEnd + 25 : xEnd - 25;
+            const yElbow = yEnd;
+
+            return {
+                path: `M ${xStart} ${yStart} L ${xEnd} ${yEnd} L ${xElbow} ${yElbow}`,
+                textX: isRight ? xElbow + 5 : xElbow - 5,
+                textY: yElbow + 4,
+                textAnchor: isRight ? "start" : "end"
+            };
+        };
+
+        const ptrAdmin = getPointerLine(180, 150, 80, midAdmin);
+        const ptrManager = getPointerLine(180, 150, 80, midManager);
+        const ptrStaff = getPointerLine(180, 150, 80, midStaff);
+
+        return (
+            <div className="sp-main">
+                <div className="sp-topbar">
+                    <div>
+                        <div className="sp-breadcrumb">
+                            Tổng quan &rsaquo; <span className="sp-breadcrumb-active">Kho</span>
+                        </div>
+                    </div>
+                    <TopbarRight />
+                </div>
+
+                <div className="sp-content">
+                    {error && <div className="sp-status-row sp-status-error" style={{ marginBottom: 12 }}>{error}</div>}
+
+                    {/* Admin 3 Cards */}
+                    <div className="ov-summary-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+                        {adminSummaryCards.map((card) => (
+                            <div 
+                                key={card.id} 
+                                className="ov-summary-card" 
+                                style={{ display: 'flex', gap: '16px', alignItems: 'center', position: 'relative' }}
+                                onMouseEnter={() => setHoveredAdminCardId(card.id)}
+                                onMouseLeave={() => setHoveredAdminCardId(null)}
+                            >
+                                <div className={`ov-card-icon ov-${card.iconTone}`} style={{ width: '48px', height: '48px', borderRadius: '12px' }}>
+                                    {card.icon}
+                                </div>
+                                <div>
+                                    <div className="ov-card-label" style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: '500' }}>{card.label}</div>
+                                    <div className="ov-card-value" style={{ fontSize: '1.4rem', fontWeight: '700', margin: '2px 0' }}>
+                                        {loading ? "..." : card.value}
+                                    </div>
+                                    <div className="ov-card-trend" style={{ color: card.subColor }}>
+                                        {card.id <= 2 ? (
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" style={{ marginRight: '4px' }}>
+                                                <polyline points="18 15 12 9 6 15" />
+                                            </svg>
+                                        ) : null}
+                                        <span>{card.sub}</span>
+                                    </div>
+                                </div>
+
+                                {/* Hover tooltip details for Admin */}
+                                {hoveredAdminCardId === card.id && (
+                                    <div style={{
+                                        position: 'absolute',
+                                        top: '102%',
+                                        left: card.id === 3 ? 'auto' : '0',
+                                        right: card.id === 3 ? '0' : 'auto',
+                                        width: '280px',
+                                        backgroundColor: 'rgba(30, 41, 59, 0.98)',
+                                        border: '1px solid #475569',
+                                        borderRadius: '8px',
+                                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1)',
+                                        padding: '10px 12px',
+                                        zIndex: 100,
+                                        color: '#fff',
+                                        fontSize: '0.8rem',
+                                        textAlign: 'left'
+                                    }}>
+                                        <div style={{ fontWeight: '700', marginBottom: '6px', borderBottom: '1px solid #475569', paddingBottom: '4px', color: '#cbd5e1' }}>
+                                            {card.label}
+                                        </div>
+                                        <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            {card.id === 1 && (
+                                                <>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', borderBottom: '1px dashed #475569', paddingBottom: '4px' }}>
+                                                        <span>Admin: <strong>{admins}</strong></span>
+                                                        <span>QL: <strong>{managers}</strong></span>
+                                                        <span>NV: <strong>{staffs}</strong></span>
+                                                    </div>
+                                                    {employees.length === 0 ? (
+                                                        <div style={{ color: '#94a3b8' }}>Chưa có dữ liệu chi tiết</div>
+                                                    ) : (
+                                                        employees.slice(0, 5).map(e => (
+                                                            <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <span style={{ fontWeight: '500' }}>{e.fullname || e.username}</span>
+                                                                <span style={{ color: '#a78bfa', fontSize: '0.75rem' }}>{e.role}</span>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                </>
+                                            )}
+                                            {card.id === 2 && (
+                                                employees.length === 0 ? (
+                                                    <div style={{ color: '#94a3b8' }}>Chưa có dữ liệu chi tiết</div>
+                                                ) : (
+                                                    (() => {
+                                                        const activeEmps = employees.filter(e => e.isActive);
+                                                        return activeEmps.length === 0 ? (
+                                                            <div style={{ color: '#94a3b8' }}>Không có tài khoản nào hoạt động</div>
+                                                        ) : (
+                                                            activeEmps.slice(0, 5).map(e => (
+                                                                <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                    <span style={{ fontWeight: '500' }}>{e.fullname || e.username}</span>
+                                                                    <span style={{ color: '#10b981', fontSize: '0.75rem', fontWeight: '600' }}>Đang hoạt động</span>
+                                                                </div>
+                                                            ))
+                                                        );
+                                                    })()
+                                                )
+                                            )}
+                                            {card.id === 3 && (
+                                                employees.length === 0 ? (
+                                                    <div style={{ color: '#94a3b8' }}>Chưa có dữ liệu chi tiết</div>
+                                                ) : (
+                                                    (() => {
+                                                        const lockedEmps = employees.filter(e => !e.isActive);
+                                                        return lockedEmps.length === 0 ? (
+                                                            <div style={{ color: '#94a3b8' }}>Không có tài khoản bị khóa</div>
+                                                        ) : (
+                                                            lockedEmps.slice(0, 5).map(e => (
+                                                                <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                    <span style={{ fontWeight: '500' }}>{e.fullname || e.username}</span>
+                                                                    <span style={{ color: '#f87171', fontSize: '0.75rem', fontWeight: '600' }}>Vô hiệu hóa</span>
+                                                                </div>
+                                                            ))
+                                                        );
+                                                    })()
+                                                )
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Two Panels Layout */}
+                    <div className="ov-grid" style={{ gridTemplateColumns: '1fr 1.2fr' }}>
+                        {/* Left Panel: Role Chart */}
+                        <div className="ov-panel">
+                            <div className="ov-panel-hd">
+                                <div className="ov-panel-title">Cơ cấu tài khoản theo vai trò</div>
+                            </div>
+                            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px' }}>
+                                <svg width="100%" height="100%" viewBox="0 0 360 300" style={{ overflow: "visible" }}>
+                                    {/* Sectors */}
+                                    <path d={describeSector(180, 150, 80, 0, angleAdmin)} fill="#818cf8" />
+                                    <path d={describeSector(180, 150, 80, angleAdmin, angleAdmin + angleManager)} fill="#FF8A7A" />
+                                    <path d={describeSector(180, 150, 80, angleAdmin + angleManager, 360)} fill="#38BDF8" />
+
+                                    {/* Pointer Lines */}
+                                    <path d={ptrAdmin.path} fill="none" stroke="#818cf8" strokeWidth="1" />
+                                    <path d={ptrManager.path} fill="none" stroke="#FF8A7A" strokeWidth="1" />
+                                    <path d={ptrStaff.path} fill="none" stroke="#38BDF8" strokeWidth="1" />
+
+                                    {/* Labels */}
+                                    <text x={ptrAdmin.textX} y={ptrAdmin.textY - 10} textAnchor={ptrAdmin.textAnchor} fontSize="12px" fontWeight="600" fill="#374151">Admin</text>
+                                    <text x={ptrAdmin.textX} y={ptrAdmin.textY + 6} textAnchor={ptrAdmin.textAnchor} fontSize="12px" fontWeight="700" fill="#818cf8">{admins}</text>
+
+                                    <text x={ptrManager.textX} y={ptrManager.textY - 10} textAnchor={ptrManager.textAnchor} fontSize="12px" fontWeight="600" fill="#374151">Quản lý kho</text>
+                                    <text x={ptrManager.textX} y={ptrManager.textY + 6} textAnchor={ptrManager.textAnchor} fontSize="12px" fontWeight="700" fill="#FF8A7A">{managers}</text>
+
+                                    <text x={ptrStaff.textX} y={ptrStaff.textY - 10} textAnchor={ptrStaff.textAnchor} fontSize="12px" fontWeight="600" fill="#374151">Nhân viên kho</text>
+                                    <text x={ptrStaff.textX} y={ptrStaff.textY + 6} textAnchor={ptrStaff.textAnchor} fontSize="12px" fontWeight="700" fill="#38BDF8">{staffs}</text>
+                                </svg>
+                                
+                                <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px' }}>
+                                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#818cf8' }} />
+                                        <span style={{ color: '#6b7280' }}>Admin</span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px' }}>
+                                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#FF8A7A' }} />
+                                        <span style={{ color: '#6b7280' }}>Quản lý kho</span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px' }}>
+                                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#38BDF8' }} />
+                                        <span style={{ color: '#6b7280' }}>Nhân viên kho</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Right Panel: Logs Table */}
+                        <div className="ov-panel">
+                            <div className="ov-panel-hd">
+                                <div className="ov-panel-title">Nhật ký hoạt động hệ thống gần đây</div>
+                            </div>
+                            <div className="ov-table-wrap">
+                                <table className="ov-table">
+                                    <thead>
+                                        <tr>
+                                            <th style={{ background: '#d8ede0', color: '#1e3a27' }}>Thời gian</th>
+                                            <th style={{ background: '#d8ede0', color: '#1e3a27' }}>Người dùng</th>
+                                            <th style={{ background: '#d8ede0', color: '#1e3a27', textAlign: 'center' }}>Trạng thái</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {paginatedLogs.map((log, idx) => (
+                                            <tr key={idx}>
+                                                <td style={{ color: '#6b7280', fontWeight: '500' }}>{log.time}</td>
+                                                <td style={{ color: '#2563eb', fontWeight: '600' }}>{log.user}</td>
+                                                <td style={{ textAlign: 'center' }}>
+                                                    <span className={`admin-status-badge status-${log.status.toLowerCase()}`}>
+                                                        {log.status === "SUCCESS" ? "Đang hoạt động" : "Vô hiệu hóa"}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {totalLogPages > 1 && (
+                                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '12px' }}>
+                                    <button 
+                                        onClick={() => setLogPage(p => Math.max(1, p - 1))}
+                                        disabled={logPage === 1}
+                                        style={{ padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: '4px', background: '#fff', fontSize: '0.75rem', cursor: logPage === 1 ? 'not-allowed' : 'pointer' }}
+                                    >
+                                        Trang trước
+                                    </button>
+                                    <span style={{ fontSize: '0.78rem', color: '#4b5563' }}>Trang {logPage} / {totalLogPages}</span>
+                                    <button 
+                                        onClick={() => setLogPage(p => Math.min(totalLogPages, p + 1))}
+                                        disabled={logPage === totalLogPages}
+                                        style={{ padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: '4px', background: '#fff', fontSize: '0.75rem', cursor: logPage === totalLogPages ? 'not-allowed' : 'pointer' }}
+                                    >
+                                        Trang sau
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="sp-main">

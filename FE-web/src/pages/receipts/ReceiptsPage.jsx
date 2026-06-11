@@ -7,6 +7,8 @@ import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
 import { useDraft } from "../../utils/useDraft";
+import { useTableSort } from "../../utils/useTableSort";
+import SortableHeader from "../../components/SortableHeader";
 
 const RECEIPT_DRAFT_KEY = "draft_receipt_create";
 
@@ -149,9 +151,21 @@ export default function ReceiptsPage() {
         return list;
     }, [receipts, activeTab, docTypeFilter, search]);
 
+    const extractors = useMemo(() => ({
+        total: (r) => calcTotal(r.details),
+        createdBy: (r) => r.createdByFullname || r.createdByName || "",
+    }), []);
+
+    const { sortedData: sortedReceipts, sortConfig, handleSort } = useTableSort(filtered, {
+        extractors,
+        defaultField: "createdAt",
+        defaultDirection: "desc",
+        defaultType: "date",
+    });
+
     const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
     const safeP = Math.min(page, totalPages);
-    const pageData = filtered.slice((safeP - 1) * rowsPerPage, safeP * rowsPerPage);
+    const pageData = sortedReceipts.slice((safeP - 1) * rowsPerPage, safeP * rowsPerPage);
 
     const allChecked = pageData.length > 0 && pageData.every((r) => selected.has(r.id));
     const someChecked = pageData.some((r) => selected.has(r.id)) && !allChecked;
@@ -337,12 +351,24 @@ export default function ReceiptsPage() {
                                             onChange={(e) => toggleAll(e.target.checked)} />
                                     )}
                                 </th>
-                                <th>Số phiếu <IconSort /></th>
-                                <th>Ngày <IconSort /></th>
-                                <th> Nhà cung cấp <IconSort /></th>
-                                <th style={{ width: 120, textAlign: "right" }}>Tổng tiền <IconSort /></th>
-                                <th style={{ width: 160 }}>Người lập <IconSort /></th>
-                                <th>Trạng thái <IconSort /></th>
+                                <th>
+                                    <SortableHeader title="Số phiếu" field="docno" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Ngày" field="docDate" type="date" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Nhà cung cấp" field="customerName" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th style={{ width: 120, textAlign: "right" }}>
+                                    <SortableHeader title="Tổng tiền" field="total" type="number" sortConfig={sortConfig} onSort={handleSort} style={{ justifyContent: "flex-end", width: "100%" }} />
+                                </th>
+                                <th style={{ width: 160 }}>
+                                    <SortableHeader title="Người lập" field="createdBy" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Trạng thái" field="docstatus" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
                                 <th className="sp-th-action">Thao tác</th>
                             </tr>
                         </thead>

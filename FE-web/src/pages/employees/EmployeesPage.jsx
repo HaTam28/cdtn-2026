@@ -5,6 +5,8 @@ import { getAllEmployees } from "../../api/employeeApi";
 import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
+import { useTableSort } from "../../utils/useTableSort";
+import SortableHeader from "../../components/SortableHeader";
 
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
@@ -52,21 +54,31 @@ export default function EmployeesPage() {
     }, [isStaff, navigate]);
 
     const filtered = useMemo(() => {
-        let sorted = [...items].sort((a, b) => (a.id || 0) - (b.id || 0));
-        sorted = sorted.filter((r) => r.role !== "ADMIN");
-        if (!search.trim()) return sorted;
+        let list = items.filter((r) => r.role !== "ADMIN");
+        if (!search.trim()) return list;
         const q = search.toLowerCase();
-        return sorted.filter((r) =>
+        return list.filter((r) =>
             r.usercode?.toLowerCase().includes(q) ||
             r.fullname?.toLowerCase().includes(q) ||
             r.username?.toLowerCase().includes(q)
         );
     }, [search, items]);
 
+    const extractors = useMemo(() => ({
+        status: (r) => r.isActive ? "Đang làm" : "Nghỉ việc",
+    }), []);
+
+    const { sortedData: sortedEmployees, sortConfig, handleSort } = useTableSort(filtered, {
+        extractors,
+        defaultField: "id",
+        defaultDirection: "asc",
+        defaultType: "number",
+    });
+
     const totalRows = filtered.length;
     const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage));
     const start = (page - 1) * rowsPerPage;
-    const rows = filtered.slice(start, start + rowsPerPage);
+    const rows = sortedEmployees.slice(start, start + rowsPerPage);
 
     const allIds = rows.map((r) => r.id);
     const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
@@ -253,16 +265,36 @@ export default function EmployeesPage() {
                                         onChange={(e) => toggleAll(e.target.checked)}
                                     />
                                 </th>
-                                <th className="sp-th-sticky">Mã nhân viên <SortIcon /></th>
-                                <th>Họ và tên <SortIcon /></th>
-                                <th>Tên đăng nhập <SortIcon /></th>
-                                <th>Giới tính <SortIcon /></th>
-                                <th>Ngày sinh <SortIcon /></th>
-                                <th>Địa chỉ <SortIcon /></th>
-                                <th>Số điện thoại <SortIcon /></th>
-                                <th>Email <SortIcon /></th>
-                                <th>Trạng thái <SortIcon /></th>
-                                <th>Ngày vào làm <SortIcon /></th>
+                                <th className="sp-th-sticky">
+                                    <SortableHeader title="Mã nhân viên" field="usercode" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Họ và tên" field="fullname" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Tên đăng nhập" field="username" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Giới tính" field="gender" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Ngày sinh" field="birthdate" type="date" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Địa chỉ" field="address" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Số điện thoại" field="phoneNumber" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Email" field="email" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Trạng thái" field="status" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Ngày vào làm" field="firstworkingdate" type="date" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
                                 <th className="sp-th-action">Thao tác</th>
                             </tr>
                         </thead>

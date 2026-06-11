@@ -11,6 +11,8 @@ import { getAllBatches } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
+import { useTableSort } from "../../utils/useTableSort";
+import SortableHeader from "../../components/SortableHeader";
 
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
@@ -107,19 +109,31 @@ export default function SuppliesPage() {
     useEffect(() => { fetchItems(); }, [fetchItems]);
 
     const filtered = useMemo(() => {
-        const sorted = [...items].sort((a, b) => (a.id || 0) - (b.id || 0));
-        if (!search.trim()) return sorted;
+        if (!search.trim()) return items;
         const q = search.toLowerCase();
-        return sorted.filter((r) =>
+        return items.filter((r) =>
             r.itemcode?.toLowerCase().includes(q) ||
             r.itemname?.toLowerCase().includes(q)
         );
     }, [search, items]);
 
+    const extractors = useMemo(() => ({
+        stock: (r) => stockByItem[String(r.id)] || 0,
+        minStock: (r) => r.minStockLevel ?? r.minstocklevel ?? 50,
+        maxStock: (r) => r.maxStockLevel ?? r.maxstocklevel ?? 500,
+    }), [stockByItem]);
+
+    const { sortedData: sortedItems, sortConfig, handleSort } = useTableSort(filtered, {
+        extractors,
+        defaultField: "id",
+        defaultDirection: "asc",
+        defaultType: "number",
+    });
+
     const totalRows = filtered.length;
     const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage));
     const start = (page - 1) * rowsPerPage;
-    const rows = filtered.slice(start, start + rowsPerPage);
+    const rows = sortedItems.slice(start, start + rowsPerPage);
 
     const allIds = rows.map((r) => r.id);
     const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
@@ -423,13 +437,27 @@ export default function SuppliesPage() {
                                         onChange={(e) => toggleAll(e.target.checked)}
                                     />
                                 </th>
-                                <th className="sp-th-sticky">Mã VT <SortIcon /></th>
-                                <th>Tên vật tư / hàng hóa <SortIcon /></th>
-                                <th>Đơn vị tính <SortIcon /></th>
-                                <th>Tồn hiện tại <SortIcon /></th>
-                                <th>Tồn tối thiểu <SortIcon /></th>
-                                <th>Tồn tối đa <SortIcon /></th>
-                                <th>Mô tả / Thông số kỹ thuật <SortIcon /></th>
+                                <th className="sp-th-sticky">
+                                    <SortableHeader title="Mã VT" field="itemcode" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Tên vật tư / hàng hóa" field="itemname" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Đơn vị tính" field="unitof" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th style={{ textAlign: "right" }}>
+                                    <SortableHeader title="Tồn hiện tại" field="stock" type="number" sortConfig={sortConfig} onSort={handleSort} style={{ justifyContent: "flex-end", width: "100%" }} />
+                                </th>
+                                <th style={{ textAlign: "right" }}>
+                                    <SortableHeader title="Tồn tối thiểu" field="minStock" type="number" sortConfig={sortConfig} onSort={handleSort} style={{ justifyContent: "flex-end", width: "100%" }} />
+                                </th>
+                                <th style={{ textAlign: "right" }}>
+                                    <SortableHeader title="Tồn tối đa" field="maxStock" type="number" sortConfig={sortConfig} onSort={handleSort} style={{ justifyContent: "flex-end", width: "100%" }} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Mô tả / Thông số kỹ thuật" field="description" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
                                 <th className="sp-th-action">Thao tác</th>
                             </tr>
                         </thead>
