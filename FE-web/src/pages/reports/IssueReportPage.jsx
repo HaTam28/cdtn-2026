@@ -162,7 +162,7 @@ export default function IssueReportPage() {
         setLoading(true);
         setError(null);
         getAllIssues()
-            .then((data) => setIssues((data || []).filter((r) => r.docstatus === "CONFIRMED")))
+            .then((data) => setIssues((data || []).filter((r) => r.docstatus === "CONFIRMED" && (r.docType || r.doctype || "NORMAL").toUpperCase() !== "RETURN")))
             .catch(() => setError("Không thể tải dữ liệu phiếu xuất."))
             .finally(() => setLoading(false));
     }, []);

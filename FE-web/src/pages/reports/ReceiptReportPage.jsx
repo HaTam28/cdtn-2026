@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import ExcelJS from "exceljs";
 import "../../styles/shared.css";
 import "../receipts/receipts.css";
@@ -139,7 +139,6 @@ function FilterDrawer({ open, filters, setFilters, items, employees, customers, 
                             <option value="">-- Tất cả loại --</option>
                             <option value="NORMAL">Thông thường</option>
                             <option value="ADJUSTMENT">Điều chỉnh</option>
-                            <option value="RETURN">Hàng trả về</option>
                         </select>
                     </div>
                 </div>
@@ -176,7 +175,7 @@ export default function ReceiptReportPage() {
         setLoading(true);
         setError(null);
         getAllReceipts()
-            .then((data) => setReceipts((data || []).filter((r) => r.docstatus === "CONFIRMED")))
+            .then((data) => setReceipts((data || []).filter((r) => r.docstatus === "CONFIRMED" && (r.docType || r.doctype || "NORMAL").toUpperCase() !== "RETURN")))
             .catch(() => setError("Không thể tải dữ liệu phiếu nhập."))
             .finally(() => setLoading(false));
     }, []);
