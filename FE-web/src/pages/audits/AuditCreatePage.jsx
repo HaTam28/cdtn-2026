@@ -286,7 +286,10 @@ export default function AuditCreatePage() {
             setEmployees(employeeList || []);
             setStockOptions(selectableStockRows);
             const clone = location.state?.clone;
-            if (clone && clone.details && clone.details.length > 0) {
+            const isResumingDraft = !!location.state?.resumeDraft;
+            if (isResumingDraft) {
+                // Keep restored draft rows
+            } else if (clone && clone.details && clone.details.length > 0) {
                 const grouped = {};
                 clone.details.forEach((d) => {
                     const key = String(d.itemId);

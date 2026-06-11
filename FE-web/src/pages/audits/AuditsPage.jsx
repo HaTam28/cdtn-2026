@@ -435,7 +435,7 @@ export default function AuditsPage() {
                                     <tr
                                         key={r.id}
                                         className={`sp-row-clickable${selected.has(r.id) ? " sp-row-selected" : ""}${rowTone ? ` ${rowTone}` : ""}`}
-                                        onClick={() => navigate(`/audits/${r.id}`)}
+                                        onClick={() => navigate(isStaff ? `/audits/requests?id=${r.id}` : `/audits/${r.id}`)}
                                     >
                                         <td className="sp-td-cb" onClick={(e) => { e.stopPropagation(); toggleOne(r.id); }}>
                                             <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleOne(r.id)} onClick={(e) => e.stopPropagation()} />
@@ -459,7 +459,7 @@ export default function AuditsPage() {
                                                 </div>
                                             )}
                                         </td>
-                                        <td className="sp-td-action" onClick={(e) => { e.stopPropagation(); navigate(`/audits/${r.id}`); }}>
+                                        <td className="sp-td-action" onClick={(e) => { e.stopPropagation(); navigate(isStaff ? `/audits/requests?id=${r.id}` : `/audits/${r.id}`); }}>
                                             <button className="sp-edit-btn" title="Xem chi tiết"><IconEye /></button>
                                         </td>
                                     </tr>

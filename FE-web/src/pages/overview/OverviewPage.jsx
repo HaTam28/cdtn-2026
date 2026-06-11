@@ -7,7 +7,7 @@ import { getAllBatches } from "../../api/batchApi";
 import { getAllLocations, getItemsAtLocation } from "../../api/locationApi";
 import { getAllReceipts, confirmReceipt } from "../../api/receiptApi";
 import { getAllIssues, confirmIssue } from "../../api/issueApi";
-import { getAssignedAuditsPending } from "../../api/auditApi";
+import { getAssignedAuditsPending, getAllAudits, confirmAudit } from "../../api/auditApi";
 import TopbarRight from "../../components/TopbarRight";
 import notify from "../../utils/notify";
 
@@ -15,6 +15,7 @@ const BAR_COLORS = ["#F3A33B", "#FF8A7A", "#1FBE5F", "#4B3DE3", "#B07AF8"];
 
 function formatNumber(value) {
     if (value === null || value === undefined || value === "") return "0";
+    if (typeof value === "string" && isNaN(Number(value))) return value;
     const num = Number(value);
     if (Number.isNaN(num)) return "0";
     return num.toLocaleString("vi-VN");
@@ -51,16 +52,17 @@ export default function OverviewPage() {
     // Manager/Admin state
     const [receipts, setReceipts] = useState([]);
     const [issues, setIssues] = useState([]);
+    const [audits, setAudits] = useState([]);
     const [approvingId, setApprovingId] = useState(null);
 
     // Cấp giới hạn lọc tháng động (Tháng hiện tại trở về trước)
     const currentMonth = useMemo(() => new Date().getMonth() + 1, []);
     const [selectedMonthImportExport, setSelectedMonthImportExport] = useState(String(currentMonth));
-    const [selectedMonthTop5, setSelectedMonthTop5] = useState(String(currentMonth));
     const [filterDocType, setFilterDocType] = useState("ALL");
     const [hoveredAreaPoint, setHoveredAreaPoint] = useState(null);
     const [hoveredBarGroup, setHoveredBarGroup] = useState(null);
     const [hoveredCardId, setHoveredCardId] = useState(null);
+    const [hoveredManagerCardId, setHoveredManagerCardId] = useState(null);
 
     // Common state
     const [loading, setLoading] = useState(true);
@@ -99,17 +101,19 @@ export default function OverviewPage() {
                 );
                 setLocationDetails(detailList);
             } else {
-                // Manager/Admin loads items, batches, receipts, issues
-                const [itemList, batchList, receiptList, issueList] = await Promise.all([
+                // Manager/Admin loads items, batches, receipts, issues, audits
+                const [itemList, batchList, receiptList, issueList, auditList] = await Promise.all([
                     getAllItems(),
                     getAllBatches(),
                     getAllReceipts(),
                     getAllIssues(),
+                    getAllAudits().catch(() => []),
                 ]);
                 setItems(itemList || []);
                 setBatches(batchList || []);
                 setReceipts(receiptList || []);
                 setIssues(issueList || []);
+                setAudits(auditList || []);
             }
         } catch (err) {
             setError("Không thể tải dữ liệu tổng quan kho.");
@@ -131,9 +135,12 @@ export default function OverviewPage() {
             if (doc.type === "PN") {
                 await confirmReceipt(doc.id);
                 notify("Duyệt phiếu nhập kho thành công!", { type: "success" });
-            } else {
+            } else if (doc.type === "PX") {
                 await confirmIssue(doc.id);
                 notify("Duyệt phiếu xuất kho thành công!", { type: "success" });
+            } else if (doc.type === "KK") {
+                await confirmAudit(doc.id);
+                notify("Duyệt phiếu kiểm kê thành công!", { type: "success" });
             }
             // Reload data after approval
             await loadData();
@@ -148,8 +155,10 @@ export default function OverviewPage() {
     const handleViewDetail = (doc) => {
         if (doc.type === "PN") {
             navigate(`/receipts/${doc.id}`);
-        } else {
+        } else if (doc.type === "PX") {
             navigate(`/issues/${doc.id}`);
+        } else if (doc.type === "KK") {
+            navigate(`/audits/${doc.id}`);
         }
     };
 
@@ -277,7 +286,13 @@ export default function OverviewPage() {
 
     const emptyLocations = useMemo(() => {
         return locationDetails
-            .filter((entry) => entry.detail && entry.detail.type === "EMPTY")
+            .filter((entry) => {
+                if (!entry.detail) return false;
+                if (entry.detail.type === "EMPTY") return true;
+                const rem = entry.detail.remainingCapacity;
+                if (rem === null || rem === undefined) return true;
+                return Number(rem) > 0;
+            })
             .map((entry) => ({
                 id: entry.location.id,
                 code: entry.location.locationcode || "--",
@@ -327,10 +342,23 @@ export default function OverviewPage() {
                 });
             }
         });
+        audits.forEach((a) => {
+            if (a.docstatus === "SUBMITTED" || a.docstatus === "PENDING_PROCESS") {
+                list.push({
+                    id: a.id,
+                    type: "KK",
+                    docno: a.docno || `KK-${a.id}`,
+                    creator: a.createdByFullname || a.createdByName || "Người lập",
+                    description: a.description || "Kiểm kê hàng tồn kho",
+                    date: a.createdAt,
+                    rawDate: new Date(a.createdAt)
+                });
+            }
+        });
         // Sort by date descending
         list.sort((a, b) => b.rawDate - a.rawDate);
         return list;
-    }, [receipts, issues]);
+    }, [receipts, issues, audits]);
 
     const filteredPendingList = useMemo(() => {
         if (filterDocType === "ALL") return pendingList;
@@ -734,63 +762,6 @@ export default function OverviewPage() {
     }
 
     // --- MANAGER/ADMIN REDESIGNED VIEW ---
-    const managerSummaryCards = [
-        {
-            id: 1,
-            label: "Tổng số mặt hàng",
-            value: items.length > 0 ? formatNumber(items.length) : "35",
-            trend: "+2% so với tháng trước",
-            isUp: true,
-            icon: (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2">
-                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                    <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-                    <line x1="12" y1="22.08" x2="12" y2="12" />
-                </svg>
-            ),
-            iconTone: "blue"
-        },
-        {
-            id: 2,
-            label: "Tổng giá trị tồn kho",
-            value: inventoryValue > 0 ? formatNumber(inventoryValue) : "1.250.000.000",
-            trend: "+5% so với tháng trước",
-            isUp: true,
-            icon: (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2">
-                    <line x1="12" y1="1" x2="12" y2="23" />
-                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                </svg>
-            ),
-            iconTone: "green"
-        },
-        {
-            id: 3,
-            label: "Tổng đơn nhập kho",
-            value: receipts.length > 0 ? formatNumber(receipts.length) : "1.284",
-            trend: "4% so với tháng trước",
-            isUp: false,
-            icon: (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="2">
-                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-                </svg>
-            ),
-            iconTone: "amber"
-        },
-        {
-            id: 4,
-            label: "Tổng đơn xuất kho",
-            value: issues.length > 0 ? formatNumber(issues.length) : "976",
-            trend: "2% so với tháng trước",
-            isUp: false,
-            icon: (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2">
-                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" stroke="#10b981" />
-                </svg>
-            ),
-            iconTone: "green"
-        }
-    ];
 
     // Dữ liệu thực được tính toán động dựa trên receipts & issues
     const doubleBarChartData = useMemo(() => {
@@ -936,12 +907,8 @@ export default function OverviewPage() {
         ];
     }, [maxAreaValue]);
 
-    // Dữ liệu thực Top 5 tồn nhiều nhất tại mốc kết thúc tháng chọn lọc
+    // Dữ liệu thực Top 5 tồn nhiều nhất hiện tại
     const top5ItemsData = useMemo(() => {
-        const targetMonth = Number(selectedMonthTop5);
-        const targetYear = 2026;
-        const targetDate = new Date(targetYear, targetMonth, 0, 23, 59, 59);
-
         const itemStockMap = new Map();
         items.forEach((it) => {
             itemStockMap.set(String(it.id), 0);
@@ -950,32 +917,6 @@ export default function OverviewPage() {
             const qty = Number(b.quantityRemaining ?? b.quantity ?? 0);
             const key = String(b.itemId);
             itemStockMap.set(key, (itemStockMap.get(key) || 0) + (Number.isFinite(qty) ? qty : 0));
-        });
-
-        receipts.forEach((r) => {
-            if (r.docstatus !== "CONFIRMED") return;
-            const rDate = new Date(r.docDate || r.createdAt);
-            if (rDate > targetDate) {
-                (r.details || []).forEach((detail) => {
-                    const key = String(detail.itemId);
-                    if (itemStockMap.has(key)) {
-                        itemStockMap.set(key, Math.max(0, itemStockMap.get(key) - Number(detail.quantity || 0)));
-                    }
-                });
-            }
-        });
-
-        issues.forEach((is) => {
-            if (is.docstatus !== "CONFIRMED") return;
-            const isDate = new Date(is.docDate || is.createdAt);
-            if (isDate > targetDate) {
-                (is.details || []).forEach((detail) => {
-                    const key = String(detail.itemId);
-                    if (itemStockMap.has(key)) {
-                        itemStockMap.set(key, itemStockMap.get(key) + Number(detail.quantity || 0));
-                    }
-                });
-            }
         });
 
         const list = items.map((it) => {
@@ -988,7 +929,138 @@ export default function OverviewPage() {
 
         list.sort((a, b) => b.value - a.value);
         return list.slice(0, 5);
-    }, [items, batches, receipts, issues, selectedMonthTop5]);
+    }, [items, batches]);
+
+    // Dynamic calculations for summary cards trends
+    const managerSummaryCards = useMemo(() => {
+        const now = new Date();
+        const currentMonthVal = now.getMonth() + 1;
+        const currentYearVal = now.getFullYear();
+        const lastMonthVal = currentMonthVal === 1 ? 12 : currentMonthVal - 1;
+        const lastMonthYear = currentMonthVal === 1 ? currentYearVal - 1 : currentYearVal;
+
+        const getTrendInfo = (valueThisMonth, valueLastMonth) => {
+            if (!valueLastMonth || valueLastMonth === 0) {
+                if (valueThisMonth > 0) return { trend: "+100% so với tháng trước", isUp: true };
+                return { trend: "0% so với tháng trước", isUp: true };
+            }
+            const diff = valueThisMonth - valueLastMonth;
+            const percent = Math.round((diff / valueLastMonth) * 100);
+            const absPercent = Math.abs(percent);
+            return {
+                trend: `${percent >= 0 ? "+" : ""}${absPercent}% so với tháng trước`,
+                isUp: percent >= 0
+            };
+        };
+
+        // 1. Items count
+        const itemsThisMonth = items.filter(it => {
+            if (!it.createdAt) return true;
+            const d = new Date(it.createdAt);
+            return d.getFullYear() < currentYearVal || (d.getFullYear() === currentYearVal && d.getMonth() + 1 <= currentMonthVal);
+        }).length;
+
+        const itemsLastMonth = items.filter(it => {
+            if (!it.createdAt) return true;
+            const d = new Date(it.createdAt);
+            return d.getFullYear() < lastMonthYear || (d.getFullYear() === lastMonthYear && d.getMonth() + 1 <= lastMonthVal);
+        }).length;
+
+        const itemsTrend = getTrendInfo(itemsThisMonth, itemsLastMonth);
+
+        // 2. Inventory value
+        const inventoryThisMonth = areaChartData[currentMonthVal - 1]?.value || 0;
+        const inventoryLastMonth = areaChartData[lastMonthVal - 1]?.value || 0;
+        const inventoryTrend = getTrendInfo(inventoryThisMonth, inventoryLastMonth);
+
+        // 3. Import receipts
+        const receiptsThisMonth = receipts.filter(r => {
+            const d = new Date(r.docDate || r.createdAt);
+            return d.getFullYear() < currentYearVal || (d.getFullYear() === currentYearVal && d.getMonth() + 1 <= currentMonthVal);
+        }).length;
+
+        const receiptsLastMonth = receipts.filter(r => {
+            const d = new Date(r.docDate || r.createdAt);
+            return d.getFullYear() < lastMonthYear || (d.getFullYear() === lastMonthYear && d.getMonth() + 1 <= lastMonthVal);
+        }).length;
+
+        const receiptsTrend = getTrendInfo(receiptsThisMonth, receiptsLastMonth);
+
+        // 4. Export receipts
+        const issuesThisMonth = issues.filter(i => {
+            const d = new Date(i.docDate || i.createdAt);
+            return d.getFullYear() < currentYearVal || (d.getFullYear() === currentYearVal && d.getMonth() + 1 <= currentMonthVal);
+        }).length;
+
+        const issuesLastMonth = issues.filter(i => {
+            const d = new Date(i.docDate || i.createdAt);
+            return d.getFullYear() < lastMonthYear || (d.getFullYear() === lastMonthYear && d.getMonth() + 1 <= lastMonthVal);
+        }).length;
+
+        const issuesTrend = getTrendInfo(issuesThisMonth, issuesLastMonth);
+
+        return [
+            {
+                id: 1,
+                label: "Tổng số mặt hàng",
+                value: items.length > 0 ? formatNumber(items.length) : "35",
+                lastMonthValue: formatNumber(itemsLastMonth),
+                trend: itemsTrend.trend,
+                isUp: itemsTrend.isUp,
+                icon: (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2">
+                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                        <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                        <line x1="12" y1="22.08" x2="12" y2="12" />
+                    </svg>
+                ),
+                iconTone: "blue"
+            },
+            {
+                id: 2,
+                label: "Tổng giá trị tồn kho",
+                value: inventoryValue > 0 ? formatNumber(inventoryValue) : "1.250.000.000",
+                lastMonthValue: formatNumber(inventoryLastMonth),
+                trend: inventoryTrend.trend,
+                isUp: inventoryTrend.isUp,
+                icon: (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2">
+                        <line x1="12" y1="1" x2="12" y2="23" />
+                        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                    </svg>
+                ),
+                iconTone: "green"
+            },
+            {
+                id: 3,
+                label: "Tổng đơn nhập kho",
+                value: receipts.length > 0 ? formatNumber(receipts.length) : "1.284",
+                lastMonthValue: formatNumber(receiptsLastMonth),
+                trend: receiptsTrend.trend,
+                isUp: receiptsTrend.isUp,
+                icon: (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="2">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                    </svg>
+                ),
+                iconTone: "amber"
+            },
+            {
+                id: 4,
+                label: "Tổng đơn xuất kho",
+                value: issues.length > 0 ? formatNumber(issues.length) : "976",
+                lastMonthValue: formatNumber(issuesLastMonth),
+                trend: issuesTrend.trend,
+                isUp: issuesTrend.isUp,
+                icon: (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" stroke="#10b981" />
+                    </svg>
+                ),
+                iconTone: "green"
+            }
+        ];
+    }, [items, inventoryValue, receipts, issues, areaChartData]);
 
     return (
         <div className="sp-main">
@@ -1007,7 +1079,13 @@ export default function OverviewPage() {
                 {/* Grid 4 Thẻ Thống Kê */}
                 <div className="ov-summary-grid">
                     {managerSummaryCards.map((card) => (
-                        <div key={card.id} className="ov-summary-card" style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                        <div 
+                            key={card.id} 
+                            className="ov-summary-card" 
+                            style={{ display: 'flex', gap: '16px', alignItems: 'center', position: 'relative' }}
+                            onMouseEnter={() => setHoveredManagerCardId(card.id)}
+                            onMouseLeave={() => setHoveredManagerCardId(null)}
+                        >
                             <div className={`ov-card-icon ov-${card.iconTone}`} style={{ width: '48px', height: '48px', borderRadius: '12px' }}>
                                 {card.icon}
                             </div>
@@ -1029,6 +1107,33 @@ export default function OverviewPage() {
                                     <span>{card.trend}</span>
                                 </div>
                             </div>
+
+                            {/* Professional Tooltip displaying previous month's value */}
+                            {hoveredManagerCardId === card.id && (
+                                <div style={{
+                                    position: 'absolute',
+                                    top: '102%',
+                                    left: '50%',
+                                    transform: 'translateX(-50%)',
+                                    width: '200px',
+                                    backgroundColor: 'rgba(30, 41, 59, 0.98)',
+                                    border: '1px solid #475569',
+                                    borderRadius: '8px',
+                                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1)',
+                                    padding: '8px 10px',
+                                    zIndex: 100,
+                                    color: '#fff',
+                                    fontSize: '0.78rem',
+                                    textAlign: 'center',
+                                    pointerEvents: 'none',
+                                    transition: 'opacity 0.2s ease'
+                                }}>
+                                    <div style={{ color: '#94a3b8', fontSize: '0.72rem', marginBottom: '2px' }}>Tháng trước</div>
+                                    <div style={{ color: '#38bdf8', fontSize: '1.05rem', fontWeight: '700' }}>
+                                        {card.lastMonthValue}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     ))}
                 </div>
@@ -1051,6 +1156,7 @@ export default function OverviewPage() {
                                 <option value="ALL">Tất cả loại phiếu</option>
                                 <option value="PN">Phiếu nhập kho (PN)</option>
                                 <option value="PX">Phiếu xuất kho (PX)</option>
+                                <option value="KK">Phiếu kiểm kê (KK)</option>
                             </select>
                         </div>
                     </div>
@@ -1368,20 +1474,6 @@ export default function OverviewPage() {
                     <div className="ov-panel ov-chart-full-width">
                         <div className="ov-chart-header">
                             <span className="ov-chart-title">Top 5 vật tư tồn kho nhiều nhất</span>
-                            <div className="ov-chart-filter-wrap">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-                                </svg>
-                                <select
-                                    className="ov-chart-filter-select"
-                                    value={selectedMonthTop5}
-                                    onChange={(e) => setSelectedMonthTop5(e.target.value)}
-                                >
-                                    {Array.from({ length: 12 }, (_, i) => (
-                                        <option key={i + 1} value={String(i + 1)}>Tháng {i + 1}/2026</option>
-                                    ))}
-                                </select>
-                            </div>
                         </div>
                         <div style={{ padding: '8px 0' }}>
                             {top5ItemsData.map((item, idx) => {

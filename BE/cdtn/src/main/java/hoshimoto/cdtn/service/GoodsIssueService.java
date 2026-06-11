@@ -474,14 +474,15 @@ public class GoodsIssueService {
         if (detailRequests == null)
             return;
 
-        // Validate: không cho phép trùng batchId trong cùng một phiếu
-        List<Long> batchIds = detailRequests.stream()
-                .map(GoodsIssueDetailRequest::getBatchId)
-                .filter(id -> id != null)
-                .collect(Collectors.toList());
-        long distinctBatchCount = batchIds.stream().distinct().count();
-        if (distinctBatchCount < batchIds.size()) {
-            throw new RuntimeException("Phiếu xuất có mã lô bị trùng lặp. Mỗi mã lô chỉ được chọn một lần.");
+        // Validate: không cho phép trùng (batchId, locationId) trong cùng một phiếu
+        java.util.Set<String> batchLocationKeys = new java.util.HashSet<>();
+        for (GoodsIssueDetailRequest req : detailRequests) {
+            if (req.getBatchId() != null && req.getLocationId() != null) {
+                String key = req.getBatchId() + "-" + req.getLocationId();
+                if (!batchLocationKeys.add(key)) {
+                    throw new RuntimeException("Mỗi lô hàng tại một vị trí chỉ được chọn một lần.");
+                }
+            }
         }
 
         for (GoodsIssueDetailRequest req : detailRequests) {
@@ -549,8 +550,6 @@ public class GoodsIssueService {
             throw new RuntimeException("Phiếu xuất điều chỉnh không có dòng chi tiết nào");
         }
 
-        java.util.Set<Long> auditDetailIds = new java.util.HashSet<>();
-
         for (GoodsIssueDetailRequest req : detailRequests) {
             if (req.getLocationId() == null) {
                 throw new RuntimeException("Phiếu xuất điều chỉnh phải có vị trí");
@@ -560,9 +559,6 @@ public class GoodsIssueService {
             }
             if (req.getInventoryAuditDetailId() == null) {
                 throw new RuntimeException("Phiếu xuất điều chỉnh phải liên kết chi tiết phiếu kiểm kê");
-            }
-            if (!auditDetailIds.add(req.getInventoryAuditDetailId())) {
-                throw new RuntimeException("Chi tiết phiếu kiểm kê bị trùng trong phiếu điều chỉnh");
             }
 
             var auditDetail = inventoryAuditDetailRepository.findById(req.getInventoryAuditDetailId())
