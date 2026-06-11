@@ -825,7 +825,7 @@ export default function IssueCreatePage() {
 
                         {/* ── Header row ── */}
                         <div className="rc-header-row">
-                            <label className="rc-form-label">Ngày</label>
+                            <label className="rc-form-label">Ngày<span className="rc-required">*</span></label>
                             <input
                                 className="rc-form-input"
                                 style={{ minWidth: 150 }}
@@ -833,7 +833,7 @@ export default function IssueCreatePage() {
                                 value={dateDisplay.docDate}
                                 onChange={(e) => handleDocDateChange(e.target.value)}
                             />
-                            <label className="rc-form-label" style={{ marginLeft: 16 }}>Số</label>
+                            <label className="rc-form-label" style={{ marginLeft: 16 }}>Số<span className="rc-required">*</span></label>
                             <input className="rc-form-input" style={{ minWidth: 200 }} placeholder="Nhập số chứng từ" value={form.docno} onChange={(e) => handleFormChange("docno", e.target.value)} />
                             <label className="rc-form-label" style={{ marginLeft: 16 }}>Loại</label>
                             <select className="rc-form-select" value={form.docType} onChange={(e) => handleFormChange("docType", e.target.value)}>
@@ -851,7 +851,7 @@ export default function IssueCreatePage() {
                         {/* ── Đối tượng ── */}
                         {!isAdjustment && (
                             <div className="rc-form-row">
-                                <label className="rc-form-label">Đối tượng</label>
+                                <label className="rc-form-label">Đối tượng<span className="rc-required">*</span></label>
                                 <select className="rc-form-select rc-form-full" value={form.customerId} onChange={(e) => handleCustomerChange(e.target.value)} disabled={loadingData}>
                                     <option value="">Chọn đối tượng</option>
                                     {customers.filter((c) => c.iscustomer).map((c) => (
@@ -881,10 +881,10 @@ export default function IssueCreatePage() {
                                 <thead>
                                     <tr>
                                         <th className="rc-td-stt" style={{ width: "4%" }}>STT</th>
-                                        <th style={{ width: "9%" }}>Mã hàng</th>
+                                        <th style={{ width: "9%" }}>Mã hàng<span className="rc-required">*</span></th>
                                         <th style={{ width: "40%" }}>Tên vật tư hàng hóa</th>
                                         <th style={{ width: "6%" }}>ĐVT</th>
-                                        <th style={{ width: "8%", textAlign: "right" }}>SL yêu cầu</th>
+                                        <th style={{ width: "8%", textAlign: "right" }}>SL yêu cầu<span className="rc-required">*</span></th>
                                         {!isAdjustment && <th style={{ width: "9%", textAlign: "right" }}>Tồn hiện tại</th>}
                                         <th style={{ width: "4%" }}></th>
                                     </tr>

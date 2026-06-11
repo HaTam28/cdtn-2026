@@ -28,4 +28,5 @@ public class GoodsReceiptResponse {
     private LocalDateTime approvedAt;
     private List<GoodsReceiptDetailResponse> details;
     private String rejectReason;
+    private String approvalNote;
 }

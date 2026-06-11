@@ -11,6 +11,8 @@ import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
 import { AUDIT_STATUS_BADGE, AUDIT_STATUS_LABELS, formatDisplayDate, getAuditEndDate, getAuditRowTone, getAuditStartDate, getAuditWorkflowStatus, normalizeAuditDetails, toNumber } from "./auditRowUtils";
 import { useDraft } from "../../utils/useDraft";
+import { useTableSort } from "../../utils/useTableSort";
+import SortableHeader from "../../components/SortableHeader";
 
 const AUDIT_DRAFT_KEY = "draft_audit_create";
 
@@ -250,9 +252,24 @@ export default function AuditsPage() {
         return list;
     }, [audits, activeTab, search, getStatusForAudit]);
 
+    const extractors = useMemo(() => ({
+        startDate: (r) => getAuditStartDate(r),
+        endDate: (r) => getAuditEndDate(r),
+        createdBy: (r) => r.createdByFullname || r.createdByName || r.createdBy?.fullname || "",
+        approver: (r) => r.approverFullname || r.approverName || r.approver?.fullname || "",
+        status: (r) => getStatusForAudit(r),
+    }), [getStatusForAudit]);
+
+    const { sortedData: sortedAudits, sortConfig, handleSort } = useTableSort(filtered, {
+        extractors,
+        defaultField: "createdAt",
+        defaultDirection: "desc",
+        defaultType: "date",
+    });
+
     const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
     const safeP = Math.min(page, totalPages);
-    const pageData = filtered.slice((safeP - 1) * rowsPerPage, safeP * rowsPerPage);
+    const pageData = sortedAudits.slice((safeP - 1) * rowsPerPage, safeP * rowsPerPage);
 
     const allChecked = pageData.length > 0 && pageData.every((r) => selected.has(r.id));
     const toggleAll = () => {
@@ -353,14 +370,24 @@ export default function AuditsPage() {
                                 <th className="sp-th-cb">
                                     <input type="checkbox" checked={allChecked} onChange={toggleAll} />
                                 </th>
-                                <th >Số phiếu <IconSort /></th>
-                                <th>Ngày bắt đầu <IconSort /></th>
-                                <th>Ngày kết thúc <IconSort /></th>
-                                {/* <th style={{ textAlign: "center" }}>Số mặt hàng</th>
-                                <th>Diễn giải</th> */}
-                                <th style={{ width: "15%" }}>Người lập <IconSort /></th>
-                                <th style={{ width: "15%" }}>Người duyệt <IconSort /></th>
-                                <th style={{ width: "15%" }}>Trạng thái <IconSort /></th>
+                                <th>
+                                    <SortableHeader title="Số phiếu" field="docno" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Ngày bắt đầu" field="startDate" type="date" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Ngày kết thúc" field="endDate" type="date" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th style={{ width: "15%" }}>
+                                    <SortableHeader title="Người lập" field="createdBy" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th style={{ width: "15%" }}>
+                                    <SortableHeader title="Người duyệt" field="approver" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th style={{ width: "15%" }}>
+                                    <SortableHeader title="Trạng thái" field="status" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
                                 <th className="sp-th-action">Thao tác</th>
                             </tr>
                         </thead>
@@ -435,7 +462,7 @@ export default function AuditsPage() {
                                     <tr
                                         key={r.id}
                                         className={`sp-row-clickable${selected.has(r.id) ? " sp-row-selected" : ""}${rowTone ? ` ${rowTone}` : ""}`}
-                                        onClick={() => navigate(`/audits/${r.id}`)}
+                                        onClick={() => navigate(isStaff ? `/audits/requests?id=${r.id}` : `/audits/${r.id}`)}
                                     >
                                         <td className="sp-td-cb" onClick={(e) => { e.stopPropagation(); toggleOne(r.id); }}>
                                             <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleOne(r.id)} onClick={(e) => e.stopPropagation()} />
@@ -459,7 +486,7 @@ export default function AuditsPage() {
                                                 </div>
                                             )}
                                         </td>
-                                        <td className="sp-td-action" onClick={(e) => { e.stopPropagation(); navigate(`/audits/${r.id}`); }}>
+                                        <td className="sp-td-action" onClick={(e) => { e.stopPropagation(); navigate(isStaff ? `/audits/requests?id=${r.id}` : `/audits/${r.id}`); }}>
                                             <button className="sp-edit-btn" title="Xem chi tiết"><IconEye /></button>
                                         </td>
                                     </tr>

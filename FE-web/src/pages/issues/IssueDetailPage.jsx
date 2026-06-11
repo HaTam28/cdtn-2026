@@ -478,7 +478,9 @@ export default function IssueDetailPage() {
                             </div>
                             {/* ── Actions ── */}
                             <div className="rc-form-actions">
-                                <button className="rc-btn-template" onClick={handleExportPdf}>Xuất PDF</button>
+                                {issue.docstatus === "CONFIRMED" && (
+                                    <button className="rc-btn-template" onClick={handleExportPdf}>Xuất PDF</button>
+                                )}
                                 <button className="sp-btn-outline" onClick={() => navigate("/issues")}>Quay lại</button>
                                 {issue.docstatus === "DRAFT" && canConfirmCancel && (
                                     <>

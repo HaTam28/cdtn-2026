@@ -8,6 +8,13 @@ export default function SidebarLayout({ children, activeKey }) {
     const location = useLocation();
     const user = JSON.parse(localStorage.getItem("user") || "{}");
     const isStaff = user?.role === "STAFF";
+    const isAdmin = user?.role === "ADMIN";
+
+    const showSupplies = !isAdmin;
+    const showBatches = !isAdmin;
+    const showLocations = !isAdmin;
+    const showPartners = !isAdmin;
+    const showEmployees = !isStaff;
 
     const getInitialOpen = (path) => {
         if (path.startsWith("/supplies") || path.startsWith("/employees") || path.startsWith("/locations") || path.startsWith("/partners") || path.startsWith("/batches")) {
@@ -62,7 +69,13 @@ export default function SidebarLayout({ children, activeKey }) {
 
                     {/* Danh mục */}
                     <div
-                        className={`sp-nav-group-hd${(openGroups.danhmuc || location.pathname.startsWith("/supplies") || location.pathname.startsWith("/employees") || location.pathname.startsWith("/locations") || location.pathname.startsWith("/partners") || location.pathname.startsWith("/batches")) ? " sp-group-active" : ""}`}
+                        className={`sp-nav-group-hd${(openGroups.danhmuc || 
+                            (showSupplies && location.pathname.startsWith("/supplies")) ||
+                            (showBatches && location.pathname.startsWith("/batches")) ||
+                            (showLocations && location.pathname.startsWith("/locations")) ||
+                            (showPartners && location.pathname.startsWith("/partners")) ||
+                            (showEmployees && location.pathname.startsWith("/employees"))
+                        ) ? " sp-group-active" : ""}`}
                         onClick={() => toggleGroup("danhmuc")}
                     >
                         <span className="sp-nav-icon">
@@ -77,40 +90,42 @@ export default function SidebarLayout({ children, activeKey }) {
                     </div>
                     {openGroups.danhmuc && (
                         <div className="sp-nav-children">
-                            <div className={`sp-nav-child${location.pathname.startsWith("/supplies") ? " sp-child-active" : ""}`} onClick={() => navTo("Danh mục vật tư hàng hóa", "/supplies")}>Danh mục vật tư hàng hóa</div>
-                            <div className={`sp-nav-child${location.pathname.startsWith("/batches") ? " sp-child-active" : ""}`} onClick={() => navTo("Danh mục lô vật tư hàng hóa", "/batches")}>Danh mục lô vật tư hàng hóa</div>
-                            <div className={`sp-nav-child${location.pathname.startsWith("/locations") ? " sp-child-active" : ""}`} onClick={() => navTo("Danh mục vị trí", "/locations")}>Danh mục vị trí</div>
-                            {!isStaff && (
-                                <div className={`sp-nav-child${location.pathname.startsWith("/employees") ? " sp-child-active" : ""}`} onClick={() => navTo("Danh mục nhân viên", "/employees")}>Danh mục nhân viên</div>
-                            )}
-                            <div className={`sp-nav-child${location.pathname.startsWith("/partners") ? " sp-child-active" : ""}`} onClick={() => navTo("Danh mục đối tượng", "/partners")}>Danh mục đối tượng</div>
+                            {showSupplies && <div className={`sp-nav-child${location.pathname.startsWith("/supplies") ? " sp-child-active" : ""}`} onClick={() => navTo("Danh mục vật tư hàng hóa", "/supplies")}>Danh mục vật tư hàng hóa</div>}
+                            {showBatches && <div className={`sp-nav-child${location.pathname.startsWith("/batches") ? " sp-child-active" : ""}`} onClick={() => navTo("Danh mục lô vật tư hàng hóa", "/batches")}>Danh mục lô vật tư hàng hóa</div>}
+                            {showLocations && <div className={`sp-nav-child${location.pathname.startsWith("/locations") ? " sp-child-active" : ""}`} onClick={() => navTo("Danh mục vị trí", "/locations")}>Danh mục vị trí</div>}
+                            {showEmployees && <div className={`sp-nav-child${location.pathname.startsWith("/employees") ? " sp-child-active" : ""}`} onClick={() => navTo("Danh mục nhân viên", "/employees")}>Danh mục nhân viên</div>}
+                            {showPartners && <div className={`sp-nav-child${location.pathname.startsWith("/partners") ? " sp-child-active" : ""}`} onClick={() => navTo("Danh mục đối tượng", "/partners")}>Danh mục đối tượng</div>}
                         </div>
                     )}
 
                     {/* Chứng từ */}
-                    <div
-                        className={`sp-nav-group-hd${(openGroups.chungtu || location.pathname.startsWith("/receipts") || location.pathname.startsWith("/issues") || location.pathname.startsWith("/audits")) ? " sp-group-active" : ""}`}
-                        onClick={() => toggleGroup("chungtu")}
-                    >
-                        <span className="sp-nav-icon">
-                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
-                            </svg>
-                        </span>
-                        <span>Chứng từ</span>
-                        <span className={`sp-chevron${openGroups.chungtu ? " open" : ""}`}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
-                        </span>
-                    </div>
-                    {openGroups.chungtu && (
-                        <div className="sp-nav-children">
-                            <div className={`sp-nav-child${location.pathname.startsWith("/receipts") ? " sp-child-active" : ""}`} onClick={() => navTo("Phiếu nhập kho", "/receipts")}>Phiếu nhập kho</div>
-                            <div className={`sp-nav-child${location.pathname.startsWith("/issues") ? " sp-child-active" : ""}`} onClick={() => navTo("Phiếu xuất kho", "/issues")}>Phiếu xuất kho</div>
-                            <div className={`sp-nav-child${location.pathname.startsWith("/audits") ? " sp-child-active" : ""}`} onClick={() => navTo("Kiểm kê hàng tồn kho", "/audits")}>Kiểm kê hàng tồn kho</div>
-                        </div>
+                    {!isAdmin && (
+                        <>
+                            <div
+                                className={`sp-nav-group-hd${(openGroups.chungtu || location.pathname.startsWith("/receipts") || location.pathname.startsWith("/issues") || location.pathname.startsWith("/audits")) ? " sp-group-active" : ""}`}
+                                onClick={() => toggleGroup("chungtu")}
+                            >
+                                <span className="sp-nav-icon">
+                                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+                                    </svg>
+                                </span>
+                                <span>Chứng từ</span>
+                                <span className={`sp-chevron${openGroups.chungtu ? " open" : ""}`}>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+                                </span>
+                            </div>
+                            {openGroups.chungtu && (
+                                <div className="sp-nav-children">
+                                    <div className={`sp-nav-child${location.pathname.startsWith("/receipts") ? " sp-child-active" : ""}`} onClick={() => navTo("Phiếu nhập kho", "/receipts")}>Phiếu nhập kho</div>
+                                    <div className={`sp-nav-child${location.pathname.startsWith("/issues") ? " sp-child-active" : ""}`} onClick={() => navTo("Phiếu xuất kho", "/issues")}>Phiếu xuất kho</div>
+                                    <div className={`sp-nav-child${location.pathname.startsWith("/audits") ? " sp-child-active" : ""}`} onClick={() => navTo("Kiểm kê hàng tồn kho", "/audits")}>Kiểm kê hàng tồn kho</div>
+                                </div>
+                            )}
+                        </>
                     )}
 
-                    {!isStaff && (
+                    {!isStaff && !isAdmin && (
                         <>
                             {/* Báo cáo */}
                             <div

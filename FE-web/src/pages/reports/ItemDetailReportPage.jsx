@@ -519,6 +519,10 @@ export default function ItemDetailReportPage() {
                     </div>
 
                     <div className="rpt-content rpt-printable">
+                        <div className="rpt-print-company">
+                            <div className="rpt-print-company-name">{COMPANY_NAME}</div>
+                            <div className="rpt-print-company-address">{COMPANY_ADDRESS}</div>
+                        </div>
                         <div className="rpt-report-title">SỔ CHI TIẾT VẬT TƯ</div>
                         {dateLabel && <div className="rpt-report-subtitle">{dateLabel}</div>}
 
@@ -564,27 +568,20 @@ export default function ItemDetailReportPage() {
                                                     <td colSpan={14}>{`${gi + 1}. ${g.itemcode || "—"} - ${g.itemname || "—"}`}</td>
                                                 </tr>
                                                 <tr>
-                                                    <th rowSpan={2} style={{ textAlign: "center" }}>STT</th>
-                                                    <th colSpan={2} style={{ textAlign: "center" }}>Chứng từ</th>
-                                                    <th rowSpan={2}>Mã vật tư</th>
-                                                    <th rowSpan={2}>Tên vật tư</th>
-                                                    <th rowSpan={2} style={{ textAlign: "center" }}>Đvt</th>
-                                                    <th colSpan={2}>Tồn đầu</th>
-                                                    <th colSpan={2}>Nhập</th>
-                                                    <th colSpan={2}>Xuất</th>
-                                                    <th colSpan={2}>Tồn cuối</th>
-                                                </tr>
-                                                <tr>
-                                                    <th>Ngày</th>
-                                                    <th>Số</th>
-                                                    <th className="rpt-num">Số lượng</th>
-                                                    <th className="rpt-num">Giá trị</th>
-                                                    <th className="rpt-num">Số lượng</th>
-                                                    <th className="rpt-num">Giá trị</th>
-                                                    <th className="rpt-num">Số lượng</th>
-                                                    <th className="rpt-num">Giá trị</th>
-                                                    <th className="rpt-num">Số lượng</th>
-                                                    <th className="rpt-num">Giá trị</th>
+                                                    <th style={{ textAlign: "center" }}>STT</th>
+                                                    <th>Ngày CT</th>
+                                                    <th>Số CT</th>
+                                                    <th>Mã vật tư</th>
+                                                    <th>Tên vật tư</th>
+                                                    <th style={{ textAlign: "center" }}>Đvt</th>
+                                                    <th className="rpt-num">SL tồn đầu</th>
+                                                    <th className="rpt-num">GT tồn đầu</th>
+                                                    <th className="rpt-num">SL nhập</th>
+                                                    <th className="rpt-num">GT nhập</th>
+                                                    <th className="rpt-num">SL xuất</th>
+                                                    <th className="rpt-num">GT xuất</th>
+                                                    <th className="rpt-num">SL tồn cuối</th>
+                                                    <th className="rpt-num">GT tồn cuối</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -644,6 +641,28 @@ export default function ItemDetailReportPage() {
                                 ))}
                             </div>
                         )}
+                        {!loading && !error && groups.length > 0 && (() => {
+                            const now = new Date();
+                            return (
+                                <div className="rpt-print-signature">
+                                    <div className="rpt-print-sig-date">
+                                        {`Ngày ${now.getDate()} tháng ${now.getMonth() + 1} năm ${now.getFullYear()}`}
+                                    </div>
+                                    <div className="rpt-print-sig-row">
+                                        <div className="rpt-print-sig-col">
+                                            <div className="rpt-print-sig-title">Người lập</div>
+                                            <div className="rpt-print-sig-sub">(Đã ký)</div>
+                                            <div className="rpt-print-sig-name">&nbsp;</div>
+                                        </div>
+                                        <div className="rpt-print-sig-col">
+                                            <div className="rpt-print-sig-title">Kế toán trưởng</div>
+                                            <div className="rpt-print-sig-sub">(Đã ký)</div>
+                                            <div className="rpt-print-sig-name">&nbsp;</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
             </div>

@@ -50,8 +50,11 @@ export const updateReceipt = async (id, body) => {
 };
 
 /** POST /api/goods-receipts/{id}/confirm — Xác nhận phiếu nhập */
-export const confirmReceipt = async (id) => {
-    const res = await axiosInstance.post(`${BASE}/${id}/confirm`);
+export const confirmReceipt = async (id, approvalNote) => {
+    const url = approvalNote
+        ? `${BASE}/${id}/confirm?approvalNote=${encodeURIComponent(approvalNote)}`
+        : `${BASE}/${id}/confirm`;
+    const res = await axiosInstance.post(url);
     return res.data;
 };
 

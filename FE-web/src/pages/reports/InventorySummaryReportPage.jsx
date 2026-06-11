@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import ExcelJS from "exceljs";
 import "../../styles/shared.css";
 import "../receipts/receipts.css";
@@ -74,6 +74,16 @@ function FilterDrawer({ open, filters, setFilters, items, onApply, onClose }) {
     const set = (k, v) => setLocal((p) => ({ ...p, [k]: v }));
     const handleApply = () => { setFilters(local); onApply(local); onClose(); };
     const handleCancel = () => { setLocal({ ...filters }); onClose(); };
+
+    const uniqueItemTypes = useMemo(() => {
+        const types = new Set();
+        (items || []).forEach((it) => {
+            const t = it.itemtype || it.itemType || "";
+            if (t.trim()) types.add(t.trim());
+        });
+        return Array.from(types).sort();
+    }, [items]);
+
     if (!open) return null;
     return (
         <div className="rpt-drawer-overlay" onClick={(e) => e.target === e.currentTarget && handleCancel()}>
@@ -90,6 +100,15 @@ function FilterDrawer({ open, filters, setFilters, items, onApply, onClose }) {
                     <div className="rpt-filter-field">
                         <label className="rpt-filter-label">Đến ngày</label>
                         <input type="date" className="rc-form-input" value={local.toDate} onChange={(e) => set("toDate", e.target.value)} />
+                    </div>
+                    <div className="rpt-filter-field">
+                        <label className="rpt-filter-label">Loại vật tư</label>
+                        <select className="rc-form-select" value={local.itemType || ""} onChange={(e) => set("itemType", e.target.value)}>
+                            <option value="">-- Tất cả loại vật tư --</option>
+                            {uniqueItemTypes.map((type) => (
+                                <option key={type} value={type}>{type}</option>
+                            ))}
+                        </select>
                     </div>
                     <div className="rpt-filter-field">
                         <label className="rpt-filter-label">Vật tư</label>
@@ -112,7 +131,7 @@ function FilterDrawer({ open, filters, setFilters, items, onApply, onClose }) {
     );
 }
 
-const EMPTY_FILTERS = { fromDate: "", toDate: "", itemId: "" };
+const EMPTY_FILTERS = { fromDate: "", toDate: "", itemId: "", itemType: "" };
 
 export default function InventorySummaryReportPage() {
     const [items, setItems] = useState([]);
@@ -166,6 +185,10 @@ export default function InventorySummaryReportPage() {
             const itemId = String(detail?.itemId || "");
             if (!itemId) return;
             if (applied.itemId && applied.itemId !== itemId) return;
+            const item = items.find((it) => String(it.id) === itemId) || {};
+            const type = item.itemtype || item.itemType || "";
+            if (applied.itemType && applied.itemType !== type) return;
+
             const d = toDateObj(docDate);
             if (!d) return;
             const docD = stripTime(d);
@@ -440,6 +463,10 @@ export default function InventorySummaryReportPage() {
                     </div>
 
                     <div className="rpt-content rpt-printable">
+                        <div className="rpt-print-company">
+                            <div className="rpt-print-company-name">{COMPANY_NAME}</div>
+                            <div className="rpt-print-company-address">{COMPANY_ADDRESS}</div>
+                        </div>
                         <div className="rpt-report-title">TỔNG HỢP NHẬP - XUẤT - TỒN</div>
                         {dateLabel && <div className="rpt-report-subtitle">{dateLabel}</div>}
 
@@ -447,6 +474,7 @@ export default function InventorySummaryReportPage() {
                             <div className="rpt-chips">
                                 {applied.fromDate && <span className="rpt-chip">Từ: {formatDate(applied.fromDate)}</span>}
                                 {applied.toDate && <span className="rpt-chip">Đến: {formatDate(applied.toDate)}</span>}
+                                {applied.itemType && <span className="rpt-chip">Loại vật tư: {applied.itemType}</span>}
                                 {applied.itemId && <span className="rpt-chip">Vật tư: {items.find((it) => String(it.id) === applied.itemId)?.itemname || applied.itemId}</span>}
                                 <button className="rpt-chip rpt-chip-clear" onClick={() => { setFilters({ ...EMPTY_FILTERS }); setApplied({ ...EMPTY_FILTERS }); }}>✕ Xóa lọc</button>
                             </div>
@@ -474,24 +502,18 @@ export default function InventorySummaryReportPage() {
                                     </colgroup>
                                     <thead>
                                         <tr>
-                                            <th rowSpan={2} style={{ textAlign: "center" }}>STT</th>
-                                            <th rowSpan={2}>Mã vật tư</th>
-                                            <th rowSpan={2}>Tên vật tư</th>
-                                            <th rowSpan={2} style={{ textAlign: "center" }}>Đvt</th>
-                                            <th colSpan={2}>Tồn đầu</th>
-                                            <th colSpan={2}>Nhập</th>
-                                            <th colSpan={2}>Xuất</th>
-                                            <th colSpan={2}>Tồn cuối</th>
-                                        </tr>
-                                        <tr>
-                                            <th className="rpt-num">Số lượng</th>
-                                            <th className="rpt-num">Giá trị</th>
-                                            <th className="rpt-num">Số lượng</th>
-                                            <th className="rpt-num">Giá trị</th>
-                                            <th className="rpt-num">Số lượng</th>
-                                            <th className="rpt-num">Giá trị</th>
-                                            <th className="rpt-num">Số lượng</th>
-                                            <th className="rpt-num">Giá trị</th>
+                                            <th style={{ textAlign: "center" }}>STT</th>
+                                            <th>Mã vật tư</th>
+                                            <th>Tên vật tư</th>
+                                            <th style={{ textAlign: "center" }}>Đvt</th>
+                                            <th className="rpt-num">SL tồn đầu</th>
+                                            <th className="rpt-num">GT tồn đầu</th>
+                                            <th className="rpt-num">SL nhập</th>
+                                            <th className="rpt-num">GT nhập</th>
+                                            <th className="rpt-num">SL xuất</th>
+                                            <th className="rpt-num">GT xuất</th>
+                                            <th className="rpt-num">SL tồn cuối</th>
+                                            <th className="rpt-num">GT tồn cuối</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -535,6 +557,28 @@ export default function InventorySummaryReportPage() {
                                 </table>
                             </div>
                         )}
+                        {!loading && !error && summaryRows.length > 0 && (() => {
+                            const now = new Date();
+                            return (
+                                <div className="rpt-print-signature">
+                                    <div className="rpt-print-sig-date">
+                                        {`Ngày ${now.getDate()} tháng ${now.getMonth() + 1} năm ${now.getFullYear()}`}
+                                    </div>
+                                    <div className="rpt-print-sig-row">
+                                        <div className="rpt-print-sig-col">
+                                            <div className="rpt-print-sig-title">Người lập</div>
+                                            <div className="rpt-print-sig-sub">(Đã ký)</div>
+                                            <div className="rpt-print-sig-name">&nbsp;</div>
+                                        </div>
+                                        <div className="rpt-print-sig-col">
+                                            <div className="rpt-print-sig-title">Kế toán trưởng</div>
+                                            <div className="rpt-print-sig-sub">(Đã ký)</div>
+                                            <div className="rpt-print-sig-name">&nbsp;</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
             </div>

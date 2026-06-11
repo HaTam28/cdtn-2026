@@ -28,7 +28,7 @@ public class Batch {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(unique = true, nullable = false, length = 50, name = "batchcode")
+    @Column(nullable = false, length = 50, name = "batchcode")
     private String batchCode;
 
     @ManyToOne(fetch = FetchType.LAZY)

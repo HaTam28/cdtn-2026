@@ -138,6 +138,8 @@ export default function ReceiptDetailPage() {
     const [confirmModal, setConfirmModal] = useState(false);
     const [rejectModal, setRejectModal] = useState(false);
     const [rejectReason, setRejectReason] = useState("");
+    const [approvalNoteModal, setApprovalNoteModal] = useState(false);
+    const [approvalNote, setApprovalNote] = useState("");
 
     const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3500); };
 
@@ -177,13 +179,15 @@ export default function ReceiptDetailPage() {
 
     useEffect(() => { fetchReceipt(); }, [fetchReceipt]);
 
-    const handleConfirm = async () => {
+    const handleConfirm = async (note) => {
         setConfirmModal(false);
+        setApprovalNoteModal(false);
         setActionLoading(true);
         try {
-            const res = await confirmReceipt(id);
+            const res = await confirmReceipt(id, note);
             if (res?.success) {
                 showToast("success", "Xác nhận phiếu nhập kho thành công!");
+                setApprovalNote("");
                 await fetchReceipt();
             } else {
                 showToast("error", res?.message || "Xác nhận thất bại.");
@@ -542,6 +546,12 @@ export default function ReceiptDetailPage() {
                                     <input className="rc-form-input rc-form-full" value={receipt.rejectReason} readOnly />
                                 </div>
                             )}
+                            {receipt.approvalNote && (
+                                <div className="rc-form-row" style={{ marginTop: 6 }}>
+                                    <label className="rc-form-label">Lưu ý</label>
+                                    <input className="rc-form-input rc-form-full" value={receipt.approvalNote} readOnly />
+                                </div>
+                            )}
                             {rejectModal && (
                                 <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center" }}>
                                     <div style={{ background: "#fff", borderRadius: 12, padding: "32px 36px", minWidth: 360, maxWidth: 440, boxShadow: "0 8px 32px rgba(0,0,0,0.15)", border: "1.5px solid #ffccbc", textAlign: "center" }}>
@@ -566,6 +576,37 @@ export default function ReceiptDetailPage() {
                                                 disabled={actionLoading || !rejectReason.trim()}
                                             >
                                                 {actionLoading ? "Đang xử lý..." : "Từ chối"}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            {approvalNoteModal && (
+                                <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                    <div style={{ background: "#fff", borderRadius: 12, padding: "32px 36px", minWidth: 360, maxWidth: 440, boxShadow: "0 8px 32px rgba(30,133,74,0.15)", border: "1.5px solid #c6dfd0", textAlign: "center" }}>
+                                        <div style={{ width: 52, height: 52, borderRadius: "50%", background: "#e8f5e9", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+                                            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1E854A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                <circle cx="12" cy="12" r="10" />
+                                                <polyline points="9 12 11 14 15 10" />
+                                            </svg>
+                                        </div>
+                                        <h3 style={{ margin: "0 0 8px", color: "#1E3A2F", fontSize: "1.1rem", fontWeight: 700 }}>Xác nhận duyệt phiếu nhập kho</h3>
+                                        <p style={{ margin: "0 0 12px", color: "#4c6152", fontSize: "0.92rem" }}>Nhập lưu ý phê duyệt phiếu nhập điều chỉnh (nếu có).</p>
+                                        <textarea
+                                            style={{ width: "100%", minHeight: 80, padding: 8, borderRadius: 6, border: "1.5px solid #c0deca", fontSize: "0.9rem", resize: "vertical", outline: "none", boxSizing: "border-box" }}
+                                            placeholder="Nhập lưu ý..."
+                                            value={approvalNote}
+                                            onChange={(e) => setApprovalNote(e.target.value)}
+                                        />
+                                        <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 16 }}>
+                                            <button className="sp-btn-outline" onClick={() => { setApprovalNoteModal(false); setApprovalNote(""); }} disabled={actionLoading} style={{ minWidth: 100 }}>Hủy bỏ</button>
+                                            <button
+                                                className="sp-btn-primary"
+                                                onClick={() => handleConfirm(approvalNote)}
+                                                disabled={actionLoading}
+                                                style={{ minWidth: 120 }}
+                                            >
+                                                {actionLoading ? "Đang xử lý..." : "Xác nhận"}
                                             </button>
                                         </div>
                                     </div>
@@ -644,14 +685,23 @@ export default function ReceiptDetailPage() {
 
                             {/* ── Actions ── */}
                             <div className="rc-form-actions">
-                                <button className="rc-btn-template" onClick={handleExportPdf}>Xuất PDF</button>
+                                {receipt.docstatus === "CONFIRMED" && (
+                                    <button className="rc-btn-template" onClick={handleExportPdf}>Xuất PDF</button>
+                                )}
                                 <button className="sp-btn-outline" onClick={() => navigate("/receipts")}>Quay lại</button>
                                 {receipt.docstatus === "DRAFT" && canConfirmCancel && (
                                     <>
                                         <button className="sp-btn-danger-outline" onClick={() => setRejectModal(true)} disabled={actionLoading}>
                                             {actionLoading ? "Đang xử lý..." : "Từ chối"}
                                         </button>
-                                        <button className="sp-btn-primary" onClick={() => setConfirmModal(true)} disabled={actionLoading}>
+                                        <button className="sp-btn-primary" onClick={() => {
+                                            const isAdj = String(receipt.docType || receipt.doctype || "NORMAL").toUpperCase() === "ADJUSTMENT";
+                                            if (isAdj) {
+                                                setApprovalNoteModal(true);
+                                            } else {
+                                                setConfirmModal(true);
+                                            }
+                                        }} disabled={actionLoading}>
                                             Xác nhận
                                         </button>
                                     </>

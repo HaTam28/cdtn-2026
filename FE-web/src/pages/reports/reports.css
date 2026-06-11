@@ -213,6 +213,13 @@
     min-width: 980px;
 }
 
+.rpt-table th {
+    text-align: left;
+    font-weight: 600;
+    background: #1e854a;
+    color: #fff;
+}
+
 .rpt-table th,
 .rpt-table td {
     white-space: normal;
@@ -222,6 +229,10 @@
 
 .rpt-num {
     white-space: nowrap;
+    text-align: right;
+}
+
+.rpt-table th.rpt-num {
     text-align: right;
 }
 
@@ -317,6 +328,12 @@
         border: none !important;
         padding: 0 !important;
         box-shadow: none !important;
+    }
+
+    body, html, #root, .sp-layout, .sp-main, .sp-content {
+        overflow: visible !important;
+        height: auto !important;
+        min-height: 0 !important;
     }
 
     .sp-content {

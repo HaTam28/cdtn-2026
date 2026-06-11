@@ -6,6 +6,8 @@ import { getAllBatches } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
 import { getAllReceipts } from "../../api/receiptApi";
 import notify from "../../utils/notify";
+import { useTableSort } from "../../utils/useTableSort";
+import SortableHeader from "../../components/SortableHeader";
 
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
@@ -90,12 +92,10 @@ export default function BatchesPage() {
     }, [fetchBatches]);
 
     const filtered = useMemo(() => {
-        const sorted = [...batches]
-            .filter((batch) => receiptStatusByDetailId[batch.receiptDetailId] === "CONFIRMED")
-            .sort((a, b) => (b.id || 0) - (a.id || 0));
-        if (!search.trim()) return sorted;
+        const list = batches.filter((batch) => receiptStatusByDetailId[batch.receiptDetailId] === "CONFIRMED");
+        if (!search.trim()) return list;
         const q = search.toLowerCase();
-        return sorted.filter((r) =>
+        return list.filter((r) =>
             r.batchCode?.toLowerCase().includes(q) ||
             r.nameBatch?.toLowerCase().includes(q) ||
             r.itemcode?.toLowerCase().includes(q) ||
@@ -103,10 +103,16 @@ export default function BatchesPage() {
         );
     }, [search, batches, receiptStatusByDetailId]);
 
+    const { sortedData: sortedBatches, sortConfig, handleSort } = useTableSort(filtered, {
+        defaultField: "id",
+        defaultDirection: "desc",
+        defaultType: "number",
+    });
+
     const totalRows = filtered.length;
     const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage));
     const start = (page - 1) * rowsPerPage;
-    const rows = filtered.slice(start, start + rowsPerPage);
+    const rows = sortedBatches.slice(start, start + rowsPerPage);
 
     const allIds = rows.map((r) => r.id);
     const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
@@ -272,14 +278,30 @@ export default function BatchesPage() {
                                         onChange={(e) => toggleAll(e.target.checked)}
                                     />
                                 </th>
-                                <th className="sp-th-sticky">Mã lô <SortIcon /></th>
-                                <th>Tên lô <SortIcon /></th>
-                                <th>Mã VT <SortIcon /></th>
-                                <th>Tên vật tư / hàng hóa <SortIcon /></th>
-                                <th>SL ban đầu <SortIcon /></th>
-                                <th>SL còn lại <SortIcon /></th>
-                                <th>Đơn giá nhập <SortIcon /></th>
-                                <th>Ngày tạo <SortIcon /></th>
+                                <th className="sp-th-sticky">
+                                    <SortableHeader title="Mã lô" field="batchCode" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Tên lô" field="nameBatch" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Mã VT" field="itemcode" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Tên vật tư / hàng hóa" field="itemname" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="SL ban đầu" field="quantity" type="number" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="SL còn lại" field="quantityRemaining" type="number" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Đơn giá nhập" field="unitCost" type="number" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Ngày tạo" field="createdAt" type="date" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
                             </tr>
                         </thead>
                         <tbody>

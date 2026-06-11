@@ -128,6 +128,14 @@ function FilterDrawer({ open, filters, setFilters, items, employees, customers, 
                             ))}
                         </select>
                     </div>
+                    <div className="rpt-filter-field">
+                        <label className="rpt-filter-label">Loại phiếu xuất</label>
+                        <select className="rc-form-select" value={local.docType} onChange={(e) => set("docType", e.target.value)}>
+                            <option value="">-- Tất cả loại --</option>
+                            <option value="NORMAL">Thông thường</option>
+                            <option value="ADJUSTMENT">Điều chỉnh</option>
+                        </select>
+                    </div>
                 </div>
                 <div className="rpt-drawer-footer">
                     <button className="sp-btn-primary" onClick={handleApply} style={{ minWidth: 80 }}>Nhận</button>
@@ -162,7 +170,7 @@ export default function IssueReportPage() {
         setLoading(true);
         setError(null);
         getAllIssues()
-            .then((data) => setIssues((data || []).filter((r) => r.docstatus === "CONFIRMED")))
+            .then((data) => setIssues((data || []).filter((r) => r.docstatus === "CONFIRMED" && (r.docType || r.doctype || "NORMAL").toUpperCase() !== "RETURN")))
             .catch(() => setError("Không thể tải dữ liệu phiếu xuất."))
             .finally(() => setLoading(false));
     }, []);
@@ -507,6 +515,10 @@ export default function IssueReportPage() {
                     </div>
 
                     <div className="rpt-content rpt-printable">
+                        <div className="rpt-print-company">
+                            <div className="rpt-print-company-name">{COMPANY_NAME}</div>
+                            <div className="rpt-print-company-address">{COMPANY_ADDRESS}</div>
+                        </div>
                         <div className="rpt-report-title">BẢNG KÊ CHỨNG TỪ PHIẾU XUẤT</div>
                         {dateLabel && <div className="rpt-report-subtitle">{dateLabel}</div>}
 
@@ -620,6 +632,28 @@ export default function IssueReportPage() {
                                 </table>
                             </div>
                         )}
+                        {!loading && !error && filteredRows.length > 0 && (() => {
+                            const now = new Date();
+                            return (
+                                <div className="rpt-print-signature">
+                                    <div className="rpt-print-sig-date">
+                                        {`Ngày ${now.getDate()} tháng ${now.getMonth() + 1} năm ${now.getFullYear()}`}
+                                    </div>
+                                    <div className="rpt-print-sig-row">
+                                        <div className="rpt-print-sig-col">
+                                            <div className="rpt-print-sig-title">Người lập</div>
+                                            <div className="rpt-print-sig-sub">(Đã ký)</div>
+                                            <div className="rpt-print-sig-name">&nbsp;</div>
+                                        </div>
+                                        <div className="rpt-print-sig-col">
+                                            <div className="rpt-print-sig-title">Kế toán trưởng</div>
+                                            <div className="rpt-print-sig-sub">(Đã ký)</div>
+                                            <div className="rpt-print-sig-name">&nbsp;</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
             </div>

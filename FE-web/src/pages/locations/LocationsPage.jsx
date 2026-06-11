@@ -6,6 +6,8 @@ import { getBatchesByLocation } from "../../api/batchApi";
 import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
+import { useTableSort } from "../../utils/useTableSort";
+import SortableHeader from "../../components/SortableHeader";
 
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
@@ -140,10 +142,9 @@ export default function LocationsPage() {
     }, [items, locationItemsMap, locationItemSearchMap]);
 
     const filtered = useMemo(() => {
-        const sorted = [...items].sort((a, b) => (getLocationId(a) || 0) - (getLocationId(b) || 0));
-        if (!search.trim()) return sorted;
+        if (!search.trim()) return items;
         const q = search.trim().toLowerCase();
-        return sorted
+        return items
             .map((r) => {
                 const id = getLocationId(r);
                 const matchesItemCode = (locationItemSearchMap[id] || "").includes(q);
@@ -158,10 +159,21 @@ export default function LocationsPage() {
             .map((entry) => entry.row);
     }, [search, items, locationItemSearchMap]);
 
+    const extractors = useMemo(() => ({
+        quantity: (r) => locationTotalsMap[getLocationId(r)] || 0,
+    }), [locationTotalsMap]);
+
+    const { sortedData: sortedLocations, sortConfig, handleSort } = useTableSort(filtered, {
+        extractors,
+        defaultField: "id",
+        defaultDirection: "asc",
+        defaultType: "number",
+    });
+
     const totalRows = filtered.length;
     const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage));
     const start = (page - 1) * rowsPerPage;
-    const rows = filtered.slice(start, start + rowsPerPage);
+    const rows = sortedLocations.slice(start, start + rowsPerPage);
 
     // Fetch items summary for visible rows (depend on stable rowIds string to avoid running on each render)
     const rowIds = rows.map((r) => getLocationId(r)).join(",");
@@ -396,10 +408,16 @@ export default function LocationsPage() {
                                         onChange={(e) => toggleAll(e.target.checked)}
                                     />
                                 </th>
-                                <th className="sp-th-sticky">Mã vị trí <SortIcon /></th>
-                                <th>Tên <SortIcon /></th>
+                                <th className="sp-th-sticky">
+                                    <SortableHeader title="Mã vị trí" field="locationcode" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Tên" field="locationname" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
                                 <th>Mã vật tư</th>
-                                <th style={{ textAlign: "center" }}>Số lượng <SortIcon /></th>
+                                <th style={{ textAlign: "center" }}>
+                                    <SortableHeader title="Số lượng" field="quantity" type="number" sortConfig={sortConfig} onSort={handleSort} style={{ justifyContent: "center", width: "100%" }} />
+                                </th>
                                 <th className="sp-th-action">Thao tác</th>
                             </tr>
                         </thead>

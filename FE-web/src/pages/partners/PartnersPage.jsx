@@ -6,6 +6,8 @@ import { getAllCustomers } from "../../api/customerApi";
 import TopbarRight from "../../components/TopbarRight";
 import { COPY_SELECT_ONE } from "../../utils/messages";
 import notify from "../../utils/notify";
+import { useTableSort } from "../../utils/useTableSort";
+import SortableHeader from "../../components/SortableHeader";
 
 const ROWS_OPTIONS = [10, 15, 20, 50];
 
@@ -53,19 +55,24 @@ export default function PartnersPage() {
     useEffect(() => { fetchItems(); }, [fetchItems]);
 
     const filtered = useMemo(() => {
-        const sorted = [...items].sort((a, b) => (b.id || 0) - (a.id || 0));
-        if (!search.trim()) return sorted;
+        if (!search.trim()) return items;
         const q = search.toLowerCase();
-        return sorted.filter((r) =>
+        return items.filter((r) =>
             r.customercode?.toLowerCase().includes(q) ||
             r.customername?.toLowerCase().includes(q)
         );
     }, [search, items]);
 
+    const { sortedData: sortedPartners, sortConfig, handleSort } = useTableSort(filtered, {
+        defaultField: "id",
+        defaultDirection: "desc",
+        defaultType: "number",
+    });
+
     const totalRows = filtered.length;
     const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage));
     const start = (page - 1) * rowsPerPage;
-    const rows = filtered.slice(start, start + rowsPerPage);
+    const rows = sortedPartners.slice(start, start + rowsPerPage);
 
     const allIds = rows.map((r) => r.id);
     const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
@@ -248,14 +255,30 @@ export default function PartnersPage() {
                                         onChange={(e) => toggleAll(e.target.checked)}
                                     />
                                 </th>
-                                <th className="sp-th-sticky">Mã <SortIcon /></th>
-                                <th>Tên doanh nghiệp <SortIcon /></th>
-                                <th>SDT đối tác <SortIcon /></th>
-                                <th>Đại diện pháp luật <SortIcon /></th>
-                                <th>Mã số thuế <SortIcon /></th>
-                                <th>Địa chỉ liên hệ <SortIcon /></th>
-                                <th>Số điện thoại <SortIcon /></th>
-                                <th>Email <SortIcon /></th>
+                                <th className="sp-th-sticky">
+                                    <SortableHeader title="Mã" field="customercode" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Tên doanh nghiệp" field="customername" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="SDT đối tác" field="partnermobile" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Đại diện pháp luật" field="partnername" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Mã số thuế" field="taxcode" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Địa chỉ liên hệ" field="address" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Số điện thoại" field="mobile" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
+                                <th>
+                                    <SortableHeader title="Email" field="email" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                </th>
                                 <th className="sp-th-action">Thao tác</th>
                             </tr>
                         </thead>

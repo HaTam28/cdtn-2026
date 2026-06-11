@@ -156,7 +156,7 @@ public class GoodsReceiptService {
      * Cập nhật ItemLocation và InventoryBalance theo từng dòng chi tiết.
      */
     @Transactional
-    public GoodsReceiptResponse confirm(Long id) {
+    public GoodsReceiptResponse confirm(Long id, String approvalNote) {
         GoodsReceipt receipt = findOrThrow(id);
         requireStatus(receipt, DocStatus.DRAFT, "Chỉ có thể xác nhận phiếu ở trạng thái DRAFT");
 
@@ -214,6 +214,10 @@ public class GoodsReceiptService {
             inventoryBalanceRepository.save(balance);
 
             applyBatch(receipt, detail);
+        }
+
+        if (isAdjustment(receipt) && approvalNote != null && !approvalNote.trim().isEmpty()) {
+            receipt.setApprovalNote(approvalNote.trim());
         }
 
         receipt.setDocstatus(DocStatus.CONFIRMED);
@@ -585,18 +589,65 @@ public class GoodsReceiptService {
             if (batch == null) {
                 throw new RuntimeException("Phiếu nhập điều chỉnh phải có mã lô");
             }
-            if (batch.getQuantity() == null) {
-                batch.setQuantity(BigDecimal.ZERO);
+            
+            Location batchOriginalLocation = (batch.getReceiptDetail() != null) ? batch.getReceiptDetail().getLocation() : null;
+            
+            if (batchOriginalLocation != null && batchOriginalLocation.getId().equals(detail.getLocation().getId())) {
+                if (batch.getQuantity() == null) {
+                    batch.setQuantity(BigDecimal.ZERO);
+                }
+                if (batch.getQuantityRemaining() == null) {
+                    batch.setQuantityRemaining(BigDecimal.ZERO);
+                }
+                batch.setQuantity(batch.getQuantity().add(detail.getQuantity()));
+                batch.setQuantityRemaining(batch.getQuantityRemaining().add(detail.getQuantity()));
+                if (batch.getUnitCost() == null) {
+                    batch.setUnitCost(detail.getUnitprice());
+                }
+                batchRepository.save(batch);
+                
+                detail.setBatch(batch);
+                detailRepository.save(detail);
+            } else {
+                List<Batch> existingAtLocation = batchRepository.findAllByReceiptDetailLocationIdAndItemId(detail.getLocation().getId(), detail.getItem().getId());
+                Batch batchAtLoc = null;
+                for (Batch b : existingAtLocation) {
+                    if (batch.getBatchCode().equals(b.getBatchCode())) {
+                        batchAtLoc = b;
+                        break;
+                    }
+                }
+                
+                if (batchAtLoc != null) {
+                    if (batchAtLoc.getQuantity() == null) {
+                        batchAtLoc.setQuantity(BigDecimal.ZERO);
+                    }
+                    if (batchAtLoc.getQuantityRemaining() == null) {
+                        batchAtLoc.setQuantityRemaining(BigDecimal.ZERO);
+                    }
+                    batchAtLoc.setQuantity(batchAtLoc.getQuantity().add(detail.getQuantity()));
+                    batchAtLoc.setQuantityRemaining(batchAtLoc.getQuantityRemaining().add(detail.getQuantity()));
+                    batchRepository.save(batchAtLoc);
+                    
+                    detail.setBatch(batchAtLoc);
+                    detailRepository.save(detail);
+                } else {
+                    Batch newBatch = new Batch();
+                    newBatch.setItem(detail.getItem());
+                    newBatch.setBatchCode(batch.getBatchCode());
+                    newBatch.setNameBatch(batch.getNameBatch());
+                    newBatch.setManufactureDate(batch.getManufactureDate());
+                    newBatch.setExpiryDate(batch.getExpiryDate());
+                    newBatch.setUnitCost(detail.getUnitprice() != null ? detail.getUnitprice() : batch.getUnitCost());
+                    newBatch.setQuantity(detail.getQuantity());
+                    newBatch.setQuantityRemaining(detail.getQuantity());
+                    newBatch.setReceiptDetail(detail);
+                    newBatch = batchRepository.save(newBatch);
+                    
+                    detail.setBatch(newBatch);
+                    detailRepository.save(detail);
+                }
             }
-            if (batch.getQuantityRemaining() == null) {
-                batch.setQuantityRemaining(BigDecimal.ZERO);
-            }
-            batch.setQuantity(batch.getQuantity().add(detail.getQuantity()));
-            batch.setQuantityRemaining(batch.getQuantityRemaining().add(detail.getQuantity()));
-            if (batch.getUnitCost() == null) {
-                batch.setUnitCost(detail.getUnitprice());
-            }
-            batchRepository.save(batch);
             return;
         }
 
@@ -654,14 +705,9 @@ public class GoodsReceiptService {
             return;
         }
 
-        java.util.Set<Long> auditDetailIds = new java.util.HashSet<>();
-
         for (GoodsReceiptDetailRequest req : detailRequests) {
             if (req.getInventoryAuditDetailId() == null) {
                 throw new RuntimeException("Phiếu nhập điều chỉnh phải liên kết chi tiết phiếu kiểm kê");
-            }
-            if (!auditDetailIds.add(req.getInventoryAuditDetailId())) {
-                throw new RuntimeException("Chi tiết phiếu kiểm kê bị trùng trong phiếu điều chỉnh");
             }
 
             var auditDetail = inventoryAuditDetailRepository.findById(req.getInventoryAuditDetailId())
@@ -773,6 +819,7 @@ public class GoodsReceiptService {
             return dr;
         }).collect(Collectors.toList()));
         res.setRejectReason(receipt.getRejectReason());
+        res.setApprovalNote(receipt.getApprovalNote());
         return res;
     }
 }
