@@ -987,13 +987,16 @@ export default function OverviewPage() {
         const inventoryLastMonth = areaChartData[lastMonthVal - 1]?.value || 0;
         const inventoryTrend = getTrendInfo(inventoryThisMonth, inventoryLastMonth);
 
+        const confirmedReceipts = receipts.filter(r => r.docstatus === "CONFIRMED");
+        const confirmedIssues = issues.filter(i => i.docstatus === "CONFIRMED");
+
         // 3. Import receipts
-        const receiptsThisMonth = receipts.filter(r => {
+        const receiptsThisMonth = confirmedReceipts.filter(r => {
             const d = new Date(r.docDate || r.createdAt);
             return d.getFullYear() < currentYearVal || (d.getFullYear() === currentYearVal && d.getMonth() + 1 <= currentMonthVal);
         }).length;
 
-        const receiptsLastMonth = receipts.filter(r => {
+        const receiptsLastMonth = confirmedReceipts.filter(r => {
             const d = new Date(r.docDate || r.createdAt);
             return d.getFullYear() < lastMonthYear || (d.getFullYear() === lastMonthYear && d.getMonth() + 1 <= lastMonthVal);
         }).length;
@@ -1001,12 +1004,12 @@ export default function OverviewPage() {
         const receiptsTrend = getTrendInfo(receiptsThisMonth, receiptsLastMonth);
 
         // 4. Export receipts
-        const issuesThisMonth = issues.filter(i => {
+        const issuesThisMonth = confirmedIssues.filter(i => {
             const d = new Date(i.docDate || i.createdAt);
             return d.getFullYear() < currentYearVal || (d.getFullYear() === currentYearVal && d.getMonth() + 1 <= currentMonthVal);
         }).length;
 
-        const issuesLastMonth = issues.filter(i => {
+        const issuesLastMonth = confirmedIssues.filter(i => {
             const d = new Date(i.docDate || i.createdAt);
             return d.getFullYear() < lastMonthYear || (d.getFullYear() === lastMonthYear && d.getMonth() + 1 <= lastMonthVal);
         }).length;
@@ -1048,7 +1051,7 @@ export default function OverviewPage() {
             {
                 id: 3,
                 label: "Tổng đơn nhập kho",
-                value: receipts.length > 0 ? formatNumber(receipts.length) : "1.284",
+                value: formatNumber(confirmedReceipts.length),
                 lastMonthValue: formatNumber(receiptsLastMonth),
                 trend: receiptsTrend.trend,
                 isUp: receiptsTrend.isUp,
@@ -1062,7 +1065,7 @@ export default function OverviewPage() {
             {
                 id: 4,
                 label: "Tổng đơn xuất kho",
-                value: issues.length > 0 ? formatNumber(issues.length) : "976",
+                value: formatNumber(confirmedIssues.length),
                 lastMonthValue: formatNumber(issuesLastMonth),
                 trend: issuesTrend.trend,
                 isUp: issuesTrend.isUp,
