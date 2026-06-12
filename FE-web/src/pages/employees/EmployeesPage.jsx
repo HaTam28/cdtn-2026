@@ -274,8 +274,8 @@ export default function EmployeesPage() {
                                 <th>
                                     <SortableHeader title="Tên đăng nhập" field="username" type="string" sortConfig={sortConfig} onSort={handleSort} />
                                 </th>
-                                <th>
-                                    <SortableHeader title="Giới tính" field="gender" type="string" sortConfig={sortConfig} onSort={handleSort} />
+                                <th style={{ textAlign: "center" }}>
+                                    <SortableHeader title="Giới tính" field="gender" type="string" sortConfig={sortConfig} onSort={handleSort} style={{ justifyContent: "center", width: "100%" }} />
                                 </th>
                                 <th>
                                     <SortableHeader title="Ngày sinh" field="birthdate" type="date" sortConfig={sortConfig} onSort={handleSort} />
@@ -322,7 +322,7 @@ export default function EmployeesPage() {
                                     <td className="sp-td-id sp-td-sticky">{r.usercode}</td>
                                     <td>{r.fullname}</td>
                                     <td>{r.username}</td>
-                                    <td>{r.gender}</td>
+                                    <td style={{ textAlign: "center" }}>{r.gender}</td>
                                     <td>{r.birthdate ? r.birthdate.slice(0, 10) : ""}</td>
                                     <td>{r.address}</td>
                                     <td>{r.phoneNumber}</td>

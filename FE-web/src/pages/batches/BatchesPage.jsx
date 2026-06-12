@@ -290,11 +290,11 @@ export default function BatchesPage() {
                                 <th>
                                     <SortableHeader title="Tên vật tư / hàng hóa" field="itemname" type="string" sortConfig={sortConfig} onSort={handleSort} />
                                 </th>
-                                <th>
-                                    <SortableHeader title="SL ban đầu" field="quantity" type="number" sortConfig={sortConfig} onSort={handleSort} />
+                                <th style={{ textAlign: "center" }}>
+                                    <SortableHeader title="SL ban đầu" field="quantity" type="number" sortConfig={sortConfig} onSort={handleSort} style={{ justifyContent: "center", width: "100%" }} />
                                 </th>
-                                <th>
-                                    <SortableHeader title="SL còn lại" field="quantityRemaining" type="number" sortConfig={sortConfig} onSort={handleSort} />
+                                <th style={{ textAlign: "center" }}>
+                                    <SortableHeader title="SL còn lại" field="quantityRemaining" type="number" sortConfig={sortConfig} onSort={handleSort} style={{ justifyContent: "center", width: "100%" }} />
                                 </th>
                                 <th>
                                     <SortableHeader title="Đơn giá nhập" field="unitCost" type="number" sortConfig={sortConfig} onSort={handleSort} />
@@ -329,12 +329,12 @@ export default function BatchesPage() {
                                     <td>{r.nameBatch}</td>
                                     <td className="bt-td-itemcode">{r.itemcode}</td>
                                     <td>{r.itemname}</td>
-                                    <td className="bt-td-number" style={{ textAlign: "left" }}>{formatNumber(r.quantity)}</td>
-                                    <td style={{ textAlign: "left" }}>
-                                        <span className={`bt-qty-remaining${r.quantityRemaining === 0 ? " bt-qty-zero" : ""}`}>
-                                            {formatNumber(r.quantityRemaining)}
-                                        </span>
-                                    </td>
+                                     <td className="bt-td-number" style={{ textAlign: "center" }}>{formatNumber(r.quantity)}</td>
+                                     <td style={{ textAlign: "center" }}>
+                                         <span className={`bt-qty-remaining${r.quantityRemaining === 0 ? " bt-qty-zero" : ""}`}>
+                                             {formatNumber(r.quantityRemaining)}
+                                         </span>
+                                     </td>
                                     <td className="bt-td-number" style={{ textAlign: "left" }}>{formatNumber(r.unitCost)}</td>
                                     <td className="bt-td-date" style={{ textAlign: "left" }} >{formatDate(r.createdAt)}</td>
                                 </tr>
