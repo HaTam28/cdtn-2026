@@ -446,14 +446,14 @@ export default function SuppliesPage() {
                                 <th>
                                     <SortableHeader title="Đơn vị tính" field="unitof" type="string" sortConfig={sortConfig} onSort={handleSort} />
                                 </th>
-                                <th style={{ textAlign: "right" }}>
-                                    <SortableHeader title="Tồn hiện tại" field="stock" type="number" sortConfig={sortConfig} onSort={handleSort} style={{ justifyContent: "flex-end", width: "100%" }} />
+                                <th style={{ textAlign: "center" }}>
+                                    <SortableHeader title="Tồn hiện tại" field="stock" type="number" sortConfig={sortConfig} onSort={handleSort} style={{ justifyContent: "center", width: "100%" }} />
                                 </th>
-                                <th style={{ textAlign: "right" }}>
-                                    <SortableHeader title="Tồn tối thiểu" field="minStock" type="number" sortConfig={sortConfig} onSort={handleSort} style={{ justifyContent: "flex-end", width: "100%" }} />
+                                <th style={{ textAlign: "center" }}>
+                                    <SortableHeader title="Tồn tối thiểu" field="minStock" type="number" sortConfig={sortConfig} onSort={handleSort} style={{ justifyContent: "center", width: "100%" }} />
                                 </th>
-                                <th style={{ textAlign: "right" }}>
-                                    <SortableHeader title="Tồn tối đa" field="maxStock" type="number" sortConfig={sortConfig} onSort={handleSort} style={{ justifyContent: "flex-end", width: "100%" }} />
+                                <th style={{ textAlign: "center" }}>
+                                    <SortableHeader title="Tồn tối đa" field="maxStock" type="number" sortConfig={sortConfig} onSort={handleSort} style={{ justifyContent: "center", width: "100%" }} />
                                 </th>
                                 <th>
                                     <SortableHeader title="Mô tả / Thông số kỹ thuật" field="description" type="string" sortConfig={sortConfig} onSort={handleSort} />

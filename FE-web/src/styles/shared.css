@@ -674,6 +674,10 @@
     color: #2a7d4c;
 }
 
+.sp-td-num {
+    text-align: center;
+}
+
 .sp-td-desc {
     color: #7a9e87;
     font-size: 0.84rem;

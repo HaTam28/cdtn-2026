@@ -75,6 +75,20 @@ export default function OverviewPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    const confirmedBatches = useMemo(() => {
+        const receiptStatusByDetailId = {};
+        receipts.forEach((receipt) => {
+            (receipt.details || []).forEach((detail) => {
+                if (detail?.id) {
+                    receiptStatusByDetailId[detail.id] = receipt.docstatus;
+                }
+            });
+        });
+        return batches.filter(
+            (b) => receiptStatusByDetailId[b.receiptDetailId] === "CONFIRMED"
+        );
+    }, [batches, receipts]);
+
     // Load Data based on role
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -179,22 +193,22 @@ export default function OverviewPage() {
     // --- STAFF CALCULATIONS ---
     const stockByItem = useMemo(() => {
         const map = new Map();
-        batches.forEach((b) => {
+        confirmedBatches.forEach((b) => {
             const qty = Number(b.quantityRemaining ?? b.quantity ?? 0);
             const key = String(b.itemId);
             map.set(key, (map.get(key) || 0) + (Number.isFinite(qty) ? qty : 0));
         });
         return map;
-    }, [batches]);
+    }, [confirmedBatches]);
 
     const inventoryValue = useMemo(() => {
-        return batches.reduce((sum, b) => {
+        return confirmedBatches.reduce((sum, b) => {
             const qty = Number(b.quantityRemaining ?? b.quantity ?? 0);
             const cost = Number(b.unitCost ?? 0);
             if (!Number.isFinite(qty) || !Number.isFinite(cost)) return sum;
             return sum + qty * cost;
         }, 0);
-    }, [batches]);
+    }, [confirmedBatches]);
 
     const lowStockItems = useMemo(() => {
         return items
@@ -810,6 +824,7 @@ export default function OverviewPage() {
         };
 
         receipts.forEach((r) => {
+            if (r.docstatus !== "CONFIRMED") return;
             const d = new Date(r.docDate || r.createdAt);
             if (isNaN(d) || d.getFullYear() !== 2026 || (d.getMonth() + 1) !== targetMonth) return;
             const wIdx = getWeekIndex(r.docDate || r.createdAt);
@@ -820,6 +835,7 @@ export default function OverviewPage() {
         });
 
         issues.forEach((i) => {
+            if (i.docstatus !== "CONFIRMED") return;
             const d = new Date(i.docDate || i.createdAt);
             if (isNaN(d) || d.getFullYear() !== 2026 || (d.getMonth() + 1) !== targetMonth) return;
             const wIdx = getWeekIndex(i.docDate || i.createdAt);
@@ -858,13 +874,13 @@ export default function OverviewPage() {
         const periods = [];
 
         // Giá trị và số lượng tồn kho hiện tại
-        const currentVal = batches.reduce((sum, b) => {
+        const currentVal = confirmedBatches.reduce((sum, b) => {
             const qty = Number(b.quantityRemaining ?? b.quantity ?? 0);
             const cost = Number(b.unitCost ?? 0);
             return sum + (Number.isFinite(qty) && Number.isFinite(cost) ? qty * cost : 0);
         }, 0);
 
-        const currentQty = batches.reduce((sum, b) => {
+        const currentQty = confirmedBatches.reduce((sum, b) => {
             const qty = Number(b.quantityRemaining ?? b.quantity ?? 0);
             return sum + (Number.isFinite(qty) ? qty : 0);
         }, 0);
@@ -904,7 +920,7 @@ export default function OverviewPage() {
             periods.push({ label, value: historicalVal, qty: historicalQty });
         }
         return periods;
-    }, [batches, receipts, issues, currentMonth]);
+    }, [confirmedBatches, receipts, issues, currentMonth]);
 
     const maxAreaValue = useMemo(() => {
         const maxVal = Math.max(...areaChartData.map(p => p.value));
@@ -927,7 +943,7 @@ export default function OverviewPage() {
         items.forEach((it) => {
             itemStockMap.set(String(it.id), 0);
         });
-        batches.forEach((b) => {
+        confirmedBatches.forEach((b) => {
             const qty = Number(b.quantityRemaining ?? b.quantity ?? 0);
             const key = String(b.itemId);
             itemStockMap.set(key, (itemStockMap.get(key) || 0) + (Number.isFinite(qty) ? qty : 0));
@@ -943,7 +959,7 @@ export default function OverviewPage() {
 
         list.sort((a, b) => b.value - a.value);
         return list.slice(0, 5);
-    }, [items, batches]);
+    }, [items, confirmedBatches]);
 
     // Dynamic calculations for summary cards trends
     const managerSummaryCards = useMemo(() => {
@@ -987,13 +1003,16 @@ export default function OverviewPage() {
         const inventoryLastMonth = areaChartData[lastMonthVal - 1]?.value || 0;
         const inventoryTrend = getTrendInfo(inventoryThisMonth, inventoryLastMonth);
 
+        const confirmedReceipts = receipts.filter(r => r.docstatus === "CONFIRMED");
+        const confirmedIssues = issues.filter(i => i.docstatus === "CONFIRMED");
+
         // 3. Import receipts
-        const receiptsThisMonth = receipts.filter(r => {
+        const receiptsThisMonth = confirmedReceipts.filter(r => {
             const d = new Date(r.docDate || r.createdAt);
             return d.getFullYear() < currentYearVal || (d.getFullYear() === currentYearVal && d.getMonth() + 1 <= currentMonthVal);
         }).length;
 
-        const receiptsLastMonth = receipts.filter(r => {
+        const receiptsLastMonth = confirmedReceipts.filter(r => {
             const d = new Date(r.docDate || r.createdAt);
             return d.getFullYear() < lastMonthYear || (d.getFullYear() === lastMonthYear && d.getMonth() + 1 <= lastMonthVal);
         }).length;
@@ -1001,12 +1020,12 @@ export default function OverviewPage() {
         const receiptsTrend = getTrendInfo(receiptsThisMonth, receiptsLastMonth);
 
         // 4. Export receipts
-        const issuesThisMonth = issues.filter(i => {
+        const issuesThisMonth = confirmedIssues.filter(i => {
             const d = new Date(i.docDate || i.createdAt);
             return d.getFullYear() < currentYearVal || (d.getFullYear() === currentYearVal && d.getMonth() + 1 <= currentMonthVal);
         }).length;
 
-        const issuesLastMonth = issues.filter(i => {
+        const issuesLastMonth = confirmedIssues.filter(i => {
             const d = new Date(i.docDate || i.createdAt);
             return d.getFullYear() < lastMonthYear || (d.getFullYear() === lastMonthYear && d.getMonth() + 1 <= lastMonthVal);
         }).length;
@@ -1048,7 +1067,7 @@ export default function OverviewPage() {
             {
                 id: 3,
                 label: "Tổng đơn nhập kho",
-                value: receipts.length > 0 ? formatNumber(receipts.length) : "1.284",
+                value: formatNumber(confirmedReceipts.length),
                 lastMonthValue: formatNumber(receiptsLastMonth),
                 trend: receiptsTrend.trend,
                 isUp: receiptsTrend.isUp,
@@ -1062,7 +1081,7 @@ export default function OverviewPage() {
             {
                 id: 4,
                 label: "Tổng đơn xuất kho",
-                value: issues.length > 0 ? formatNumber(issues.length) : "976",
+                value: formatNumber(confirmedIssues.length),
                 lastMonthValue: formatNumber(issuesLastMonth),
                 trend: issuesTrend.trend,
                 isUp: issuesTrend.isUp,
@@ -1597,13 +1616,6 @@ export default function OverviewPage() {
                                             <td>{doc.description}</td>
                                             <td>{formatDate(doc.date)}</td>
                                             <td style={{ textAlign: 'center' }}>
-                                                <button
-                                                    className="ov-btn-approve"
-                                                    onClick={(e) => handleApprove(e, doc)}
-                                                    disabled={approvingId === doc.id}
-                                                >
-                                                    {approvingId === doc.id ? "..." : "Duyệt"}
-                                                </button>
                                                 <button
                                                     className="ov-btn-view"
                                                     onClick={() => handleViewDetail(doc)}
