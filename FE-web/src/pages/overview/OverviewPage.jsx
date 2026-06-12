@@ -1617,13 +1617,6 @@ export default function OverviewPage() {
                                             <td>{formatDate(doc.date)}</td>
                                             <td style={{ textAlign: 'center' }}>
                                                 <button
-                                                    className="ov-btn-approve"
-                                                    onClick={(e) => handleApprove(e, doc)}
-                                                    disabled={approvingId === doc.id}
-                                                >
-                                                    {approvingId === doc.id ? "..." : "Duyệt"}
-                                                </button>
-                                                <button
                                                     className="ov-btn-view"
                                                     onClick={() => handleViewDetail(doc)}
                                                 >
