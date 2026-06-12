@@ -304,22 +304,22 @@ export default function IssuesPage() {
                                         ref={(el) => { if (el) el.indeterminate = someChecked; }}
                                         onChange={(e) => toggleAll(e.target.checked)} />
                                 </th>
-                                <th>
+                                <th style={{ width: 140 }}>
                                     <SortableHeader title="Số phiếu" field="docno" type="string" sortConfig={sortConfig} onSort={handleSort} />
                                 </th>
-                                <th>
+                                <th style={{ width: 130 }}>
                                     <SortableHeader title="Ngày" field="docDate" type="date" sortConfig={sortConfig} onSort={handleSort} />
                                 </th>
-                                <th>
+                                <th style={{ width: 250 }}>
                                     <SortableHeader title="Khách hàng" field="customerName" type="string" sortConfig={sortConfig} onSort={handleSort} />
                                 </th>
-                                <th style={{ width: 120, textAlign: "right" }}>
-                                    <SortableHeader title="Tổng tiền" field="total" type="number" sortConfig={sortConfig} onSort={handleSort} style={{ justifyContent: "flex-end", width: "100%" }} />
+                                <th style={{ width: 160, textAlign: "center" }}>
+                                    <SortableHeader title="Tổng tiền" field="total" type="number" sortConfig={sortConfig} onSort={handleSort} style={{ justifyContent: "center", width: "100%" }} />
                                 </th>
-                                <th style={{ width: 160 }}>
+                                <th style={{ width: 180 }}>
                                     <SortableHeader title="Người lập" field="createdBy" type="string" sortConfig={sortConfig} onSort={handleSort} />
                                 </th>
-                                <th>
+                                <th style={{ width: 150 }}>
                                     <SortableHeader title="Trạng thái" field="docstatus" type="string" sortConfig={sortConfig} onSort={handleSort} />
                                 </th>
                                 <th className="sp-th-action">Thao tác</th>
@@ -399,10 +399,10 @@ export default function IssuesPage() {
                                     <td className="sp-td-id">{r.docno}</td>
                                     <td>{formatDate(r.docDate)}</td>
                                     <td>{r.customerName || "-"}</td>
-                                    <td className="rc-td-num" style={{ width: 120, textAlign: "right" }}>
+                                    <td className="rc-td-num" style={{ textAlign: "center" }}>
                                         {calcTotal(r.details) ? formatMoney(calcTotal(r.details)) : "-"}
                                     </td>
-                                    <td style={{ width: 160 }}>{r.createdByFullname || r.createdByName || "-"}</td>
+                                    <td>{r.createdByFullname || r.createdByName || "-"}</td>
                                     <td>
                                         <span className={STATUS_BADGE[r.docstatus] || "rc-badge"}>
                                             {STATUS_LABELS[r.docstatus] || r.docstatus}
