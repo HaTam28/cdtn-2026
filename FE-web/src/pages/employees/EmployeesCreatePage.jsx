@@ -13,6 +13,29 @@ const EMPTY_FORM = {
     password: "", confirmPassword: "",
 };
 
+const ROLE_LABELS = {
+    ADMIN: "ADMIN",
+    MANAGER: "MANAGER",
+    QL: "MANAGER",
+    STAFF: "STAFF",
+    NV: "STAFF",
+};
+
+const normalizeRole = (role) => String(role || "").toUpperCase();
+const isStaffRole = (role) => ["STAFF", "NV"].includes(normalizeRole(role));
+const getRoleLabel = (role) => ROLE_LABELS[normalizeRole(role)] || role || "";
+
+function getRoleOptions(currentRole, canAssignManager) {
+    const options = [{ value: "STAFF", label: "STAFF" }];
+    if (canAssignManager) options.push({ value: "MANAGER", label: "MANAGER" });
+
+    const normalized = normalizeRole(currentRole);
+    if (canAssignManager && normalized && !options.some((option) => option.value === currentRole)) {
+        options.push({ value: currentRole, label: ROLE_LABELS[normalized] || currentRole });
+    }
+    return options;
+}
+
 function IconCheck() {
     return (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2DBE60" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -34,10 +57,10 @@ export default function EmployeesCreatePage() {
     const navigate = useNavigate();
     const location = useLocation();
     const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
-    const isAdmin = currentUser?.role === "ADMIN";
+    const isAdmin = normalizeRole(currentUser?.role) === "ADMIN";
 
     useEffect(() => {
-        if (currentUser?.role === "STAFF") navigate("/");
+        if (isStaffRole(currentUser?.role)) navigate("/");
     }, []);
 
     const [form, setForm] = useState({ ...EMPTY_FORM });
@@ -80,7 +103,7 @@ export default function EmployeesCreatePage() {
             bankaccount: clone.bankaccount || "",
             bankname: clone.bankname || "",
             isActive: typeof clone.isActive === "boolean" ? clone.isActive : true,
-            role: clone.role || "STAFF",
+            role: isAdmin ? (clone.role || "STAFF") : "STAFF",
             password: "",
             confirmPassword: "",
         });
@@ -216,7 +239,7 @@ export default function EmployeesCreatePage() {
                 bankaccount: form.bankaccount,
                 bankname: form.bankname,
                 isActive: true,
-                role: form.role || "STAFF",
+                role: isAdmin ? (form.role || "STAFF") : "STAFF",
                 password: form.password,
             });
             setShowToast(true);
@@ -451,14 +474,24 @@ export default function EmployeesCreatePage() {
                                     </div>
                                     <div className="sd-field-half">
                                         <label className="sd-label">Phân quyền</label>
-                                        <select
-                                            className="sd-input sd-select"
-                                            value={form.role}
-                                            onChange={(e) => set("role", e.target.value)}
-                                        >
-                                            <option value="STAFF">STAFF</option>
-                                            {isAdmin && <option value="MANAGER">MANAGER</option>}
-                                        </select>
+                                        {isAdmin ? (
+                                            <select
+                                                className="sd-input sd-select"
+                                                value={form.role}
+                                                onChange={(e) => set("role", e.target.value)}
+                                            >
+                                                {getRoleOptions(form.role, isAdmin).map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </select>
+                                        ) : (
+                                            <input
+                                                className="sd-input"
+                                                value={getRoleLabel(form.role)}
+                                                disabled
+                                                readOnly
+                                            />
+                                        )}
                                     </div>
                                 </div>
 

@@ -12,6 +12,30 @@ const EMPTY_FORM = {
     bankaccount: "", bankname: "", isActive: true, role: "STAFF",
 };
 
+const ROLE_LABELS = {
+    ADMIN: "ADMIN",
+    MANAGER: "MANAGER",
+    QL: "MANAGER",
+    STAFF: "STAFF",
+    NV: "STAFF",
+};
+
+const normalizeRole = (role) => String(role || "").toUpperCase();
+const isStaffRole = (role) => ["STAFF", "NV"].includes(normalizeRole(role));
+const isManagerRole = (role) => ["MANAGER", "QL"].includes(normalizeRole(role));
+const getRoleLabel = (role) => ROLE_LABELS[normalizeRole(role)] || role || "";
+
+function getRoleOptions(currentRole, canAssignManager) {
+    const options = [{ value: "STAFF", label: "STAFF" }];
+    if (canAssignManager) options.push({ value: "MANAGER", label: "MANAGER" });
+
+    const normalized = normalizeRole(currentRole);
+    if (normalized && !options.some((option) => option.value === currentRole)) {
+        options.push({ value: currentRole, label: ROLE_LABELS[normalized] || currentRole });
+    }
+    return options;
+}
+
 function IconCheck() {
     return (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2DBE60" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -33,9 +57,9 @@ export default function EmployeesDetailPage() {
     const { id } = useParams();
     const navigate = useNavigate();
     const user = JSON.parse(localStorage.getItem("user") || "{}");
-    const isStaff = user?.role === "STAFF";
-    const isAdmin = user?.role === "ADMIN";
-    const isManager = user?.role === "MANAGER";
+    const isStaff = isStaffRole(user?.role);
+    const isAdmin = normalizeRole(user?.role) === "ADMIN";
+    const isManager = isManagerRole(user?.role);
 
     const [form, setForm] = useState({ ...EMPTY_FORM });
     const [original, setOriginal] = useState({ ...EMPTY_FORM });
@@ -120,7 +144,7 @@ export default function EmployeesDetailPage() {
                 bankaccount: form.bankaccount,
                 bankname: form.bankname,
                 isActive: form.isActive,
-                role: form.role,
+                role: isAdmin ? form.role : (original.role || form.role || "STAFF"),
             });
             const f = { ...EMPTY_FORM, ...updated };
             setOriginal(f);
@@ -140,11 +164,11 @@ export default function EmployeesDetailPage() {
     };
 
     // canEditTarget: ADMIN can edit any; MANAGER can only edit STAFF accounts. Restricted to active accounts.
-    const canEditTarget = (isAdmin || (isManager && original.role === "STAFF")) && original.isActive;
+    const canEditTarget = (isAdmin || (isManager && isStaffRole(original.role))) && original.isActive;
     // canDeactivate: ADMIN can deactivate any; MANAGER can only deactivate STAFF
-    const canDeactivate = (isAdmin || (isManager && original.role === "STAFF")) && form.isActive;
+    const canDeactivate = (isAdmin || (isManager && isStaffRole(original.role))) && form.isActive;
     // canReactivate: ADMIN can reactivate any; MANAGER can only reactivate STAFF
-    const canReactivate = (isAdmin || (isManager && original.role === "STAFF")) && !form.isActive;
+    const canReactivate = (isAdmin || (isManager && isStaffRole(original.role))) && !form.isActive;
 
     const handleDeactivate = async () => {
         setConfirmModal((prev) => ({ ...prev, open: false }));
@@ -185,7 +209,7 @@ export default function EmployeesDetailPage() {
                 bankaccount: form.bankaccount,
                 bankname: form.bankname,
                 isActive: true,
-                role: form.role,
+                role: isAdmin ? form.role : (original.role || form.role || "STAFF"),
             });
             const f = { ...EMPTY_FORM, ...updated };
             setOriginal(f);
@@ -442,15 +466,25 @@ export default function EmployeesDetailPage() {
                                     </div>
                                     <div className="sd-field-half">
                                         <label className="sd-label">Phân quyền</label>
-                                        <select
-                                            className="sd-input sd-select"
-                                            value={form.role}
-                                            disabled={!isEditing}
-                                            onChange={(e) => set("role", e.target.value)}
-                                        >
-                                            <option value="STAFF">STAFF</option>
-                                            {isAdmin && <option value="MANAGER">MANAGER</option>}
-                                        </select>
+                                        {isAdmin ? (
+                                            <select
+                                                className="sd-input sd-select"
+                                                value={form.role}
+                                                disabled={!isEditing}
+                                                onChange={(e) => set("role", e.target.value)}
+                                            >
+                                                {getRoleOptions(form.role, isAdmin).map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </select>
+                                        ) : (
+                                            <input
+                                                className="sd-input"
+                                                value={getRoleLabel(form.role)}
+                                                disabled
+                                                readOnly
+                                            />
+                                        )}
                                     </div>
                                 </div>
                             </div>
