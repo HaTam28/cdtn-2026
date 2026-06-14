@@ -485,7 +485,13 @@ export default function SuppliesPage() {
                                     <td className="sp-td-id sp-td-sticky">{r.itemcode}</td>
                                     <td>{r.itemname}</td>
                                     <td>{r.unitof}</td>
-                                    <td className="sp-td-num">{stockByItem[String(r.id)] || 0}</td>
+                                    <td className={`sp-td-num${
+                                        (stockByItem[String(r.id)] || 0) < Number(r.minStockLevel ?? r.minstocklevel ?? 50) || 
+                                        (stockByItem[String(r.id)] || 0) > Number(r.maxStockLevel ?? r.maxstocklevel ?? 500) 
+                                        ? " sp-num-danger" : ""
+                                    }`}>
+                                        {stockByItem[String(r.id)] || 0}
+                                    </td>
                                     <td className="sp-td-num">{Number(r.minStockLevel ?? r.minstocklevel ?? 50)}</td>
                                     <td className="sp-td-num">{Number(r.maxStockLevel ?? r.maxstocklevel ?? 500)}</td>
                                     <td className="sp-td-desc">{r.description}</td>

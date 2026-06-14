@@ -8,3 +8,8 @@
 .sp-badge-tp {
     color: #8a6300;
 }
+
+.sp-num-danger {
+    color: #d32f2f !important;
+    font-weight: 600;
+}
